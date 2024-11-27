@@ -6,9 +6,15 @@ import lombok.Data;
 
 @Data
 public class ConfigUserVO {
-    // 盘口账号
+    // 投注类型 add/update
+    @NotBlank(message = "操作类型必选")
+    private String operationType;
+    @NotBlank(message = "盘口地址不能为空")
+    private String baseUrl;
     @NotBlank(message = "盘口账号不能为空")
     private String account;
+    @NotBlank(message = "盘口密码不能为空")
+    private String password;
     // 投注类型 1正投 2反投
     @NotNull(message = "投注类型必选")
     private Integer betType;

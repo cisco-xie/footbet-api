@@ -2,6 +2,11 @@ package com.example.demo.common.constants;
 
 public class RedisConstants {
     /**
+     * 平台登录账号前缀
+     */
+    public static final String USER_ADMIN_PREFIX = "user:admin";
+
+    /**
      * 令牌前缀
      */
     public static final String USER_TOKEN_PREFIX = "user:token";

@@ -1,6 +1,7 @@
 package com.example.demo.api;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONUtil;
@@ -38,23 +39,88 @@ public class ConfigService {
      * 设置账号代理
      * @param userProxy
      */
-    public void user(ConfigUserVO userProxy) {
+    public void editAccount(String username, ConfigUserVO userProxy) {
+        // 将 VO 转换为实体类
         UserConfig proxy = BeanUtil.copyProperties(userProxy, UserConfig.class);
-        if (BeanUtil.isNotEmpty(proxy)) {
-            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, userProxy.getAccount())).set(JSONUtil.toJsonStr(proxy));
+
+        // Redis 键值
+        String redisKey = KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userProxy.getAccount());
+
+        // 判断 Redis 中是否存在该用户数据
+        boolean exists = redisson.getBucket(redisKey).isExists();
+
+        // 校验 baseUrl 的最后一个字符是否为 "/"
+        String baseUrl = userProxy.getBaseUrl();
+        if (baseUrl != null && !baseUrl.endsWith("/")) {
+            baseUrl += "/";
+            userProxy.setBaseUrl(baseUrl);
+            proxy.setBaseUrl(baseUrl); // 确保实体类同步
+        }
+        if ("add".equalsIgnoreCase(userProxy.getOperationType())) {
+            // 新增逻辑
+            if (exists) {
+                log.warn("用户 [{}] 已存在，无法新增。", userProxy.getAccount());
+                throw new BusinessException(SystemError.USER_1003, userProxy.getAccount());
+            } else {
+                redisson.getBucket(redisKey).set(JSONUtil.toJsonStr(proxy));
+                log.info("用户 [{}] 新增成功。", userProxy.getAccount());
+            }
+        } else if ("update".equalsIgnoreCase(userProxy.getOperationType())) {
+            // 修改逻辑
+            if (exists) {
+                // token保持，防止更新代理时把token置为空
+                UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(redisson.getBucket(redisKey).get()), UserConfig.class);
+                proxy.setToken(userConfig.getToken());
+                redisson.getBucket(redisKey).set(JSONUtil.toJsonStr(proxy));
+                log.info("用户 [{}] 修改成功。", userProxy.getAccount());
+            } else {
+                log.warn("用户 [{}] 不存在，无法修改。", userProxy.getAccount());
+                throw new BusinessException(SystemError.USER_1004, userProxy.getAccount());
+            }
+        } else {
+            throw new BusinessException(SystemError.SYS_400);
         }
     }
 
     /**
-     * 设置账号代理
+     * 删除账号
+     * @param account
+     */
+    public void deleteAccount(String username, String account) {
+        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, account)).delete();
+    }
+
+    /**
+     * 获取所有账号
+     */
+    public List<UserConfig> accounts(String username, String account) {
+        // 使用通配符获取所有匹配的键
+        Iterable<String> keys = redisson.getKeys().getKeysByPattern(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, StringUtils.isNotBlank(account) ? account : "*"));
+
+        List<UserConfig> userList = new ArrayList<>();
+        for (String key : keys) {
+            // 根据键值获取数据
+            String userJson = (String) redisson.getBucket(key).get();
+            if (userJson != null) {
+                // 将 JSON 转换为对象
+                UserConfig userConfig = JSONUtil.toBean(userJson, UserConfig.class);
+                userList.add(userConfig);
+            }
+        }
+        // 返回所有用户列表
+        return userList;
+    }
+
+    /**
+     * 设置账号方案
      * @param plan
      */
-    public void plan(ConfigPlanVO plan) {
+    public void plan(String username, ConfigPlanVO plan) {
         if (BeanUtil.isNotEmpty(plan)) {
-            String key = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, plan.getAccount(), plan.getLottery());
+            String key = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, plan.getAccount(), plan.getLottery());
 
             // 获取自增 ID 的 Redis key
-            String idKey = KeyUtil.genKey(RedisConstants.USER_PLAN_ID_PREFIX, plan.getAccount(), plan.getLottery());
+            String idKey = KeyUtil.genKey(RedisConstants.USER_PLAN_ID_PREFIX, username, plan.getAccount(), plan.getLottery());
 
             // 从 Redis 获取现有的数组
             RBucket<String> bucket = redisson.getBucket(key);
@@ -100,14 +166,70 @@ public class ConfigService {
     }
 
     /**
+     * 删除配置
+     * @param plans
+     */
+    public void planDel(String username, List<ConfigPlanVO> plans) {
+        if (CollUtil.isEmpty(plans)) {
+            throw new BusinessException(SystemError.SYS_402);
+        }
+        plans.forEach(plan -> {
+            // 检查传入计划对象是否为空
+            if (BeanUtil.isEmpty(plan) || plan.getId() == null) {
+                throw new BusinessException(SystemError.SYS_402);
+            }
+
+            // 生成 Redis 键
+            String key = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, plan.getAccount(), plan.getLottery());
+
+            // 从 Redis 获取现有的数组
+            RBucket<String> bucket = redisson.getBucket(key);
+            String jsonArray = bucket.get();
+            List<ConfigPlanVO> planList = new ArrayList<>();
+
+            if (StringUtils.isNotBlank(jsonArray)) {
+                // 将 JSON 转为对象列表
+                planList = JSONUtil.toList(jsonArray, ConfigPlanVO.class);
+            }
+
+            // 标记删除状态
+            boolean isRemoved = false;
+
+            // 遍历列表，找到并删除指定 ID 的计划
+            for (int i = 0; i < planList.size(); i++) {
+                ConfigPlanVO existingPlan = planList.get(i);
+                if (existingPlan.getId().equals(plan.getId())) {
+                    planList.remove(i);
+                    isRemoved = true; // 标记已删除
+                    break;
+                }
+            }
+
+            if (!isRemoved) {
+                // 如果未找到对应的计划 ID，抛出异常
+                throw new BusinessException(SystemError.USER_1005);
+            }
+
+            // 如果计划列表为空，直接删除 Redis 键
+            if (planList.isEmpty()) {
+                bucket.delete();
+            } else {
+                // 否则更新 Redis 数据
+                bucket.set(JSONUtil.toJsonStr(planList));
+            }
+        });
+    }
+
+
+    /**
      * 获取所有用户的所有方案
      */
     public void getPlan() {
         redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX));
     }
-    public List<List<ConfigPlanVO>> getAllPlans() {
+    public List<List<ConfigPlanVO>> getAllPlans(String username, String account, String lottery) {
         // 匹配所有用户和 lottery 的 Redis Key
-        String pattern = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, "*", "*");
+        String pattern = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, StringUtils.isNotBlank(account) ? account : "*", StringUtils.isNotBlank(lottery) ? lottery : "*");
 
         // 使用 Redisson 执行扫描操作
         RKeys keys = redisson.getKeys();
