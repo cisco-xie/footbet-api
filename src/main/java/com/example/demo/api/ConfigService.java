@@ -229,7 +229,7 @@ public class ConfigService {
     }
     public List<List<ConfigPlanVO>> getAllPlans(String username, String account, String lottery) {
         // 匹配所有用户和 lottery 的 Redis Key
-        String pattern = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, StringUtils.isNotBlank(account) ? account : "*", StringUtils.isNotBlank(lottery) ? lottery : "*");
+        String pattern = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, StringUtils.isNotBlank(username) ? username : "*", StringUtils.isNotBlank(account) ? account : "*", StringUtils.isNotBlank(lottery) ? lottery : "*");
 
         // 使用 Redisson 执行扫描操作
         RKeys keys = redisson.getKeys();

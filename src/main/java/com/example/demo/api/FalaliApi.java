@@ -27,6 +27,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.redisson.api.RKeys;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Component;
 
@@ -44,6 +45,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 @Slf4j
 @Component
@@ -622,160 +624,361 @@ public class FalaliApi {
         return resultJson;
     }
 
+    public void autoBet() {
+        // 配置线程池
+        ExecutorService executorService = Executors.newFixedThreadPool(10);
+
+        // 匹配所有平台用户的 Redis Key
+        String pattern = KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, "*");
+
+        // 使用 Redisson 执行扫描所有平台用户操作
+        RKeys keys = redisson.getKeys();
+        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
+        List<String> keysList = new ArrayList<>();
+        iterableKeys.forEach(keysList::add);
+
+        // 计数器，用于统计成功/失败数量
+        AtomicInteger successCount = new AtomicInteger();
+        AtomicInteger failureCount = new AtomicInteger();
+
+        // 对每个平台用户的操作并行化
+        List<Callable<Void>> tasks = new ArrayList<>();
+        for (String key : keysList) {
+            tasks.add(() -> {
+                // 使用 Redisson 获取每个平台用户的数据
+                String json = (String) redisson.getBucket(key).get();
+                if (json != null) {
+                    // 解析 JSON 为 AdminLoginDTO 对象
+                    AdminLoginDTO admin = JSONUtil.toBean(json, AdminLoginDTO.class);
+                    String username = admin.getUsername();
+
+                    // 获取所有配置计划
+                    List<List<ConfigPlanVO>> configs = configService.getAllPlans(username, null, null);
+
+                    // 对每个配置计划列表进行并行化
+                    List<Callable<Void>> planTasks = new ArrayList<>();
+                    for (List<ConfigPlanVO> planList : configs) {
+                        planTasks.add(() -> {
+                            if (CollectionUtil.isEmpty(planList)) return null;
+
+                            // 遍历每个配置项
+                            for (ConfigPlanVO plan : planList) {
+                                if (plan.getEnable() == 0) continue; // 方案没有启用，跳过
+
+                                // 获取账号的 token
+                                UserConfig userConfig = JSONUtil.toBean(
+                                        JSONUtil.parseObj(
+                                                redisson.getBucket(
+                                                        KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, plan.getAccount())
+                                                ).get()
+                                        ),
+                                        UserConfig.class
+                                );
+
+                                boolean isToken = false;
+                                String token = null;
+                                if (BeanUtil.isNotEmpty(userConfig)) {
+                                    token = userConfig.getToken();
+                                    JSONArray jsonArray = account(username, plan.getAccount());
+                                    isToken = !jsonArray.isEmpty();
+                                }
+
+                                if (!isToken) continue; // token无效则跳过
+
+                                // 获取最新期数
+                                String period = period(username, plan.getAccount(), plan.getLottery());
+                                if (StringUtils.isBlank(period)) continue; // 如果期数为空，跳过
+
+                                JSONObject periodJson = JSONUtil.parseObj(period);
+                                String drawNumber = periodJson.getStr("drawNumber");
+
+                                String isBetRedisKey = KeyUtil.genKey(
+                                        RedisConstants.USER_BET_PERIOD_PREFIX,
+                                        StringUtils.isNotBlank(plan.getLottery()) ? plan.getLottery() : "*",
+                                        drawNumber,
+                                        StringUtils.isNotBlank(username) ? username : "*",
+                                        StringUtils.isNotBlank(plan.getAccount()) ? plan.getAccount() : "*",
+                                        String.valueOf(plan.getId())
+                                );
+
+                                // 判断是否已下注
+                                boolean exists = redisson.getBucket(isBetRedisKey).isExists();
+                                if (exists) continue; // 已下注，跳过
+
+                                // 获取赔率
+                                String odds = odds(username, plan.getAccount(), plan.getLottery());
+                                if (StringUtils.isBlank(odds)) continue;
+
+                                JSONObject oddsJson = JSONUtil.parseObj(odds);
+
+                                // 投注金额和数量配置
+                                int betNum = userConfig.getBetType() == 1 ? plan.getPositiveNum() : plan.getReverseNum();
+                                long amount = userConfig.getBetType() == 1 ? plan.getPositiveAmount() : plan.getReverseAmount();
+                                List<Long> amounts = distributeAmount(betNum, amount);
+                                if (CollectionUtil.isEmpty(amounts)) continue;
+
+                                // 构建订单
+                                OrderVO order = new OrderVO();
+                                List<Bet> bets = new ArrayList<>();
+                                order.setLottery(plan.getLottery());
+                                order.setDrawNumber(drawNumber);
+                                order.setFastBets(false);
+                                order.setIgnore(false);
+
+                                List<Integer> positions = plan.getPositions();
+                                for (int pos : positions) {
+                                    String jsonkey = "B" + pos;
+                                    List<String> matchedKeys = oddsJson.keySet().stream()
+                                            .filter(matchedKey -> matchedKey.contains(jsonkey + "_"))
+                                            .collect(Collectors.toList());
+
+                                    List<String> oddKeys = getRandomElements(matchedKeys, betNum);
+                                    for (int l = 0; l < oddKeys.size(); l++) {
+                                        Bet bet = new Bet();
+                                        bet.setGame(jsonkey);
+                                        bet.setAmount(amounts.get(l));
+                                        bet.setContents(oddKeys.get(l).replace(jsonkey + "_", ""));
+                                        bet.setOdds(oddsJson.getDouble(oddKeys.get(l)));
+                                        bets.add(bet);
+                                    }
+                                }
+                                order.setBets(bets);
+
+                                // 提交订单
+                                String url = userConfig.getBaseUrl() + "member/bet";
+                                Map<String, String> headers = new HashMap<>();
+                                headers.put("accept", "*/*");
+                                headers.put("cookie", "defaultLT=" + plan.getLottery() + "; token=" + token);
+                                HttpRequest request = HttpRequest.post(url).addHeaders(headers);
+
+                                String result = request.body(JSONUtil.toJsonStr(order)).execute().body();
+                                if (StringUtils.isNotBlank(result)) {
+                                    JSONObject resultJson = JSONUtil.parseObj(result);
+                                    int status = resultJson.getInt("status");
+                                    if (status == 0) {
+                                        redisson.getBucket(isBetRedisKey).set("1");
+                                        successCount.incrementAndGet();
+                                        log.info("下单成功, 账号:{}, 期数:{}", plan.getAccount(), order.getDrawNumber());
+                                    } else {
+                                        failureCount.incrementAndGet();
+                                        log.error("下单失败, 账号:{}, 期数:{}, 返回信息{}", plan.getAccount(), order.getDrawNumber(), resultJson);
+                                    }
+                                }
+                            }
+                            return null;
+                        });
+                    }
+
+                    // 提交 planList 中的任务并行处理
+                    try {
+                        executorService.invokeAll(planTasks);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        log.error("执行任务时出现中断异常", e);
+                    }
+                }
+                return null;
+            });
+        }
+
+        // 提交平台用户的任务到线程池
+        try {
+            executorService.invokeAll(tasks);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("执行任务时出现中断异常", e);
+        } finally {
+            // 关闭线程池
+            executorService.shutdown();
+        }
+
+        // 打印批量登录的成功和失败次数
+        log.info("批量下注完成，成功次数: {}, 失败次数: {}", successCount.get(), failureCount.get());
+    }
+
+
     /**
      * 自动下单api
      *
      * @return 结果
      */
-    public JSONObject autoBet(String username) {
-        List<List<ConfigPlanVO>> configs = configService.getAllPlans(username, null, null);
-        configs.forEach(configList -> {
-
-            List<UserConfig> userConfigs = configService.accounts(username, configList.get(0).getAccount());
-            if (CollectionUtil.isEmpty(userConfigs)) {
-                throw new BusinessException(SystemError.USER_1007);
-            }
-            String baseUrl = userConfigs.get(0).getBaseUrl();
-
-            for (int i = 0; i < configList.size(); i++) {
-                if (configList.get(i).getEnable() == 0) {
-                    // 方案没有启用进入下一个方案
-                    continue;
-                }
-                // 先获取到此用户的token
-                UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, configList.get(i).getAccount())).get()), UserConfig.class);
-                boolean isToken = false;
-                String token = null;
-                if (BeanUtil.isNotEmpty(userConfig)) {
-                    token = userConfig.getToken();
-                    JSONArray jsonArray = account(username, configList.get(i).getAccount());
-                    if (!jsonArray.isEmpty()) {
-                        isToken =  true;
-                    } else {
-                        // token无效则直接退出
-                        break;
-                    }
-                }
-                if (isToken) {
-
-                    // 获取陪率
-                    String odds = odds(username, configList.get(i).getAccount(), configList.get(i).getLottery());
-                    if (StringUtils.isBlank(odds)) {
-                        continue;
-                    }
-                    JSONObject oddsJson = JSONUtil.parseObj(odds);
-
-                    // token存在即进行下单操作
-                    String url = baseUrl+"member/bet";
-                    Map<String, String> headers = new HashMap<>();
-                    headers.put("accept", "*/*");
-                    headers.put("accept-language", "zh-CN,zh;q=0.9");
-                    headers.put("cookie", "defaultSetting=5%2C10%2C20%2C50%2C100%2C200%2C500%2C1000; settingChecked=0; index=; index2=; oid=3a9cad1bfcc69f05fd202bb3ddbc9df05b3bc062; defaultLT="+configList.get(i).getLottery()+"; page=lm; token=" + token);
-                    headers.put("priority", "u=1, i");
-                    headers.put("x-requested-with", "XMLHttpRequest");
-
-                    // 设置代理和认证
-                    HttpRequest request = HttpRequest.post(url)
-                            .addHeaders(headers);
-                    // 动态设置代理类型
-//                    Proxy proxy = null;
-//                    if (BeanUtil.isNotEmpty(userConfig) && null != userConfig.getProxyType()) {
-//                        if (userConfig.getProxyType() == 1) {
-//                            proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(userConfig.getProxyHost(), userConfig.getProxyPort()));
-//                        } else if (userConfig.getProxyType() == 2) {
-//                            proxy = new Proxy(Proxy.Type.SOCKS, new InetSocketAddress(userConfig.getProxyHost(), userConfig.getProxyPort()));
-//                        }
-//                        request.setProxy(proxy);
+//    public void autoBet() {
+//        // 匹配所有平台用户的 Redis Key
+//        String pattern = KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, "*");
 //
-//                        // 设置代理认证
-//                        if (StringUtils.isNotBlank(userConfig.getProxyUsername()) && StringUtils.isNotBlank(userConfig.getProxyPassword())) {
-//                            request.basicProxyAuth(userConfig.getProxyUsername(), userConfig.getProxyPassword());
-//                        }
+//        // 使用 Redisson 执行扫描所有平台用户操作
+//        RKeys keys = redisson.getKeys();
+//        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
+//        List<String> keysList = new ArrayList<>();
+//        iterableKeys.forEach(keysList::add);
+//        keysList.forEach(key -> {
+//            // 使用 Redisson 获取每个 平台用户 的数据
+//            String json = (String) redisson.getBucket(key).get();
+//            if (json != null) {
+//                // 解析 JSON 为 AdminLoginDTO 对象
+//                AdminLoginDTO admin = JSONUtil.toBean(json, AdminLoginDTO.class);
+//                String username = admin.getUsername();
+//                List<List<ConfigPlanVO>> configs = configService.getAllPlans(username, null, null);
+//                for (int i = 0; i < configs.size(); i++) {
+//                    String account = configs.get(i).get(0).getAccount();
+//                    String lottery = configs.get(i).get(0).getLottery();
+//
+//                    List<UserConfig> userConfigs = configService.accounts(username, account);
+//                    if (CollectionUtil.isEmpty(userConfigs)) {
+//                        throw new BusinessException(SystemError.USER_1007);
 //                    }
-                    // 投注数
-                    int betNum = 0;
-                    // 投注金额
-                    long amount = 0;
-                    if (userConfig.getBetType() == 1) {
-                        // 用户配置的正投
-                        betNum = configList.get(i).getPositiveNum();
-                        amount = configList.get(i).getPositiveAmount();
-                    } else if (userConfig.getBetType() == 2) {
-                        // 用户配置的反投
-                        betNum = configList.get(i).getReverseNum();
-                        amount = configList.get(i).getReverseAmount();
-                    }
-                    // 随机投注金额 生产betNum数量的1到10的随机数，reverseContents则获取剩下相反的数
-                    // Map<String, List<Integer>> contents = generateBetContents(betNum);
-                    // List<Integer> positiveContents = contents.get("positive");
-                    // List<Integer> reverseContents = contents.get("reverse");
-                    List<Long> amounts = distributeAmount(betNum, amount);
-
-                    // 获取指定Lottery的最新期数
-                    String period = period(username, configList.get(i).getAccount(), configList.get(i).getLottery());
-                    if (StringUtils.isBlank(period)) {
-                        continue;
-                    }
-                    JSONObject periodJson = JSONUtil.parseObj(period);
-                    OrderVO order = new OrderVO();
-                    List<Bet> bets = new ArrayList<>();
-                    order.setLottery(configList.get(i).getLottery());
-                    order.setDrawNumber(periodJson.getStr("drawNumber"));
-                    order.setFastBets(false);
-                    order.setIgnore(false);
-                    Bet bet = null;
-                    List<Integer> positions = configList.get(i).getPositions();
-                    for (int j = 0; j < positions.size(); j++) {
-                        String jsonkey = "B" + positions.get(j);
-                        // 筛选出与当前 po 匹配的键值对
-                        List<String> matchedKeys = oddsJson.keySet().stream()
-                                .filter(key -> key.contains(jsonkey+"_"))
-                                .collect(Collectors.toList());
-
-                        List<String> oddKeys = getRandomElements(matchedKeys, betNum);
-                        for (int k = 0; k < oddKeys.size(); k++) {
-                            bet = new Bet();
-                            bet.setGame(jsonkey);
-                            bet.setAmount(amounts.get(k));
-                            bet.setContents(oddKeys.get(k).replace(jsonkey+"_", ""));
-                            // 获取赔率
-                            bet.setOdds(oddsJson.getDouble(oddKeys.get(k)));
-                            bets.add(bet);
-                        }
-//                        for (int k = 0; k < betNum; k++) {
-//                            bet = new Bet();
-//                            bet.setGame("B" + positions.get(j));
-//                            bet.setAmount(amounts.get(k));
-//                            if (userConfig.getBetType() == 1) {
-//                                bet.setContents(String.valueOf(positiveContents.get(k)));
-//                            } else if (userConfig.getBetType() == 2) {
-//                                bet.setContents(String.valueOf(reverseContents.get(k)));
-//                            }
-//                            // 获取赔率
-//                            double odd = oddsJson.getDouble(bet.getGame()+"_"+bet.getContents());
-//                            bet.setOdds(odd);
-//                            bets.add(bet);
+//                    String baseUrl = userConfigs.get(0).getBaseUrl();
+//
+//                    for (int j = 0; j < configs.get(i).size(); j++) {
+//                        if (configs.get(i).get(j).getEnable() == 0) {
+//                            // 方案没有启用进入下一个方案
+//                            continue;
 //                        }
-                    }
-                    order.setBets(bets);
-                    System.out.println(JSONUtil.toJsonStr(order));
-                    String result = request.body(JSONUtil.toJsonStr(order))
-                            .execute().body();
-                    System.out.println(result);
-                    JSONObject resultJson;
-                    if (StringUtils.isNotBlank(result)) {
-                        resultJson = JSONUtil.parseObj(result);
-                        int status = resultJson.getInt("status");
-                        if (status != 0) {
-                            log.error("下单失败,账号号:{}, 期数{}", configList.get(i).getAccount(), order.getDrawNumber());
-                        }
-                    }
-                }
-            };
-        });
-
-        return null;
-    }
+//
+//                        // 先获取到此账号的token
+//                        UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, configs.get(i).get(j).getAccount())).get()), UserConfig.class);
+//                        boolean isToken = false;
+//                        String token = null;
+//                        if (BeanUtil.isNotEmpty(userConfig)) {
+//                            token = userConfig.getToken();
+//                            JSONArray jsonArray = account(username, configs.get(i).get(j).getAccount());
+//                            if (!jsonArray.isEmpty()) {
+//                                isToken =  true;
+//                            } else {
+//                                // token无效则直接退出
+//                                break;
+//                            }
+//                        }
+//                        if (isToken) {
+//
+//                            // 获取指定Lottery的最新期数
+//                            String period = period(username, account, lottery);
+//                            if (StringUtils.isBlank(period)) {
+//                                // 没有获取到期数说明当前可能正在封盘阶段或者账号token失效
+//                                continue;
+//                            }
+//                            // 期数json
+//                            JSONObject periodJson = JSONUtil.parseObj(period);
+//                            String drawNumber = periodJson.getStr("drawNumber");
+//                            String isBetRedisKey = KeyUtil.genKey(RedisConstants.USER_PLAN_PERIOD_PREFIX,
+//                                    StringUtils.isNotBlank(lottery) ? lottery : "*",
+//                                    drawNumber, StringUtils.isNotBlank(username) ? username : "*",
+//                                    StringUtils.isNotBlank(account) ? account : "*",
+//                                    String.valueOf(configs.get(i).get(j).getId()));
+//
+//                            // 判断 Redis 中是否存在该用户的下注数据
+//                            boolean exists = redisson.getBucket(isBetRedisKey).isExists();
+//                            if (exists) {
+//                                // 期数redis存在说明当前用户下的账号在当前游戏期数已经下过注
+//                                continue;
+//                            }
+//
+//                            // 获取陪率
+//                            String odds = odds(username, account, lottery);
+//                            if (StringUtils.isBlank(odds)) {
+//                                continue;
+//                            }
+//                            JSONObject oddsJson = JSONUtil.parseObj(odds);
+//
+//                            // token存在即进行下单操作
+//                            String url = baseUrl+"member/bet";
+//                            Map<String, String> headers = new HashMap<>();
+//                            headers.put("accept", "*/*");
+//                            headers.put("accept-language", "zh-CN,zh;q=0.9");
+//                            headers.put("cookie", "defaultSetting=5%2C10%2C20%2C50%2C100%2C200%2C500%2C1000; settingChecked=0; index=; index2=; defaultLT="+lottery+"; page=lm; token=" + token);
+//                            headers.put("priority", "u=1, i");
+//                            headers.put("x-requested-with", "XMLHttpRequest");
+//
+//                            // 设置代理和认证
+//                            HttpRequest request = HttpRequest.post(url)
+//                                    .addHeaders(headers);
+//                            // 动态设置代理类型
+////                    Proxy proxy = null;
+////                    if (BeanUtil.isNotEmpty(userConfig) && null != userConfig.getProxyType()) {
+////                        if (userConfig.getProxyType() == 1) {
+////                            proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(userConfig.getProxyHost(), userConfig.getProxyPort()));
+////                        } else if (userConfig.getProxyType() == 2) {
+////                            proxy = new Proxy(Proxy.Type.SOCKS, new InetSocketAddress(userConfig.getProxyHost(), userConfig.getProxyPort()));
+////                        }
+////                        request.setProxy(proxy);
+////
+////                        // 设置代理认证
+////                        if (StringUtils.isNotBlank(userConfig.getProxyUsername()) && StringUtils.isNotBlank(userConfig.getProxyPassword())) {
+////                            request.basicProxyAuth(userConfig.getProxyUsername(), userConfig.getProxyPassword());
+////                        }
+////                    }
+//                            // 投注数
+//                            int betNum = 0;
+//                            // 投注金额
+//                            long amount = 0;
+//                            if (userConfig.getBetType() == 1) {
+//                                // 用户配置的正投
+//                                betNum = configs.get(i).get(j).getPositiveNum();
+//                                amount = configs.get(i).get(j).getPositiveAmount();
+//                            } else if (userConfig.getBetType() == 2) {
+//                                // 用户配置的反投
+//                                betNum = configs.get(i).get(j).getReverseNum();
+//                                amount = configs.get(i).get(j).getReverseAmount();
+//                            }
+//                            // 随机投注金额 生产betNum数量的1到10的随机数，reverseContents则获取剩下相反的数
+//                            // Map<String, List<Integer>> contents = generateBetContents(betNum);
+//                            // List<Integer> positiveContents = contents.get("positive");
+//                            // List<Integer> reverseContents = contents.get("reverse");
+//                            List<Long> amounts = distributeAmount(betNum, amount);
+//                            if (CollectionUtil.isEmpty(amounts)) {
+//                                continue;
+//                            }
+//                            OrderVO order = new OrderVO();
+//                            List<Bet> bets = new ArrayList<>();
+//                            order.setLottery(lottery);
+//                            order.setDrawNumber(drawNumber);
+//                            order.setFastBets(false);
+//                            order.setIgnore(false);
+//                            Bet bet = null;
+//                            List<Integer> positions = configs.get(i).get(j).getPositions();
+//                            for (int k = 0; k < positions.size(); k++) {
+//                                String jsonkey = "B" + positions.get(k);
+//                                // 筛选出与当前 po 匹配的键值对
+//                                List<String> matchedKeys = oddsJson.keySet().stream()
+//                                        .filter(matchedKey -> matchedKey.contains(jsonkey+"_"))
+//                                        .collect(Collectors.toList());
+//
+//                                List<String> oddKeys = getRandomElements(matchedKeys, betNum);
+//                                for (int l = 0; l < oddKeys.size(); l++) {
+//                                    bet = new Bet();
+//                                    bet.setGame(jsonkey);
+//                                    bet.setAmount(amounts.get(l));
+//                                    bet.setContents(oddKeys.get(l).replace(jsonkey+"_", ""));
+//                                    // 获取赔率
+//                                    bet.setOdds(oddsJson.getDouble(oddKeys.get(l)));
+//                                    bets.add(bet);
+//                                }
+//                            }
+//                            order.setBets(bets);
+//                            System.out.println(JSONUtil.toJsonStr(order));
+//                            String result = request.body(JSONUtil.toJsonStr(order))
+//                                    .execute().body();
+//                            System.out.println(result);
+//                            JSONObject resultJson;
+//                            if (StringUtils.isNotBlank(result)) {
+//                                resultJson = JSONUtil.parseObj(result);
+//                                int status = resultJson.getInt("status");
+//                                if (status == 0) {
+//                                    // 标记下注成功
+//                                    redisson.getBucket(isBetRedisKey).set("1");
+//                                    log.error("下单成功,账号号:{}, 期数{}", configs.get(i).get(j).getAccount(), order.getDrawNumber());
+//                                } else {
+//                                    log.error("下单失败,账号号:{}, 期数{}", configs.get(i).get(j).getAccount(), order.getDrawNumber());
+//                                }
+//                            }
+//                        }
+//                    };
+//                };
+//
+//            }
+//        });
+//
+//    }
 
     /**
      * 获取正反投的数字
@@ -893,7 +1096,8 @@ public class FalaliApi {
     public static List<Long> distributeAmount(int betNum, long amount) {
         // 检查合法性
         if (betNum <= 0 || amount <= 0) {
-            throw new IllegalArgumentException("投注数量和金额必须大于0");
+            log.error("投注数量和金额必须大于0");
+            return null;
         }
 
         // 创建随机数生成器

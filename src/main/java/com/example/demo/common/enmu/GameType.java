@@ -8,11 +8,12 @@ import java.util.Map;
 
 /**
  * 游戏类型定义枚举常量
+ * 暂时只获取单号参数
  */
 @Getter
 @AllArgsConstructor
 public enum GameType {
-    JSC11X5("11X5JSC", "DX1,DX2,DX3,DX4,DX5,ZDX,ZWDX,ZDS,DS1,DS2,DS3,DS4,DS5,LH", "极速11选5"),
+    JSC11X5("11X5JSC", "B1,B2,B3,B4,B5,ZM", "极速11选5"),
     HK6JSC("HK6JSC", "TMA,DX,DS,HDS,HDX,WDX,TDXDS,SB", "极速六合彩"),
     K3JSC("K3JSC", "", "极速快3"),
     KL8JSC("KL8JSC", "ZDX,ZDS,ZHT,DXDS,QHH,DSH,WX", "极速快乐8"),

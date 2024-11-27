@@ -191,8 +191,8 @@ public class BasicController extends BaseController {
     @GetMapping("/auto/bet")
     @ResponseBody
     public Result autoBet() {
-        AdminLoginDTO admin = getUser();
-        return Result.success(api.autoBet(admin.getUsername()));
+        api.autoBet();
+        return Result.success();
     }
 
     @Operation(summary = "获取两周流水记录")
