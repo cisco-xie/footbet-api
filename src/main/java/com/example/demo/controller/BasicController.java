@@ -90,10 +90,9 @@ public class BasicController extends BaseController {
 
     @Operation(summary = "获取方案配置")
     @GetMapping("/config/plan")
-    public Result configPlan(@RequestParam(value = "account", required = false) String account,
-                             @RequestParam(value = "lottery", required = false) String lottery) {
+    public Result configPlan(@RequestParam(value = "lottery", required = false) String lottery) {
         AdminLoginDTO admin = getUser();
-        return Result.success(configService.getAllPlans(admin.getUsername(), account, lottery));
+        return Result.success(configService.getAllPlans(admin.getUsername(), lottery));
     }
 
     @GetMapping("/code")

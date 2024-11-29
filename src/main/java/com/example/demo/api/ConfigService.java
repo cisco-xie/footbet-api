@@ -17,14 +17,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RBucket;
 import org.redisson.api.RKeys;
 import org.redisson.api.RedissonClient;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.Cursor;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -32,8 +27,6 @@ public class ConfigService {
 
     @Resource
     private RedissonClient redisson;
-    @Autowired
-    private RedisTemplate<Object, Object> redisTemplate;
 
     /**
      * 设置账号代理
@@ -116,22 +109,11 @@ public class ConfigService {
      * @param plan
      */
     public void plan(String username, ConfigPlanVO plan) {
+        String key = null;
         if (BeanUtil.isNotEmpty(plan)) {
-            String key = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, plan.getAccount(), plan.getLottery());
-
-            // 获取自增 ID 的 Redis key
-            String idKey = KeyUtil.genKey(RedisConstants.USER_PLAN_ID_PREFIX, username, plan.getAccount(), plan.getLottery());
-
-            // 从 Redis 获取现有的数组
-            RBucket<String> bucket = redisson.getBucket(key);
-            String jsonArray = bucket.get();
-            List<ConfigPlanVO> planList = new ArrayList<>();
-
-            if (StringUtils.isNotBlank(jsonArray)) {
-                // 将 JSON 数组转为对象列表
-                planList = JSONUtil.toList(jsonArray, ConfigPlanVO.class);
-            }
-
+            // 设置自增 ID 的 Redis key
+            String idKey = KeyUtil.genKey(RedisConstants.USER_PLAN_ID_PREFIX, username);
+            ConfigPlanVO configPlan = new ConfigPlanVO();
             if (plan.getId() == null) {
                 // 如果传入的 ID 为空，表示新增
                 long newId = redisson.getAtomicLong(idKey).incrementAndGet(); // 生成自增 ID
@@ -140,28 +122,12 @@ public class ConfigService {
                     throw new BusinessException(SystemError.SYS_400);
                 }
                 plan.setId((int) newId); // 将 long 转为 Integer 类型
-                planList.add(plan);
-            } else {
-                // 如果传入的 ID 不为空，表示修改
-                boolean updated = false;
-                for (int i = 0; i < planList.size(); i++) {
-                    ConfigPlanVO existingPlan = planList.get(i);
-                    if (existingPlan.getId().equals(plan.getId())) {
-                        // 更新已有对象
-                        planList.set(i, plan);
-                        updated = true;
-                        break;
-                    }
-                }
-
-                if (!updated) {
-                    log.warn("更新失败：未找到 ID 为 {} 的计划对象", plan.getId());
-                    return; // 找不到对应 ID，直接返回
-                }
             }
-
+            // 更新对象
+            configPlan = plan;
+            key = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, plan.getLottery(), String.valueOf(plan.getId()));
             // 将更新后的列表保存回 Redis
-            bucket.set(JSONUtil.toJsonStr(planList));
+            redisson.getBucket(key).set(JSONUtil.toJsonStr(configPlan));
         }
     }
 
@@ -180,56 +146,18 @@ public class ConfigService {
             }
 
             // 生成 Redis 键
-            String key = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, plan.getAccount(), plan.getLottery());
-
-            // 从 Redis 获取现有的数组
-            RBucket<String> bucket = redisson.getBucket(key);
-            String jsonArray = bucket.get();
-            List<ConfigPlanVO> planList = new ArrayList<>();
-
-            if (StringUtils.isNotBlank(jsonArray)) {
-                // 将 JSON 转为对象列表
-                planList = JSONUtil.toList(jsonArray, ConfigPlanVO.class);
-            }
-
-            // 标记删除状态
-            boolean isRemoved = false;
-
-            // 遍历列表，找到并删除指定 ID 的计划
-            for (int i = 0; i < planList.size(); i++) {
-                ConfigPlanVO existingPlan = planList.get(i);
-                if (existingPlan.getId().equals(plan.getId())) {
-                    planList.remove(i);
-                    isRemoved = true; // 标记已删除
-                    break;
-                }
-            }
-
-            if (!isRemoved) {
-                // 如果未找到对应的计划 ID，抛出异常
-                throw new BusinessException(SystemError.USER_1005);
-            }
-
-            // 如果计划列表为空，直接删除 Redis 键
-            if (planList.isEmpty()) {
-                bucket.delete();
-            } else {
-                // 否则更新 Redis 数据
-                bucket.set(JSONUtil.toJsonStr(planList));
-            }
+            String key = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, String.valueOf(plan.getId()));
+            redisson.getBucket(key).delete();
         });
     }
 
 
     /**
-     * 获取所有用户的所有方案
+     * 获取用户的所有方案
      */
-    public void getPlan() {
-        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX));
-    }
-    public List<List<ConfigPlanVO>> getAllPlans(String username, String account, String lottery) {
+    public List<ConfigPlanVO> getAllPlans(String username, String lottery) {
         // 匹配所有用户和 lottery 的 Redis Key
-        String pattern = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, StringUtils.isNotBlank(username) ? username : "*", StringUtils.isNotBlank(account) ? account : "*", StringUtils.isNotBlank(lottery) ? lottery : "*");
+        String pattern = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, StringUtils.isNotBlank(username) ? username : "*", StringUtils.isNotBlank(lottery) ? lottery : "*", "*");
 
         // 使用 Redisson 执行扫描操作
         RKeys keys = redisson.getKeys();
@@ -239,14 +167,13 @@ public class ConfigService {
         iterableKeys.forEach(keysList::add);
 
         // 批量获取所有方案
-        List<List<ConfigPlanVO>> plans = new ArrayList<>();
+        List<ConfigPlanVO> plans = new ArrayList<>();
         for (String key : keysList) {
             // 使用 Redisson 获取每个 key 的数据
             String json = (String) redisson.getBucket(key).get();
             if (json != null) {
                 // 解析 JSON 为 ConfigPlanVO 对象
-                List<ConfigPlanVO> plan = JSONUtil.toList(json, ConfigPlanVO.class);
-                plans.add(plan);
+                plans.add(JSONUtil.toBean(json, ConfigPlanVO.class));
             }
         }
 

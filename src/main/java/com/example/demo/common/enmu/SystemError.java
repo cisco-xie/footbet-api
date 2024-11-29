@@ -44,7 +44,7 @@ public enum SystemError implements ErrCode {
     /**
      * 下单相关异常--1100起
      */
-    ORDER_1100(1100, "下单失败"),
+    ORDER_1100(1100, "下注失败，请去[异常投注]页面查看详情"),
 
     ;
 

@@ -12,7 +12,6 @@ import java.util.List;
 public class ConfigPlanVO {
     @Schema(description = "新增不传，更新传入")
     private Integer id;
-    @NotBlank(message = "配置账号不能为空")
     @Schema(description = "配置账号")
     private String account;
     @NotBlank(message = "游戏类型不能为空")

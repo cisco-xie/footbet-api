@@ -28,4 +28,16 @@ public class RedisConstants {
      * 下注期数前缀 - 用于获取当前期数是否已下注
      */
     public static final String USER_BET_PERIOD_PREFIX = "user:bet:period";
+    /**
+     * 下注参数日志前缀 - 用于获取当前期数下注参数日志
+     */
+    public static final String USER_BET_PERIOD_REQ_PREFIX = "user:bet:req";
+    /**
+     * 下注结果日志前缀 - 用于获取当前期数下注结果日志
+     */
+    public static final String USER_BET_PERIOD_RES_PREFIX = "user:bet:res";
+    /**
+     * 自动下注前缀 - 用于获取当前是否自动下注
+     */
+    public static final String USER_BET_AUTO_PREFIX = "user:bet:auto";
 }
