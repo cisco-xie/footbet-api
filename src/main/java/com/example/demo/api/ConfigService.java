@@ -2,8 +2,10 @@ package com.example.demo.api;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.SystemError;
@@ -146,7 +148,7 @@ public class ConfigService {
             }
 
             // 生成 Redis 键
-            String key = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, String.valueOf(plan.getId()));
+            String key = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, plan.getLottery(), String.valueOf(plan.getId()));
             redisson.getBucket(key).delete();
         });
     }
@@ -180,9 +182,36 @@ public class ConfigService {
         return plans;
     }
 
-
-
-
-
+    public JSONArray failedBet(String username) {
+        String pattern = KeyUtil.genKey(
+                RedisConstants.USER_BET_PERIOD_RES_PREFIX,
+                DateUtil.format(DateUtil.date(), "yyyyMMdd"),
+                "*",
+                "*",
+                "failed",
+                username,
+                "*"
+        );
+        JSONArray result = new JSONArray();
+        // 使用 Redisson 执行扫描所有平台用户操作
+        RKeys keys = redisson.getKeys();
+        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
+        List<String> keysList = new ArrayList<>();
+        iterableKeys.forEach(keysList::add);
+        keysList.forEach(key -> {
+            // 使用 Redisson 获取每个 平台用户 的数据
+            String json = (String) redisson.getBucket(key).get();
+            if (json != null) {
+                JSONObject jsonObject = JSONUtil.parseObj(json);
+                JSONObject msg = new JSONObject();
+                String[] parts = key.split(":");
+                String account = parts[8];
+                msg.putOpt("account", account);
+                msg.putOpt("message", jsonObject.getStr("message"));
+                result.add(msg);
+            }
+        });
+        return result;
+    }
 
 }

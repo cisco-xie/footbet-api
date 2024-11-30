@@ -15,6 +15,8 @@ public class ConfigUserVO {
     private String account;
     @NotBlank(message = "盘口密码不能为空")
     private String password;
+    // 距离封盘时间内下注 默认20s
+    private Integer closeTime = 0;
     // 投注类型 1正投 2反投
     @NotNull(message = "投注类型必选")
     private Integer betType;

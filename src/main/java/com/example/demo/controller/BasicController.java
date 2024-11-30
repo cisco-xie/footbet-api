@@ -46,6 +46,13 @@ public class BasicController extends BaseController {
     @Resource
     private ConfigService configService;
 
+    @Operation(summary = "今日汇总")
+    @GetMapping("/summary/today")
+    public Result summaryToday() {
+        AdminLoginDTO admin = getUser();
+        return Result.success(api.summaryToday(admin.getUsername()));
+    }
+
     @Operation(summary = "账号列表")
     @GetMapping("/accounts")
     public Result accounts() {
@@ -201,7 +208,7 @@ public class BasicController extends BaseController {
                           @RequestParam(value = "settled", required = false) Boolean settled,
                           @RequestParam(value = "pageNo", required = false) Integer pageNo) {
         AdminLoginDTO admin = getUser();
-        return Result.success(JSONUtil.parseObj(api.settled(admin.getUsername(), account, settled, pageNo)));
+        return Result.success(JSONUtil.parseObj(api.settled(admin.getUsername(), account, settled, pageNo, false)));
     }
 
     @Operation(summary = "获取两周流水记录")
@@ -210,6 +217,14 @@ public class BasicController extends BaseController {
     public Result history(@RequestParam String account, @RequestParam String lottery) {
         AdminLoginDTO admin = getUser();
         return Result.success(JSONUtil.parseObj(api.history(admin.getUsername(), account, lottery)));
+    }
+
+    @Operation(summary = "异常投注")
+    @GetMapping("/bet/failed")
+    @ResponseBody
+    public Result history() {
+        AdminLoginDTO admin = getUser();
+        return Result.success(configService.failedBet(admin.getUsername()));
     }
 
 }

@@ -23,13 +23,11 @@ public class AutoBetTask {
 
     @Resource
     private FalaliApi falaliApi;
-    @Resource
-    private ConfigService configService;
 
-    @Scheduled(cron = "0/30 * * * * ?")
+    @Scheduled(cron = "0/5 * * * * ?")
     public void bet() {
         // todo 第一步先获取所有投注方案
-//        falaliApi.autoBet();
+        falaliApi.autoBet();
         // todo 第二步根据方案进行查找对应期数
 
         // todo 第三步进行校验当前期数是否已投注成功
