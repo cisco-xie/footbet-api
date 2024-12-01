@@ -10,7 +10,7 @@ spring:
       timeout: 10s
       database: 0
       # redis1121
-      password:
+      password: dajusheng@20241201.
     # 连接超时时间
     jedis:
       pool:
