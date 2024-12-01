@@ -1,6 +1,7 @@
 package com.example.demo.api;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.thread.ThreadUtil;
@@ -86,15 +87,36 @@ public class FalaliApi {
                 .cookie("2a29530a2306=" + uuid);
 
         // 引入代理配置
-        configureProxy(request, userConfig); // 在此配置代理
+        configureProxy(request, userConfig);
 
-        // 执行请求
-        HttpResponse resultRes = request.execute();
-
+        HttpResponse resultRes = null;
         String fileName = "/usr/local/resources/projects/falali/code-" + uuid + ".jpg";
-        resultRes.writeBody(fileName);
-
         try {
+            // 执行请求并处理代理异常
+            try {
+                resultRes = request.execute();
+            } catch (Exception e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof UnknownHostException) {
+                    log.error("代理请求失败：主机未知。可能是域名解析失败或代理地址有误。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "代理请求失败");
+                } else if (cause instanceof ConnectException) {
+                    log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接异常");
+                } else if (cause instanceof SocketTimeoutException) {
+                    log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接超时");
+                } else if (cause instanceof IOException) {
+                    log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "IO异常");
+                } else {
+                    log.error("代理请求失败：未知异常。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "未知异常");
+                }
+            }
+            // 保存验证码图片
+            resultRes.writeBody(fileName);
+
             // 确认下载文件是否是有效图片
             File image = new File(fileName);
             if (ImageIO.read(image) == null) {
@@ -127,6 +149,7 @@ public class FalaliApi {
             }
         }
     }
+
 
 
 
@@ -234,15 +257,15 @@ public class FalaliApi {
     /**
      * 单账号下线
      * @param username
-     * @param account
+     * @param id
      */
-    public void singleLoginOut(String username, String account) {
-        UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, account)).get()), UserConfig.class);
+    public void singleLoginOut(String username, String id) {
+        UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).get()), UserConfig.class);
         if (BeanUtil.isNotEmpty(userConfig)) {
             userConfig.setToken(null);
             userConfig.setIsAutoLogin(0);
             userConfig.setIsTokenValid(0);
-            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, account)).set(JSONUtil.toJsonStr(userConfig));
+            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
         }
     }
 
@@ -256,23 +279,23 @@ public class FalaliApi {
             userConfig.setToken(null);
             userConfig.setIsAutoLogin(0);
             userConfig.setIsTokenValid(0);
-            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfig.getAccount())).set(JSONUtil.toJsonStr(userConfig));
+            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfig.getId())).set(JSONUtil.toJsonStr(userConfig));
         });
     }
 
     /**
      * 单个账号登录
-     * @param login
+     * @param id
      * @return
      */
-    public LoginDTO singleLogin(String username, LoginVO login) {
-        List<UserConfig> userConfigs = configService.accounts(username, login.getAccount());
-        if (CollectionUtil.isEmpty(userConfigs)) {
+    public LoginDTO singleLogin(String username, String id) {
+        List<UserConfig> userConfigs = configService.accounts(username, id);
+        if (CollUtil.isEmpty(userConfigs)) {
             throw new BusinessException(SystemError.USER_1007);
         }
         String baseUrl = userConfigs.get(0).getBaseUrl();
         LoginDTO loginDTO = new LoginDTO();
-        loginDTO.setAccount(login.getAccount());
+        loginDTO.setAccount(userConfigs.get(0).getAccount());
         int retryCount = 0;
         int maxRetries = 3;
         String token = null;
@@ -288,9 +311,9 @@ public class FalaliApi {
             headers.put("content-type", "application/x-www-form-urlencoded");
 
             String uuid = IdUtil.randomUUID();
-            String params = "type=1&account=" + login.getAccount() + "&password=" + login.getPassword() + "&code=" + code(uuid, userConfig);
+            String params = "type=1&account=" + userConfigs.get(0).getAccount() + "&password=" + userConfigs.get(0).getPassword() + "&code=" + code(uuid, userConfig);
 
-            log.info("账号 {} uuid 为: {} 完整url {} 参数{}", login.getAccount(), uuid, url, params);
+            log.info("账号 {} uuid 为: {} 完整url {} 参数{}", userConfigs.get(0).getAccount(), uuid, url, params);
 
             // 创建请求对象
             HttpRequest request = HttpRequest.post(url)
@@ -300,26 +323,45 @@ public class FalaliApi {
 
             // 配置代理
             configureProxy(request, userConfig);
+            try {
+                HttpResponse resultRes = request.execute();
+                token = resultRes.getCookieValue("token");
 
-            HttpResponse resultRes = request.execute();
-            token = resultRes.getCookieValue("token");
+                // token 不为空，成功
+                if (StringUtils.isNotBlank(token)) {
+                    // 将获取到的 token 存入缓存
+                    userConfig.setToken(token);
+                    userConfig.setIsAutoLogin(1);
+                    userConfig.setIsTokenValid(1);
+                    redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfigs.get(0).getId())).set(JSONUtil.toJsonStr(userConfig));
+                    return loginDTO;
+                }
 
-            // token 不为空，成功
-            if (StringUtils.isNotBlank(token)) {
-                // 将获取到的 token 存入缓存
-                userConfig.setToken(token);
-                userConfig.setIsAutoLogin(1);
-                userConfig.setIsTokenValid(1);
-                redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, login.getAccount())).set(JSONUtil.toJsonStr(userConfig));
-                return loginDTO;
+                retryCount++;
+                ThreadUtil.sleep(150); // 延迟重试
+            } catch (Exception e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof UnknownHostException) {
+                    log.error("代理请求失败：主机未知。可能是域名解析失败或代理地址有误。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "代理请求失败");
+                } else if (cause instanceof ConnectException) {
+                    log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接异常");
+                } else if (cause instanceof SocketTimeoutException) {
+                    log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接超时");
+                } else if (cause instanceof IOException) {
+                    log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "IO异常");
+                } else {
+                    log.error("代理请求失败：未知异常。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "未知异常");
+                }
             }
-
-            retryCount++;
-            ThreadUtil.sleep(300); // 延迟重试
         }
 
         if (StringUtils.isBlank(token) && retryCount == maxRetries) {
-            log.warn("账号 {} 获取 token 失败，已达到最大重试次数", login.getAccount());
+            log.warn("账号 {} 获取 token 失败，已达到最大重试次数", userConfigs.get(0).getAccount());
         }
         return loginDTO;
     }
@@ -348,12 +390,8 @@ public class FalaliApi {
                 LoginDTO loginDTO;
                 int retryCount = 0;
                 final int maxRetries = 3;
-                LoginVO loginVO = null;
                 while (retryCount < maxRetries) {
-                    loginVO = new LoginVO();
-                    loginVO.setAccount(login.getAccount());
-                    loginVO.setPassword(login.getPassword());
-                    loginDTO = singleLogin(username, loginVO); // 调用单个登录逻辑
+                    loginDTO = singleLogin(username, login.getId()); // 调用单个登录逻辑
                     String token = loginDTO.getToken();
 
                     if (StringUtils.isNotBlank(token) && tokenSet.add(token)) {
@@ -437,11 +475,12 @@ public class FalaliApi {
      *
      * @return 结果
      */
-    public JSONArray account(String username, String account) {
-        List<UserConfig> userConfigs = configService.accounts(username, account);
-        if (CollectionUtil.isEmpty(userConfigs)) {
+    public JSONArray account(String username, String id) {
+        List<UserConfig> userConfigs = configService.accounts(username, id);
+        if (CollUtil.isEmpty(userConfigs)) {
             throw new BusinessException(SystemError.USER_1007);
         }
+        log.info("获取盘口账号redis信息:{}", userConfigs.get(0).getAccount(), userConfigs.get(0));
         String baseUrl = userConfigs.get(0).getBaseUrl();
         String token = userConfigs.get(0).getToken();
         String url = baseUrl+"member/accounts";
@@ -457,16 +496,40 @@ public class FalaliApi {
         // 动态设置代理类型
         configureProxy(request, userConfigs.get(0));
 
-        String result;
-        result = request.execute().body();
-        System.out.println(result);
+        String result = "";
+        try {
+            // 发起请求
+            result = request.execute().body();
+            result = StringUtils.isNotBlank(result) ? result : null;
+        } catch (Exception e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof UnknownHostException) {
+                log.error("代理请求失败：主机未知。可能是域名解析失败或代理服务器地址有误。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
+            } else if (cause instanceof ConnectException) {
+                log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接异常");
+            } else if (cause instanceof SocketTimeoutException) {
+                log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
+            } else if (cause instanceof IOException) {
+                log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "IO异常");
+            } else {
+                log.error("代理请求失败：未知异常。请检查代理配置和网络状态。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "未知异常");
+            }
+        }
+        log.info("获取盘口账号{},接口返回信息:{}", userConfigs.get(0).getAccount(), result);
         JSONArray jsonArray = new JSONArray();
         if (StringUtils.isNotBlank(result)) {
             jsonArray = JSONUtil.parseArray(result);
             for (int i = 0; i < jsonArray.size(); i++) {
                 JSONObject object = jsonArray.getJSONObject(i);
-                object.putOpt("account", account); // 添加新字段
-                jsonArray.set(i, object); // 替换回原数组
+                // 添加新字段
+                object.putOpt("account", userConfigs.get(0).getAccount());
+                // 替换回原数组
+                jsonArray.set(i, object);
             }
         }
         return jsonArray;
@@ -474,14 +537,17 @@ public class FalaliApi {
 
     /**
      * 获取token
-     * @param account
+     * @param id
      * @return
      */
-    public String token(String username, String account) {
-        UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, account)).get()), UserConfig.class);
+    public String token(String username, String id) {
+        UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).get()), UserConfig.class);
+        log.info("获取到账户id:{} Redis数据:{}", id, userConfig);
         if (BeanUtil.isNotEmpty(userConfig)) {
             String token = userConfig.getToken();
-            JSONArray jsonArray = account(username, account);
+            log.info("获取到账户id:{} Redis token数据:{}", id, token);
+            JSONArray jsonArray = account(username, id);
+            log.info("获取到账户id:{} 校验盘口账号有效性:{}", id, jsonArray);
             if (!jsonArray.isEmpty()) {
                 // 当前token有效，顺便同步一下余额信息
                     jsonArray.forEach(balance -> {
@@ -499,18 +565,18 @@ public class FalaliApi {
                             } else if (3 == balanceJson.getInt("type")) {
                                 userConfig.setAccountType("D");
                             }
-                            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, account)).set(JSONUtil.toJsonStr(userConfig));
+                            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
                         }
                     });
             } else {
                 // 当前账号登录失效，进行自动登录操作
+                log.info("校验盘口账号失效:{}", userConfig.getAccount());
                 if (userConfig.getIsAutoLogin() == 1) {
-                    LoginVO login = new LoginVO();
-                    login.setAccount(account);
-                    login.setPassword(userConfig.getPassword());
-                    LoginDTO loginDTO = singleLogin(username, login);
+                    log.info("校验盘口账号自动登录:{}", userConfig.getAccount());
+                    LoginDTO loginDTO = singleLogin(username, userConfig.getId());
                     if (BeanUtil.isNotEmpty(loginDTO)) {
                         token = loginDTO.getToken();
+                        log.info("校验盘口账号自动登录成功:{}", userConfig.getAccount());
                     }
                 }
             }
@@ -524,8 +590,8 @@ public class FalaliApi {
      *
      * @return 期数
      */
-    public String period(String usrename, String account, String lottery) {
-        List<UserConfig> userConfigs = configService.accounts(usrename, account);
+    public String period(String usrename, String id, String lottery) {
+        List<UserConfig> userConfigs = configService.accounts(usrename, id);
         if (CollectionUtil.isEmpty(userConfigs)) {
             throw new BusinessException(SystemError.USER_1007);
         }
@@ -562,8 +628,8 @@ public class FalaliApi {
      *
      * @return 结果
      */
-    public String odds(String username, String account, String lottery) {
-        List<UserConfig> userConfigs = configService.accounts(username, account);
+    public String odds(String username, String id, String lottery) {
+        List<UserConfig> userConfigs = configService.accounts(username, id);
         if (CollectionUtil.isEmpty(userConfigs)) {
             throw new BusinessException(SystemError.USER_1007);
         }
@@ -583,7 +649,7 @@ public class FalaliApi {
         HttpRequest request = HttpRequest.get(url)
                 .addHeaders(headers);
         // 动态设置代理类型
-        // configureProxy(request, userConfigs.get(0));
+        configureProxy(request, userConfigs.get(0));
 
         String result;
         try {
@@ -593,17 +659,20 @@ public class FalaliApi {
         } catch (Exception e) {
             Throwable cause = e.getCause(); // 获取原始异常原因
             if (cause instanceof UnknownHostException) {
-                throw new BusinessException(SystemError.USER_1002);
+                log.error("代理请求失败：主机未知。可能是域名解析失败或代理服务器地址有误。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
             } else if (cause instanceof ConnectException) {
-                throw new BusinessException(SystemError.USER_1002);
+                log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接异常");
             } else if (cause instanceof SocketTimeoutException) {
-                throw new BusinessException(SystemError.USER_1002);
+                log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
             } else if (cause instanceof IOException) {
-                throw new BusinessException(SystemError.USER_1002);
+                log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "IO异常");
             } else {
-                // 未知异常，记录日志并抛出通用错误码
-                log.error("代理请求失败，异常信息：{}", e.getMessage(), e);
-                throw new BusinessException(SystemError.USER_1002);
+                log.error("代理请求失败：未知异常。请检查代理配置和网络状态。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "未知异常");
             }
         }
         System.out.println(result);
@@ -615,8 +684,8 @@ public class FalaliApi {
      *
      * @return 结果
      */
-    public JSONObject bet(String username, OrderVO order) {
-        List<UserConfig> userConfigs = configService.accounts(username, order.getAccount());
+    public JSONObject bet(String username, String id, OrderVO order) {
+        List<UserConfig> userConfigs = configService.accounts(username, id);
         if (CollectionUtil.isEmpty(userConfigs)) {
             throw new BusinessException(SystemError.USER_1007);
         }
@@ -699,12 +768,12 @@ public class FalaliApi {
                     AtomicReference<UserConfig> accountConfig = new AtomicReference<>();
                     for (UserConfig userConfig : userConfigs) {
                         // 先随便获取一个有效的盘口账号
-                        String token = token(admin.getUsername(), userConfig.getAccount());
+                        String token = token(admin.getUsername(), userConfig.getId());
                         if (token != null) {
                             accountConfig.set(userConfig);
                             break;
                         }
-                    };
+                    }
                     // 对每个配置计划列表进行并行化
                     List<Callable<Void>> planTasks = new ArrayList<>();
                     for (ConfigPlanVO plan : configs) {
@@ -715,7 +784,7 @@ public class FalaliApi {
                             if (plan.getEnable() == 0) return null; // 方案没有启用，跳过
 
                             // 获取最新期数
-                            String period = period(username, accountConfig.get().getAccount(), plan.getLottery());
+                            String period = period(username, accountConfig.get().getId(), plan.getLottery());
                             if (StringUtils.isBlank(period)) return null; // 如果期数为空，跳过
                             JSONObject periodJson = JSONUtil.parseObj(period);
                             String drawNumber = periodJson.getStr("drawNumber");
@@ -744,7 +813,7 @@ public class FalaliApi {
                              if (beetTime < 50) { log.info("游戏:{},期数:{},剩余封盘时间:{},即将封盘,不进行下注", plan.getLottery(), drawNumber, beetTime); return null; }; // 如果距离封盘时间小于20秒，跳过不下注
 
                             // 获取赔率
-                            String odds = odds(username, accountConfig.get().getAccount(), plan.getLottery());
+                            String odds = odds(username, accountConfig.get().getId(), plan.getLottery());
                             if (StringUtils.isBlank(odds)) return null;
                             JSONObject oddsJson = JSONUtil.parseObj(odds);
 
@@ -1003,10 +1072,6 @@ public class FalaliApi {
             request.setProxy(proxy);
         }
     }
-
-
-
-
 
     /**
      * 封装发起提交下注
@@ -1797,7 +1862,7 @@ public class FalaliApi {
         AtomicLong totalResult = new AtomicLong();
         accounts.forEach(account -> {
             // 获取账号今日流水
-            JSONObject settled = JSONUtil.parseObj(settled(username, account.getAccount(), true, 1, true));
+            JSONObject settled = JSONUtil.parseObj(settled(username, account.getId(), true, 1, true));
             JSONArray list = settled.getJSONArray("list");
             list.forEach(object -> {
                 // 获取账号今日汇总
@@ -1816,9 +1881,9 @@ public class FalaliApi {
         return accounts;
     }
 
-    public String settled(String username, String account, Boolean settled, Integer pageNo, Boolean isSummary) {
+    public String settled(String username, String id, Boolean settled, Integer pageNo, Boolean isSummary) {
         // 获取用户配置
-        List<UserConfig> userConfigs = configService.accounts(username, account);
+        List<UserConfig> userConfigs = configService.accounts(username, id);
         if (CollectionUtil.isEmpty(userConfigs)) {
             throw new BusinessException(SystemError.USER_1007);
         }
@@ -1934,14 +1999,13 @@ public class FalaliApi {
         return resultJson.toString();
     }
 
-
     /**
      * 获取两周报表历史流水记录
      *
      * @return 结果
      */
-    public String history(String username, String account, String lottery) {
-        List<UserConfig> userConfigs = configService.accounts(username, account);
+    public String history(String username, String id, String lottery) {
+        List<UserConfig> userConfigs = configService.accounts(username, id);
         if (CollectionUtil.isEmpty(userConfigs)) {
             throw new BusinessException(SystemError.USER_1007);
         }

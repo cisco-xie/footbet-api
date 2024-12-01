@@ -11,6 +11,7 @@ spring:
       database: 0
       # redis1121
       password: dajusheng@20241201.
+#      password: vocal123
     # 连接超时时间
     jedis:
       pool:

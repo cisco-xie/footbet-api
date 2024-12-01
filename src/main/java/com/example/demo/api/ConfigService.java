@@ -35,62 +35,72 @@ public class ConfigService {
      * @param userProxy
      */
     public void editAccount(String username, ConfigUserVO userProxy) {
-        // 将 VO 转换为实体类
-        UserConfig proxy = BeanUtil.copyProperties(userProxy, UserConfig.class);
-
-        // Redis 键值
-        String redisKey = KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userProxy.getAccount());
-
-        // 判断 Redis 中是否存在该用户数据
-        boolean exists = redisson.getBucket(redisKey).isExists();
-
-        // 校验 baseUrl 的最后一个字符是否为 "/"
+        // 校验并修正 baseUrl
         String baseUrl = userProxy.getBaseUrl();
-        if (baseUrl != null && !baseUrl.endsWith("/")) {
+        if (StringUtils.isNotBlank(baseUrl) && !baseUrl.endsWith("/")) {
             baseUrl += "/";
             userProxy.setBaseUrl(baseUrl);
-            proxy.setBaseUrl(baseUrl); // 确保实体类同步
         }
+
+        // VO 转实体
+        UserConfig proxy = BeanUtil.copyProperties(userProxy, UserConfig.class);
+        proxy.setBaseUrl(baseUrl);
+
+        String id = StringUtils.isNotBlank(proxy.getId()) ? proxy.getId() : IdUtil.getSnowflakeNextIdStr();
+        // Redis 键值生成
+        String redisKey = KeyUtil.genKey(
+                RedisConstants.USER_PROXY_PREFIX,
+                username,
+                id
+        );
+
+        // 操作类型处理
         if ("add".equalsIgnoreCase(userProxy.getOperationType())) {
-            // 新增逻辑
-            if (exists) {
+            if (redisson.getBucket(redisKey).isExists()) {
                 log.warn("用户 [{}] 已存在，无法新增。", userProxy.getAccount());
                 throw new BusinessException(SystemError.USER_1003, userProxy.getAccount());
-            } else {
-                redisson.getBucket(redisKey).set(JSONUtil.toJsonStr(proxy));
-                log.info("用户 [{}] 新增成功。", userProxy.getAccount());
             }
+
+            // 设置 ID 并保存到 Redis
+            proxy.setId(id);
+            redisson.getBucket(redisKey).set(JSONUtil.toJsonStr(proxy));
+            log.info("用户 [{}] 新增成功。", userProxy.getAccount());
+
         } else if ("update".equalsIgnoreCase(userProxy.getOperationType())) {
-            // 修改逻辑
-            if (exists) {
-                // token保持，防止更新代理时把token置为空
-                UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(redisson.getBucket(redisKey).get()), UserConfig.class);
-                proxy.setToken(userConfig.getToken());
-                redisson.getBucket(redisKey).set(JSONUtil.toJsonStr(proxy));
-                log.info("用户 [{}] 修改成功。", userProxy.getAccount());
-            } else {
+            if (!redisson.getBucket(redisKey).isExists()) {
                 log.warn("用户 [{}] 不存在，无法修改。", userProxy.getAccount());
                 throw new BusinessException(SystemError.USER_1004, userProxy.getAccount());
             }
+
+            // 保留 token 并更新
+            UserConfig existingConfig = JSONUtil.toBean(
+                    JSONUtil.parseObj(redisson.getBucket(redisKey).get()),
+                    UserConfig.class
+            );
+            proxy.setToken(existingConfig.getToken());
+            redisson.getBucket(redisKey).set(JSONUtil.toJsonStr(proxy));
+            log.info("用户 [{}] 修改成功。", userProxy.getAccount());
+
         } else {
-            throw new BusinessException(SystemError.SYS_400);
+            throw new BusinessException(SystemError.SYS_400, "不支持的操作类型: " + userProxy.getOperationType());
         }
     }
 
+
     /**
      * 删除账号
-     * @param account
+     * @param id
      */
-    public void deleteAccount(String username, String account) {
-        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, account)).delete();
+    public void deleteAccount(String username, String id) {
+        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).delete();
     }
 
     /**
      * 获取所有账号
      */
-    public List<UserConfig> accounts(String username, String account) {
+    public List<UserConfig> accounts(String username, String id) {
         // 使用通配符获取所有匹配的键
-        Iterable<String> keys = redisson.getKeys().getKeysByPattern(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, StringUtils.isNotBlank(account) ? account : "*"));
+        Iterable<String> keys = redisson.getKeys().getKeysByPattern(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, StringUtils.isNotBlank(id) ? id : "*"));
 
         List<UserConfig> userList = new ArrayList<>();
         for (String key : keys) {

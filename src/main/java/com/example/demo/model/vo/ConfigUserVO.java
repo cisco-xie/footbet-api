@@ -6,6 +6,7 @@ import lombok.Data;
 
 @Data
 public class ConfigUserVO {
+    private String id;
     // 投注类型 add/update
     @NotBlank(message = "操作类型必选")
     private String operationType;

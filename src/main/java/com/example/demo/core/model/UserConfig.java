@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @NoArgsConstructor
 public class UserConfig {
+    private String id;
     private String baseUrl;
     private String account;
     private String password;

@@ -70,10 +70,10 @@ public class BasicController extends BaseController {
     }
 
     @Operation(summary = "删除账号配置")
-    @DeleteMapping("/accounts/{account}")
-    public Result deleteAccount(@PathVariable("account") String account) {
+    @DeleteMapping("/accounts/{id}")
+    public Result deleteAccount(@PathVariable("id") String id) {
         AdminLoginDTO admin = getUser();
-        configService.deleteAccount(admin.getUsername(), account);
+        configService.deleteAccount(admin.getUsername(), id);
         return Result.success();
     }
 
@@ -126,9 +126,9 @@ public class BasicController extends BaseController {
     @Operation(summary = "单个下线")
     @GetMapping("/single-login-out")
     @ResponseBody
-    public Result batchLoginOut(@RequestParam String account) {
+    public Result batchLoginOut(@RequestParam String id) {
         AdminLoginDTO admin = getUser();
-        api.singleLoginOut(admin.getUsername(), account);
+        api.singleLoginOut(admin.getUsername(), id);
         return Result.success();
     }
 
@@ -142,11 +142,11 @@ public class BasicController extends BaseController {
     }
 
     @Operation(summary = "单个登录")
-    @PostMapping("/single-login")
+    @GetMapping("/single-login")
     @ResponseBody
-    public Result batchLogin(@RequestBody LoginVO login) {
+    public Result batchLogin(@RequestParam String id) {
         AdminLoginDTO admin = getUser();
-        return Result.success(api.singleLogin(admin.getUsername(), login));
+        return Result.success(api.singleLogin(admin.getUsername(), id));
     }
 
     @Operation(summary = "批量登录")
@@ -159,38 +159,38 @@ public class BasicController extends BaseController {
 
     @Operation(summary = "获取账号token", description = "此接口需轮询更新，如果data返回空则表示当前token已失效需重新获取")
     @GetMapping("/token")
-    public Result token(@RequestParam String account) {
+    public Result token(@RequestParam String id) {
         AdminLoginDTO admin = getUser();
-        return Result.success(api.token(admin.getUsername(), account));
+        return Result.success(api.token(admin.getUsername(), id));
     }
 
     @Operation(summary = "获取账号余额", description = "此接口需轮询更新，如果data返回空则表示当前token已失效需重新获取")
     @GetMapping("/balance")
-    public Result account(@RequestParam String account) {
+    public Result account(@RequestParam String id) {
         AdminLoginDTO admin = getUser();
-        return Result.success(api.account(admin.getUsername(), account));
+        return Result.success(api.account(admin.getUsername(), id));
     }
 
     @Operation(summary = "获取期数")
     @GetMapping("/period")
-    public Result period(@RequestParam String account, @RequestParam String lottery) {
+    public Result period(@RequestParam String id, @RequestParam String lottery) {
         AdminLoginDTO admin = getUser();
-        return Result.success(JSONUtil.parseObj(api.period(admin.getUsername(), account, lottery)));
+        return Result.success(JSONUtil.parseObj(api.period(admin.getUsername(), id, lottery)));
     }
 
     @Operation(summary = "获取比率")
     @GetMapping("/odds")
-    public Result odds(@RequestParam String account, @RequestParam String lottery) {
+    public Result odds(@RequestParam String id, @RequestParam String lottery) {
         AdminLoginDTO admin = getUser();
-        return Result.success(JSONUtil.parseObj(api.odds(admin.getUsername(), account, lottery)));
+        return Result.success(JSONUtil.parseObj(api.odds(admin.getUsername(), id, lottery)));
     }
 
     @Operation(summary = "下注")
     @PostMapping("/bet")
     @ResponseBody
-    public Result bet(@RequestBody OrderVO order) {
+    public Result bet(@RequestParam String id, @RequestBody OrderVO order) {
         AdminLoginDTO admin = getUser();
-        return Result.success(api.bet(admin.getUsername(), order));
+        return Result.success(api.bet(admin.getUsername(), id, order));
     }
 
     @Operation(summary = "自动下注")
@@ -204,19 +204,19 @@ public class BasicController extends BaseController {
     @Operation(summary = "获取两周流水记录")
     @GetMapping("/settled")
     @ResponseBody
-    public Result history(@RequestParam String account,
+    public Result history(@RequestParam String id,
                           @RequestParam(value = "settled", required = false) Boolean settled,
                           @RequestParam(value = "pageNo", required = false) Integer pageNo) {
         AdminLoginDTO admin = getUser();
-        return Result.success(JSONUtil.parseObj(api.settled(admin.getUsername(), account, settled, pageNo, false)));
+        return Result.success(JSONUtil.parseObj(api.settled(admin.getUsername(), id, settled, pageNo, false)));
     }
 
     @Operation(summary = "获取两周流水记录")
     @GetMapping("/history")
     @ResponseBody
-    public Result history(@RequestParam String account, @RequestParam String lottery) {
+    public Result history(@RequestParam String id, @RequestParam String lottery) {
         AdminLoginDTO admin = getUser();
-        return Result.success(JSONUtil.parseObj(api.history(admin.getUsername(), account, lottery)));
+        return Result.success(JSONUtil.parseObj(api.history(admin.getUsername(), id, lottery)));
     }
 
     @Operation(summary = "异常投注")
