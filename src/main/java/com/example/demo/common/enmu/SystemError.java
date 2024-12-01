@@ -41,6 +41,7 @@ public enum SystemError implements ErrCode {
     USER_1006(1006, "账号登录失败"),
     USER_1007(1007, "账号配置异常"),
     USER_1008(1008, "登录账号或密码错误"),
+    USER_1009(1009, "账号[%s]处理验证码失败"),
 
     /**
      * 下单相关异常--1100起

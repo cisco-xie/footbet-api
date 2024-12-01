@@ -81,77 +81,89 @@ public class FalaliApi {
         headers.put("accept", "*/*");
         headers.put("accept-language", "zh-CN,zh;q=0.9");
 
-        // 创建请求对象
-        HttpRequest request = HttpRequest.get(url)
-                .addHeaders(headers)
-                .cookie("2a29530a2306=" + uuid);
-
-        // 引入代理配置
-        configureProxy(request, userConfig);
-
-        HttpResponse resultRes = null;
         String fileName = "/usr/local/resources/projects/falali/code-" + uuid + ".jpg";
-        try {
-            // 执行请求并处理代理异常
+        // 最大重试次数
+        int maxRetries = 3;
+        // 重试间隔（毫秒）
+        int retryDelay = 200;
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                resultRes = request.execute();
+                log.info("尝试请求验证码: 第{}次尝试", attempt);
+
+                // 创建请求对象
+                HttpRequest request = HttpRequest.get(url)
+                        .addHeaders(headers)
+                        .cookie("2a29530a2306=" + uuid);
+
+                // 引入代理配置
+                configureProxy(request, userConfig);
+
+                // 执行请求并获取结果
+                HttpResponse resultRes = request.execute();
+
+                // 保存验证码图片
+                resultRes.writeBody(fileName);
+
+                // 验证文件是否是有效图片
+                File image = new File(fileName);
+                if (ImageIO.read(image) == null) {
+                    log.error("下载的文件不是有效图片: {}", fileName);
+                    return "0000";
+                }
+
+                // 设置动态库路径
+                System.setProperty("jna.library.path", "/lib/x86_64-linux-gnu");
+
+                // OCR 处理
+                Tesseract tesseract = new Tesseract();
+                tesseract.setDatapath("/usr/local/resources/projects/falali/tessdata");
+                tesseract.setLanguage("eng");
+                String result = tesseract.doOCR(image);
+                log.info("验证码解析结果: {}", result);
+                return result.trim();
+
             } catch (Exception e) {
                 Throwable cause = e.getCause();
                 if (cause instanceof UnknownHostException) {
                     log.error("代理请求失败：主机未知。可能是域名解析失败或代理地址有误。异常信息：{}", e.getMessage(), e);
-                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "代理请求失败");
                 } else if (cause instanceof ConnectException) {
                     log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
-                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接异常");
                 } else if (cause instanceof SocketTimeoutException) {
                     log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
-                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接超时");
                 } else if (cause instanceof IOException) {
                     log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
-                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "IO异常");
                 } else {
                     log.error("代理请求失败：未知异常。异常信息：{}", e.getMessage(), e);
-                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "未知异常");
+                }
+
+                // 如果达到最大重试次数，抛出异常
+                if (attempt == maxRetries) {
+                    log.error("验证码达到最大重试次数，抛出异常");
+                    throw new BusinessException(SystemError.USER_1009, userConfig.getAccount(), e);
+                }
+
+                // 等待一段时间再重试
+                log.warn("验证码第{}次尝试失败，等待{}毫秒后重试。异常信息：{}", attempt, retryDelay, e.getMessage());
+                try {
+                    Thread.sleep(retryDelay);
+                } catch (InterruptedException interruptedException) {
+                    Thread.currentThread().interrupt();
+                    log.error("线程中断", interruptedException);
+                }
+            } finally {
+                // 删除临时文件
+                try {
+                    Files.deleteIfExists(Paths.get(fileName));
+                } catch (IOException e) {
+                    log.warn("临时文件删除失败: {}", fileName, e);
                 }
             }
-            // 保存验证码图片
-            resultRes.writeBody(fileName);
-
-            // 确认下载文件是否是有效图片
-            File image = new File(fileName);
-            if (ImageIO.read(image) == null) {
-                log.error("下载的文件不是有效图片: {}", fileName);
-                return "0000";
-            }
-
-            // 设置动态库路径（确保动态库可加载）
-            System.setProperty("jna.library.path", "/lib/x86_64-linux-gnu");
-
-            // OCR 处理
-            Tesseract tesseract = new Tesseract();
-            tesseract.setDatapath("/usr/local/resources/projects/falali/tessdata");
-            tesseract.setLanguage("eng");
-            String result = tesseract.doOCR(image);
-            log.info("验证码解析结果: {}", result);
-            return result.trim();
-        } catch (UnsatisfiedLinkError e) {
-            log.error("动态库加载失败，请检查路径是否正确: {}", e.getMessage(), e);
-            throw new RuntimeException("动态库加载失败", e);
-        } catch (Exception e) {
-            log.error("处理验证码失败: {}", e.getMessage(), e);
-            throw new RuntimeException("验证码解析失败", e);
-        } finally {
-            // 删除临时文件
-            try {
-                Files.deleteIfExists(Paths.get(fileName));
-            } catch (IOException e) {
-                log.warn("临时文件删除失败: {}", fileName, e);
-            }
         }
+
+        // 如果循环结束后仍未成功，返回失败标识
+        return "0000";
     }
-
-
-
 
     /**
      * 登录
@@ -313,7 +325,7 @@ public class FalaliApi {
             String uuid = IdUtil.randomUUID();
             String params = "type=1&account=" + userConfigs.get(0).getAccount() + "&password=" + userConfigs.get(0).getPassword() + "&code=" + code(uuid, userConfig);
 
-            log.info("账号 {} uuid 为: {} 完整url {} 参数{}", userConfigs.get(0).getAccount(), uuid, url, params);
+            log.info("登录请求 账号 {} uuid 为: {} 完整url {} 参数{}", userConfigs.get(0).getAccount(), uuid, url, params);
 
             // 创建请求对象
             HttpRequest request = HttpRequest.post(url)
@@ -327,35 +339,42 @@ public class FalaliApi {
                 HttpResponse resultRes = request.execute();
                 token = resultRes.getCookieValue("token");
 
+                // 开启自动登录
+                userConfig.setIsAutoLogin(1);
                 // token 不为空，成功
                 if (StringUtils.isNotBlank(token)) {
                     // 将获取到的 token 存入缓存
                     userConfig.setToken(token);
-                    userConfig.setIsAutoLogin(1);
                     userConfig.setIsTokenValid(1);
                     redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfigs.get(0).getId())).set(JSONUtil.toJsonStr(userConfig));
+                    log.info("登录请求 账号 {} 参数{} 获取token成功", userConfigs.get(0).getAccount(), params);
                     return loginDTO;
                 }
+                log.info("登录请求 账号 {} 参数{} 获取token失败", userConfigs.get(0).getAccount(), params);
 
                 retryCount++;
-                ThreadUtil.sleep(150); // 延迟重试
+                // 延迟重试
+                ThreadUtil.sleep(150);
             } catch (Exception e) {
-                Throwable cause = e.getCause();
-                if (cause instanceof UnknownHostException) {
-                    log.error("代理请求失败：主机未知。可能是域名解析失败或代理地址有误。异常信息：{}", e.getMessage(), e);
-                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "代理请求失败");
-                } else if (cause instanceof ConnectException) {
-                    log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
-                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接异常");
-                } else if (cause instanceof SocketTimeoutException) {
-                    log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
-                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接超时");
-                } else if (cause instanceof IOException) {
-                    log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
-                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "IO异常");
-                } else {
-                    log.error("代理请求失败：未知异常。异常信息：{}", e.getMessage(), e);
-                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "未知异常");
+                if (StringUtils.isBlank(token) && retryCount == maxRetries) {
+                    log.warn("账号 {} 获取 token 异常", userConfigs.get(0).getAccount());
+                    Throwable cause = e.getCause();
+                    if (cause instanceof UnknownHostException) {
+                        log.error("代理请求失败：主机未知。可能是域名解析失败或代理地址有误。异常信息：{}", e.getMessage(), e);
+                        throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "代理请求失败");
+                    } else if (cause instanceof ConnectException) {
+                        log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
+                        throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接异常");
+                    } else if (cause instanceof SocketTimeoutException) {
+                        log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
+                        throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接超时");
+                    } else if (cause instanceof IOException) {
+                        log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
+                        throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "IO异常");
+                    } else {
+                        log.error("代理请求失败：未知异常。异常信息：{}", e.getMessage(), e);
+                        throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "未知异常");
+                    }
                 }
             }
         }
@@ -480,7 +499,7 @@ public class FalaliApi {
         if (CollUtil.isEmpty(userConfigs)) {
             throw new BusinessException(SystemError.USER_1007);
         }
-        log.info("获取盘口账号redis信息:{}", userConfigs.get(0).getAccount(), userConfigs.get(0));
+        log.info("获取盘口账号redis信息:{}", userConfigs.get(0));
         String baseUrl = userConfigs.get(0).getBaseUrl();
         String token = userConfigs.get(0).getToken();
         String url = baseUrl+"member/accounts";
@@ -630,7 +649,7 @@ public class FalaliApi {
      */
     public String odds(String username, String id, String lottery) {
         List<UserConfig> userConfigs = configService.accounts(username, id);
-        if (CollectionUtil.isEmpty(userConfigs)) {
+        if (CollUtil.isEmpty(userConfigs)) {
             throw new BusinessException(SystemError.USER_1007);
         }
         String baseUrl = userConfigs.get(0).getBaseUrl();
@@ -1104,18 +1123,18 @@ public class FalaliApi {
         try {
             result = request.body(JSONUtil.toJsonStr(order)).execute().body();
         } catch (Exception e) {
-            Throwable cause = e.getCause(); // 获取原始异常原因
+            Throwable cause = e.getCause();
             if (cause instanceof UnknownHostException) {
-                log.error("提交订单代理请求失败，异常信息：{}", e.getMessage(), e);
+                log.error("提交订单代理请求失败，异常信息：{}", e.getMessage());
             } else if (cause instanceof ConnectException) {
-                log.error("提交订单代理请求失败，异常信息：{}", e.getMessage(), e);
+                log.error("提交订单代理请求失败，异常信息：{}", e.getMessage());
             } else if (cause instanceof SocketTimeoutException) {
-                log.error("提交订单代理请求失败，异常信息：{}", e.getMessage(), e);
+                log.error("提交订单代理请求失败，异常信息：{}", e.getMessage());
             } else if (cause instanceof IOException) {
-                log.error("提交订单代理请求失败，异常信息：{}", e.getMessage(), e);
+                log.error("提交订单代理请求失败，异常信息：{}", e.getMessage());
             } else {
                 // 未知异常，记录日志并抛出通用错误码
-                log.error("提交订单代理请求失败，异常信息：{}", e.getMessage(), e);
+                log.error("提交订单代理请求失败，异常信息：{}", e.getMessage());
             }
 
             JSONObject failed = new JSONObject();
