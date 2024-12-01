@@ -104,14 +104,14 @@ public class BasicController extends BaseController {
 
     @GetMapping("/code")
     public Object code() {
-        return api.code(null);
+        return api.code(null, null);
     }
 
     @Operation(summary = "一键登录")
     @GetMapping("/login")
     public Result login() {
         String uuid = IdUtil.randomUUID();
-        String code = api.code(uuid);
+        String code = api.code(uuid, null);
         String params = "type=1&account=cs22222&password=WEwe2323&code=" + code;
         return Result.success(api.login(params, uuid));
     }

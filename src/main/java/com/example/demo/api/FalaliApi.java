@@ -74,18 +74,23 @@ public class FalaliApi {
      *
      * @return 验证码id
      */
-    public String code(String uuid) {
+    public String code(String uuid, UserConfig userConfig) {
         String url = "https://3575978705.tcrax4d8j.com/code?_=" + System.currentTimeMillis();
         Map<String, String> headers = new HashMap<>();
         headers.put("accept", "*/*");
         headers.put("accept-language", "zh-CN,zh;q=0.9");
 
-        HttpResponse resultRes = HttpRequest.get(url)
+        // 创建请求对象
+        HttpRequest request = HttpRequest.get(url)
                 .addHeaders(headers)
-                .cookie("2a29530a2306=" + uuid)
-                .execute();
+                .cookie("2a29530a2306=" + uuid);
 
-//         String fileName = "d://code-" + uuid + ".jpg";
+        // 引入代理配置
+        configureProxy(request, userConfig); // 在此配置代理
+
+        // 执行请求
+        HttpResponse resultRes = request.execute();
+
         String fileName = "/usr/local/resources/projects/falali/code-" + uuid + ".jpg";
         resultRes.writeBody(fileName);
 
@@ -102,7 +107,6 @@ public class FalaliApi {
 
             // OCR 处理
             Tesseract tesseract = new Tesseract();
-//             tesseract.setDatapath("d://tessdata");
             tesseract.setDatapath("/usr/local/resources/projects/falali/tessdata");
             tesseract.setLanguage("eng");
             String result = tesseract.doOCR(image);
@@ -123,6 +127,7 @@ public class FalaliApi {
             }
         }
     }
+
 
 
     /**
@@ -271,28 +276,37 @@ public class FalaliApi {
         int retryCount = 0;
         int maxRetries = 3;
         String token = null;
+
+        // 获取代理配置
+        UserConfig userConfig = userConfigs.get(0);
+
         while (retryCount < maxRetries) {
             Map<String, String> headers = new HashMap<>();
-            String url = baseUrl+"login";
+            String url = baseUrl + "login";
             headers.put("accept", "*/*");
             headers.put("accept-language", "zh-CN,zh;q=0.9");
             headers.put("content-type", "application/x-www-form-urlencoded");
 
             String uuid = IdUtil.randomUUID();
-            String params = "type=1&account=" + login.getAccount() + "&password=" + login.getPassword() + "&code=" + code(uuid);
+            String params = "type=1&account=" + login.getAccount() + "&password=" + login.getPassword() + "&code=" + code(uuid, userConfig);
 
             log.info("账号 {} uuid 为: {} 完整url {} 参数{}", login.getAccount(), uuid, url, params);
 
-            HttpResponse resultRes = HttpRequest.post(url)
+            // 创建请求对象
+            HttpRequest request = HttpRequest.post(url)
                     .addHeaders(headers)
                     .cookie("2a29530a2306=" + uuid)
-                    .body(params)
-                    .execute();
+                    .body(params);
+
+            // 配置代理
+            configureProxy(request, userConfig);
+
+            HttpResponse resultRes = request.execute();
             token = resultRes.getCookieValue("token");
 
             // token 不为空，成功
             if (StringUtils.isNotBlank(token)) {
-                UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, login.getAccount())).get()), UserConfig.class);
+                // 将获取到的 token 存入缓存
                 userConfig.setToken(token);
                 userConfig.setIsAutoLogin(1);
                 userConfig.setIsTokenValid(1);
@@ -303,11 +317,13 @@ public class FalaliApi {
             retryCount++;
             ThreadUtil.sleep(300); // 延迟重试
         }
+
         if (StringUtils.isBlank(token) && retryCount == maxRetries) {
             log.warn("账号 {} 获取 token 失败，已达到最大重试次数", login.getAccount());
         }
         return loginDTO;
     }
+
 
     /**
      * 批量登录
@@ -439,7 +455,7 @@ public class FalaliApi {
         HttpRequest request = HttpRequest.get(url)
                 .addHeaders(headers);
         // 动态设置代理类型
-        // configureProxy(request, userConfigs.get(0));
+        configureProxy(request, userConfigs.get(0));
 
         String result;
         result = request.execute().body();
