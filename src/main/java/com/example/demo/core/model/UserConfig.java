@@ -1,10 +1,13 @@
 package com.example.demo.core.model;
 
+import cn.hutool.core.date.DatePattern;
+import cn.hutool.core.date.LocalDateTimeUtil;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Data
 @AllArgsConstructor
@@ -19,9 +22,9 @@ public class UserConfig {
     // 账号盘口类型 A盘 B盘 C盘 D盘
     private String accountType;
     // 当前登录是否有效 0否 1是
-    private Integer isTokenValid;
+    private Integer isTokenValid = 0;
     // 是否自动登录 0否 1是
-    private Integer isAutoLogin = 1;
+    private Integer isAutoLogin = 0;
     // 投注类型 1正投 2反投
     private Integer betType;
     // 代理类型 1HTTP 2SOCKS
@@ -43,6 +46,8 @@ public class UserConfig {
     private BigDecimal amount;
     // 今日盈亏
     private BigDecimal result;
+
+    private String updateTime = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN);
 
     public UserConfig(String account1) {
         this.account = account1;

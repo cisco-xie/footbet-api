@@ -3,6 +3,7 @@ package com.example.demo.api;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
@@ -19,6 +20,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RBucket;
 import org.redisson.api.RKeys;
 import org.redisson.api.RedissonClient;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -34,7 +36,7 @@ public class ConfigService {
      * 设置账号代理
      * @param userProxy
      */
-    public void editAccount(String username, ConfigUserVO userProxy) {
+    public String editAccount(String username, ConfigUserVO userProxy) {
         // 校验并修正 baseUrl
         String baseUrl = userProxy.getBaseUrl();
         if (StringUtils.isNotBlank(baseUrl) && !baseUrl.endsWith("/")) {
@@ -65,7 +67,6 @@ public class ConfigService {
             proxy.setId(id);
             redisson.getBucket(redisKey).set(JSONUtil.toJsonStr(proxy));
             log.info("用户 [{}] 新增成功。", userProxy.getAccount());
-
         } else if ("update".equalsIgnoreCase(userProxy.getOperationType())) {
             if (!redisson.getBucket(redisKey).isExists()) {
                 log.warn("用户 [{}] 不存在，无法修改。", userProxy.getAccount());
@@ -84,8 +85,8 @@ public class ConfigService {
         } else {
             throw new BusinessException(SystemError.SYS_400, "不支持的操作类型: " + userProxy.getOperationType());
         }
+        return id;
     }
-
 
     /**
      * 删除账号

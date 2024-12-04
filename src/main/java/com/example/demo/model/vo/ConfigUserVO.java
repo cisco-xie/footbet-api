@@ -31,4 +31,28 @@ public class ConfigUserVO {
     private String proxyUsername;
     // 认证密码
     private String proxyPassword;
+
+    public void setBaseUrl(String baseUrl) {
+        this.baseUrl = baseUrl == null ? null : baseUrl.trim();
+    }
+
+    public void setAccount(String account) {
+        this.account = account == null ? null : account.trim();
+    }
+
+    public void setPassword(String password) {
+        this.password = password == null ? null : password.trim();
+    }
+
+    public void setProxyHost(String proxyHost) {
+        this.proxyHost = proxyHost == null ? null : proxyHost.trim();
+    }
+
+    public void setProxyUsername(String proxyUsername) {
+        this.proxyUsername = proxyUsername == null ? null : proxyUsername.trim();
+    }
+
+    public void setProxyPassword(String proxyPassword) {
+        this.proxyPassword = proxyPassword == null ? null : proxyPassword.trim();
+    }
 }

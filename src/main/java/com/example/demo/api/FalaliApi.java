@@ -3,9 +3,13 @@ package com.example.demo.api;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.core.util.NumberUtil;
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONArray;
@@ -31,6 +35,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.redisson.api.RKeys;
 import org.redisson.api.RedissonClient;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import javax.imageio.ImageIO;
@@ -76,16 +81,19 @@ public class FalaliApi {
      * @return 验证码id
      */
     public String code(String uuid, UserConfig userConfig) {
-        String url = "https://3575978705.tcrax4d8j.com/code?_=" + System.currentTimeMillis();
+        String url = userConfig.getBaseUrl() + "code?_=" + System.currentTimeMillis();
         Map<String, String> headers = new HashMap<>();
-        headers.put("accept", "*/*");
-        headers.put("accept-language", "zh-CN,zh;q=0.9");
+        headers.put("priority", "u=0, i");
+        headers.put("sec-fetch-user", "?1");
+        headers.put("upgrade-insecure-requests", "1");
+        headers.put("Cookie", "2a29530a2306="+uuid);
 
-        String fileName = "/usr/local/resources/projects/falali/code-" + uuid + ".jpg";
+        String fileName = "d://code-" + uuid + ".jpg";
+//        String fileName = "/usr/local/resources/projects/falali/code-" + uuid + ".jpg";
         // 最大重试次数
-        int maxRetries = 3;
+        int maxRetries = 6;
         // 重试间隔（毫秒）
-        int retryDelay = 200;
+        int retryDelay = 100;
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
@@ -93,8 +101,7 @@ public class FalaliApi {
 
                 // 创建请求对象
                 HttpRequest request = HttpRequest.get(url)
-                        .addHeaders(headers)
-                        .cookie("2a29530a2306=" + uuid);
+                        .addHeaders(headers);
 
                 // 引入代理配置
                 configureProxy(request, userConfig);
@@ -113,15 +120,20 @@ public class FalaliApi {
                 }
 
                 // 设置动态库路径
-                System.setProperty("jna.library.path", "/lib/x86_64-linux-gnu");
+//                System.setProperty("jna.library.path", "/lib/x86_64-linux-gnu");
 
                 // OCR 处理
                 Tesseract tesseract = new Tesseract();
-                tesseract.setDatapath("/usr/local/resources/projects/falali/tessdata");
+                tesseract.setDatapath("D://tessdata");
+//                tesseract.setDatapath("/usr/local/resources/projects/falali/tessdata");
                 tesseract.setLanguage("eng");
-                String result = tesseract.doOCR(image);
+                String result = tesseract.doOCR(image).trim();
                 log.info("验证码解析结果: {}", result);
-                return result.trim();
+                if (!NumberUtil.isNumber(result) && result.length() == 4) {
+                    log.info("验证码解析结果: {},不是纯4位数字", result);
+                    continue;
+                }
+                return result;
 
             } catch (Exception e) {
                 Throwable cause = e.getCause();
@@ -277,6 +289,12 @@ public class FalaliApi {
             userConfig.setToken(null);
             userConfig.setIsAutoLogin(0);
             userConfig.setIsTokenValid(0);
+            // 下线清空相关金额
+            userConfig.setBalance(null);
+            userConfig.setBetting(null);
+            userConfig.setAmount(null);
+            userConfig.setResult(null);
+            userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
             redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
         }
     }
@@ -291,8 +309,94 @@ public class FalaliApi {
             userConfig.setToken(null);
             userConfig.setIsAutoLogin(0);
             userConfig.setIsTokenValid(0);
+            // 下线清空相关金额
+            userConfig.setBalance(null);
+            userConfig.setBetting(null);
+            userConfig.setAmount(null);
+            userConfig.setResult(null);
+            userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
             redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfig.getId())).set(JSONUtil.toJsonStr(userConfig));
         });
+    }
+
+
+    /**
+     * 修改初始密码 密码要求：6-20个字符必须由大小写字母和数字组成
+     * @param username
+     * @param id
+     * @param token
+     * @param oldPassword
+     * @param password
+     * @return
+     */
+    public Boolean changePassword(String username, String id, String token, String oldPassword, String password) {
+        List<UserConfig> userConfigs = configService.accounts(username, id);
+        if (CollUtil.isEmpty(userConfigs)) {
+            throw new BusinessException(SystemError.USER_1007);
+        }
+        log.info("修改初始密码-获取盘口账号redis信息:{}", userConfigs.get(0));
+        String baseUrl = userConfigs.get(0).getBaseUrl();
+        String url = baseUrl + "member/changePassword";
+        Map<String, String> headers = new HashMap<>();
+        headers.put("accept", "*/*");
+        headers.put("accept-language", "zh-CN,zh;q=0.9");
+        headers.put("cookie", "token=" + token);
+        headers.put("priority", "u=1, i");
+        headers.put("sec-ch-ua-mobile", "?0");
+        headers.put("sec-ch-ua-platform", "\"Windows\"");
+        headers.put("sec-fetch-dest", "empty");
+        headers.put("sec-fetch-mode", "cors");
+        headers.put("sec-fetch-site", "same-origin");
+        headers.put("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+        headers.put("x-requested-with", "XMLHttpRequest");
+
+        String params = "oldPassword="+oldPassword+"&password=" + password;
+
+        // 设置代理和认证
+        HttpRequest request = HttpRequest.post(url)
+                .addHeaders(headers)
+                .body(params);
+        // 动态设置代理类型
+        configureProxy(request, userConfigs.get(0));
+
+        try {
+            // 发起请求
+            HttpResponse resultRes = request.execute();
+            if (200 == resultRes.getStatus()) {
+                JSONObject result = JSONUtil.parseObj(resultRes.body());
+                if (result.getBool("success")) {
+                    log.info("修改初始密码-盘口账号:{} 旧密码:{} 新密码:{} 修改成功", userConfigs.get(0).getAccount(), oldPassword, password);
+                    return true;
+                } else {
+                    log.error("修改初始密码-盘口账号:{} 旧密码:{} 新密码:{} 修改失败 返回提示:{}", userConfigs.get(0).getAccount(), oldPassword, password, result.getStr("message"));
+                    return false;
+                }
+//                userConfigs.get(0).setIsTokenValid(1);
+//                userConfigs.get(0).setPassword(password);
+//                userConfigs.get(0).setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+//                redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfigs.get(0).getId())).set(JSONUtil.toJsonStr(userConfigs.get(0)));
+            }
+        } catch (Exception e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof UnknownHostException) {
+                log.error("代理请求失败：主机未知。可能是域名解析失败或代理服务器地址有误。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
+            } else if (cause instanceof ConnectException) {
+                log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接异常");
+            } else if (cause instanceof SocketTimeoutException) {
+                log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
+            } else if (cause instanceof IOException) {
+                log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "IO异常");
+            } else {
+                log.error("代理请求失败：未知异常。请检查代理配置和网络状态。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "未知异常");
+            }
+        }
+        log.error("修改初始密码-盘口账号:{} 旧密码:{} 新密码:{} 修改失败", userConfigs.get(0).getAccount(), oldPassword, password);
+        return false;
     }
 
     /**
@@ -308,53 +412,107 @@ public class FalaliApi {
         String baseUrl = userConfigs.get(0).getBaseUrl();
         LoginDTO loginDTO = new LoginDTO();
         loginDTO.setAccount(userConfigs.get(0).getAccount());
-        int retryCount = 0;
-        int maxRetries = 3;
-        String token = null;
 
         // 获取代理配置
         UserConfig userConfig = userConfigs.get(0);
 
+        if (StringUtils.isNotBlank(userConfig.getToken())) {
+            JSONArray jsonArray = account(username, id);
+            if (CollUtil.isNotEmpty(jsonArray)) {
+                // 说明当前账号token还有效，不再登录
+                loginDTO.setToken(userConfigs.get(0).getToken());
+                userConfig.setToken(userConfigs.get(0).getToken());
+                userConfig.setIsTokenValid(1);
+                userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfigs.get(0).getId())).set(JSONUtil.toJsonStr(userConfig));
+                return loginDTO;
+            }
+        }
+
+        int retryCount = 0;
+        int maxRetries = 3;
+        String token = null;
+
+        String uuid = IdUtil.randomUUID();
         while (retryCount < maxRetries) {
+            String code = code(uuid, userConfig);
             Map<String, String> headers = new HashMap<>();
             String url = baseUrl + "login";
-            headers.put("accept", "*/*");
-            headers.put("accept-language", "zh-CN,zh;q=0.9");
+            headers.put("priority", "u=0, i");
+            headers.put("sec-fetch-user", "?1");
+            headers.put("upgrade-insecure-requests", "1");
             headers.put("content-type", "application/x-www-form-urlencoded");
+            headers.put("Cookie", "2a29530a2306="+uuid);
 
-            String uuid = IdUtil.randomUUID();
-            String params = "type=1&account=" + userConfigs.get(0).getAccount() + "&password=" + userConfigs.get(0).getPassword() + "&code=" + code(uuid, userConfig);
+            String params = "type=1&account=" + userConfig.getAccount() + "&password=" + userConfig.getPassword() + "&code=" + code;
 
-            log.info("登录请求 账号 {} uuid 为: {} 完整url {} 参数{}", userConfigs.get(0).getAccount(), uuid, url, params);
+            log.info("登录请求 账号 {} uuid 为: {} 完整url {} 参数{}", userConfig.getAccount(), uuid, url, params);
 
+            HttpCookie cookie1 = new HttpCookie("visid_incap_3042898", "M3qcw+ILSISvGap1LvJiwA+oTmcAAAAAQUIPAAAAAADH+pwU6Aak+93oy43G+3Ln");
+            HttpCookie cookie2 = new HttpCookie("nlbi_3042898", "hTWZBeCWBFRoL63okFTcAQAAAAC1RatlySm0DPITeb1GQvWh");
+            HttpCookie cookie3 = new HttpCookie("incap_ses_1509_3042898", "K6zFVHlWimXJpZ/smgvxFA+oTmcAAAAA9M5cOgcy+ZwplxPmtQRjnQ==");
+            HttpCookie cookie4 = new HttpCookie("ssid1", "3e91457b967da350118bd75e026ee660");
+            HttpCookie cookie5 = new HttpCookie("2a29530a2306", uuid);
+            List<HttpCookie> cookies = new ArrayList<>();
+            cookies.add(cookie1);
+            cookies.add(cookie2);
+            cookies.add(cookie3);
+            cookies.add(cookie4);
+            cookies.add(cookie5);
+            String cok = "visid_incap_3042898=M3qcw+ILSISvGap1LvJiwA+oTmcAAAAAQUIPAAAAAADH+pwU6Aak+93oy43G+3Ln; nlbi_3042898=hTWZBeCWBFRoL63okFTcAQAAAAC1RatlySm0DPITeb1GQvWh; incap_ses_1509_3042898=K6zFVHlWimXJpZ/smgvxFA+oTmcAAAAA9M5cOgcy+ZwplxPmtQRjnQ==; ssid1=3e91457b967da350118bd75e026ee660; random=9241; JSESSIONID=43B429EB2458357C2572599E1061C66F; b-user-id=5f7b230f-c05f-86ba-9111-7527ee9abbe9; 2a29530a2306="+uuid;
             // 创建请求对象
             HttpRequest request = HttpRequest.post(url)
                     .addHeaders(headers)
-                    .cookie("2a29530a2306=" + uuid)
+//                    .cookie(cok)
                     .body(params);
 
             // 配置代理
             configureProxy(request, userConfig);
             try {
                 HttpResponse resultRes = request.execute();
+                String location = resultRes.header("location");
                 token = resultRes.getCookieValue("token");
+                if (StringUtils.isNotBlank(location)) {
+                    if (location.contains("login?e=3")) {
+                        // 验证码错误
+                        retryCount++;
+                        continue;
+                    } else if (location.contains("login?e=4")) {
+                        throw new BusinessException(SystemError.USER_1008);
+                    } else if (location.contains("member/update_password")) {
+                        // 初次登录需要修改密码
+                        String password = RandomUtil.randomString(6) + RandomUtil.randomNumbers(2);
+                        boolean change = changePassword(username, id, token, userConfig.getPassword(), password);
+                        if (!change) {
+                            throw new BusinessException(SystemError.USER_1010, userConfig.getAccount());
+                        }
+                        // 保存新密码
+                        userConfig.setPassword(password);
+                        // 重新登录以获取新的 token
+                        retryCount--;
+                        continue;
+                    }
+                }
 
                 // 开启自动登录
                 userConfig.setIsAutoLogin(1);
                 // token 不为空，成功
                 if (StringUtils.isNotBlank(token)) {
                     // 将获取到的 token 存入缓存
+                    loginDTO.setToken(token);
                     userConfig.setToken(token);
                     userConfig.setIsTokenValid(1);
+                    userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
                     redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfigs.get(0).getId())).set(JSONUtil.toJsonStr(userConfig));
-                    log.info("登录请求 账号 {} 参数{} 获取token成功", userConfigs.get(0).getAccount(), params);
+                    log.info("登录请求 账号 {} 参数{} 获取token成功 token:{}", userConfigs.get(0).getAccount(), params, token);
+                    // JSONArray jsonArray = account(username, id);
                     return loginDTO;
                 }
                 log.info("登录请求 账号 {} 参数{} 获取token失败", userConfigs.get(0).getAccount(), params);
 
                 retryCount++;
                 // 延迟重试
-                ThreadUtil.sleep(150);
+                // ThreadUtil.sleep(150);
             } catch (Exception e) {
                 if (StringUtils.isBlank(token) && retryCount == maxRetries) {
                     log.warn("账号 {} 获取 token 异常", userConfigs.get(0).getAccount());
@@ -380,6 +538,10 @@ public class FalaliApi {
         }
 
         if (StringUtils.isBlank(token) && retryCount == maxRetries) {
+            userConfig.setToken(null);
+            userConfig.setIsTokenValid(0);
+            userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfigs.get(0).getId())).set(JSONUtil.toJsonStr(userConfig));
             log.warn("账号 {} 获取 token 失败，已达到最大重试次数", userConfigs.get(0).getAccount());
         }
         return loginDTO;
@@ -412,6 +574,7 @@ public class FalaliApi {
                 while (retryCount < maxRetries) {
                     loginDTO = singleLogin(username, login.getId()); // 调用单个登录逻辑
                     String token = loginDTO.getToken();
+                    log.error("账号{}==登录{}次 login {}", login.getAccount(), retryCount, token);
 
                     if (StringUtils.isNotBlank(token) && tokenSet.add(token)) {
                         // token 不为空且未重复，成功
@@ -490,7 +653,7 @@ public class FalaliApi {
 //    }
 
     /**
-     * 获取账号信息
+     * 获取账号余额信息
      *
      * @return 结果
      */
@@ -502,13 +665,20 @@ public class FalaliApi {
         log.info("获取盘口账号redis信息:{}", userConfigs.get(0));
         String baseUrl = userConfigs.get(0).getBaseUrl();
         String token = userConfigs.get(0).getToken();
-        String url = baseUrl+"member/accounts";
+        String url = baseUrl + "member/accounts";
         Map<String, String> headers = new HashMap<>();
         headers.put("accept", "*/*");
         headers.put("accept-language", "zh-CN,zh;q=0.9");
         headers.put("cookie", "defaultSetting=5%2C10%2C20%2C50%2C100%2C200%2C500%2C1000; settingChecked=0; index=; index2=; oid=3a9cad1bfcc69f05fd202bb3ddbc9df05b3bc062; defaultLT=PK10JSC; page=lm; token=" + token);
         headers.put("priority", "u=1, i");
+        headers.put("sec-ch-ua-mobile", "?0");
+        headers.put("sec-ch-ua-platform", "\"Windows\"");
+        headers.put("sec-fetch-dest", "empty");
+        headers.put("sec-fetch-mode", "cors");
+        headers.put("sec-fetch-site", "same-origin");
+        headers.put("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
         headers.put("x-requested-with", "XMLHttpRequest");
+
         // 设置代理和认证
         HttpRequest request = HttpRequest.get(url)
                 .addHeaders(headers);
@@ -541,10 +711,29 @@ public class FalaliApi {
         }
         log.info("获取盘口账号{},接口返回信息:{}", userConfigs.get(0).getAccount(), result);
         JSONArray jsonArray = new JSONArray();
-        if (StringUtils.isNotBlank(result)) {
+        if (StringUtils.isNotBlank(result) && JSONUtil.isTypeJSONArray(result)) {
             jsonArray = JSONUtil.parseArray(result);
             for (int i = 0; i < jsonArray.size(); i++) {
                 JSONObject object = jsonArray.getJSONObject(i);
+
+                // 同步一下余额信息
+                if (object.getLong("balance") > 0) {
+                    userConfigs.get(0).setBalance(object.getBigDecimal("balance"));
+                    userConfigs.get(0).setBetting(object.getBigDecimal("betting"));
+
+                    if (0 == object.getInt("type")) {
+                        userConfigs.get(0).setAccountType("A");
+                    } else if (1 == object.getInt("type")) {
+                        userConfigs.get(0).setAccountType("B");
+                    } else if (2 == object.getInt("type")) {
+                        userConfigs.get(0).setAccountType("C");
+                    } else if (3 == object.getInt("type")) {
+                        userConfigs.get(0).setAccountType("D");
+                    }
+                    userConfigs.get(0).setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                    redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfigs.get(0)));
+                }
+
                 // 添加新字段
                 object.putOpt("account", userConfigs.get(0).getAccount());
                 // 替换回原数组
@@ -584,18 +773,40 @@ public class FalaliApi {
                             } else if (3 == balanceJson.getInt("type")) {
                                 userConfig.setAccountType("D");
                             }
+                            userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
                             redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
                         }
                     });
             } else {
                 // 当前账号登录失效，进行自动登录操作
                 log.info("校验盘口账号失效:{}", userConfig.getAccount());
-                if (userConfig.getIsAutoLogin() == 1) {
-                    log.info("校验盘口账号自动登录:{}", userConfig.getAccount());
-                    LoginDTO loginDTO = singleLogin(username, userConfig.getId());
-                    if (BeanUtil.isNotEmpty(loginDTO)) {
-                        token = loginDTO.getToken();
-                        log.info("校验盘口账号自动登录成功:{}", userConfig.getAccount());
+                if (StringUtils.isBlank(userConfig.getToken())) {
+                    log.info("redis中账号:{} token不存在才进行登录操作", userConfig.getAccount());
+                    if (userConfig.getIsAutoLogin() == 1) {
+                        log.info("盘口账号自动登录:{}", userConfig.getAccount());
+                        LoginDTO loginDTO = singleLogin(username, userConfig.getId());
+                        if (BeanUtil.isNotEmpty(loginDTO)) {
+                            token = loginDTO.getToken();
+                            log.info("盘口账号自动登录成功:{}", userConfig.getAccount());
+                            userConfig.setIsTokenValid(1);
+                            userConfig.setToken(token);
+                            userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
+                            return token;
+                        } else {
+                            log.info("盘口账号自动登录失败:{}", userConfig.getAccount());
+                            userConfig.setIsTokenValid(0);
+                            userConfig.setToken(null);
+                            userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
+                            return null;
+                        }
+                    } else {
+                        userConfig.setIsTokenValid(0);
+                        userConfig.setToken(null);
+                        userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
+                        return null;
                     }
                 }
             }
@@ -662,7 +873,14 @@ public class FalaliApi {
         headers.put("accept-language", "zh-CN,zh;q=0.9");
         headers.put("cookie", "defaultSetting=5%2C10%2C20%2C50%2C100%2C200%2C500%2C1000; settingChecked=0; index=; index2=; page=lm; defaultLT="+lottery+"; ssid1=e4ac3642c6b2ea8a51d3a12fc4994ba7; token=" + token);
         headers.put("priority", "u=1, i");
+        headers.put("sec-ch-ua-mobile", "?0");
+        headers.put("sec-ch-ua-platform", "\"Windows\"");
+        headers.put("sec-fetch-dest", "empty");
+        headers.put("sec-fetch-mode", "cors");
+        headers.put("sec-fetch-site", "same-origin");
+        headers.put("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
         headers.put("x-requested-with", "XMLHttpRequest");
+
 
         // 设置代理和认证
         HttpRequest request = HttpRequest.get(url)
@@ -716,7 +934,14 @@ public class FalaliApi {
         headers.put("accept-language", "zh-CN,zh;q=0.9");
         headers.put("cookie", "defaultSetting=5%2C10%2C20%2C50%2C100%2C200%2C500%2C1000; settingChecked=0; index=; index2=; oid=3a9cad1bfcc69f05fd202bb3ddbc9df05b3bc062; defaultLT="+order.getLottery()+"; page=lm; token=" + token);
         headers.put("priority", "u=1, i");
+        headers.put("sec-ch-ua-mobile", "?0");
+        headers.put("sec-ch-ua-platform", "\"Windows\"");
+        headers.put("sec-fetch-dest", "empty");
+        headers.put("sec-fetch-mode", "cors");
+        headers.put("sec-fetch-site", "same-origin");
+        headers.put("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
         headers.put("x-requested-with", "XMLHttpRequest");
+
         String result = HttpRequest.post(url)
                 .body(JSONUtil.toJsonStr(order))
                 .addHeaders(headers)
@@ -787,8 +1012,8 @@ public class FalaliApi {
                     AtomicReference<UserConfig> accountConfig = new AtomicReference<>();
                     for (UserConfig userConfig : userConfigs) {
                         // 先随便获取一个有效的盘口账号
-                        String token = token(admin.getUsername(), userConfig.getId());
-                        if (token != null) {
+                        // String token = token(admin.getUsername(), userConfig.getId());
+                        if (1 == userConfig.getIsTokenValid() && StringUtils.isNotBlank(userConfig.getToken())) {
                             accountConfig.set(userConfig);
                             break;
                         }
@@ -847,9 +1072,9 @@ public class FalaliApi {
                             )).set(1);
 
                             // 获取正投账号数
-                            List<UserConfig> positiveAccounts = getRandomAccount(userConfigs, plan.getPositiveNum(), 1);
+                            List<UserConfig> positiveAccounts = getRandomAccount(userConfigs, plan.getPositiveAccountNum(), 1);
                             // 获取反投账号数
-                            List<UserConfig> reverseAccounts = getRandomAccount(userConfigs, plan.getReverseNum(), 2);
+                            List<UserConfig> reverseAccounts = getRandomAccount(userConfigs, plan.getReverseAccountNum(), 2);
                             // 把正反投账号集合
                             List<UserConfig> allAccounts = new ArrayList<>();
                             allAccounts.addAll(positiveAccounts);
@@ -860,6 +1085,7 @@ public class FalaliApi {
                             List<UserConfig> failedAccounts = new ArrayList<>();
                             // 获取正反投的位置 key
                             Map<Integer, Map<String, List<String>>> oddsMap = new HashMap<>();
+                            // 获取单号
                             List<Integer> positions = plan.getPositions();
                             for (int pos : positions) {
                                 String jsonkey = "B" + pos;
@@ -869,6 +1095,15 @@ public class FalaliApi {
                                 Map<String, List<String>> oddKeys = getOdds(matchedKeys, plan.getPositiveNum());
                                 oddsMap.put(pos, oddKeys);
                             }
+                            // 获取大小单双龙虎
+                            // 用于存储筛选大小单双龙虎所有的key json
+                            JSONObject filteredJson = new JSONObject();
+                            oddsJson.forEach((k, v) -> {
+                                // 筛选以 DX（大小）、DS（单双） 和 LH（龙虎） 开头的键
+                                if (k.startsWith("DX") || k.startsWith("DS") || k.startsWith("LH")) {
+                                    filteredJson.set(k, v);
+                                }
+                            });
 
                             // 使用 CountDownLatch 等待所有延迟任务完成
                             CountDownLatch latch = new CountDownLatch(allAccounts.size()); // 初始化为需要执行的任务数
@@ -1105,6 +1340,13 @@ public class FalaliApi {
         Map<String, String> headers = new HashMap<>();
         headers.put("accept", "*/*");
         headers.put("cookie", "defaultLT=" + plan.getLottery() + "; token=" + userConfig.getToken());
+        headers.put("sec-ch-ua-mobile", "?0");
+        headers.put("sec-ch-ua-platform", "\"Windows\"");
+        headers.put("sec-fetch-dest", "empty");
+        headers.put("sec-fetch-mode", "cors");
+        headers.put("sec-fetch-site", "same-origin");
+        headers.put("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+        headers.put("x-requested-with", "XMLHttpRequest");
 
         HttpRequest request = HttpRequest.post(url).addHeaders(headers);
         configureProxy(request, userConfig);
@@ -1255,6 +1497,14 @@ public class FalaliApi {
         Map<String, String> headers = new HashMap<>();
         headers.put("accept", "*/*");
         headers.put("cookie", "defaultLT=" + plan.getLottery() + "; token=" + sucAccount.getToken());
+        headers.put("sec-ch-ua-mobile", "?0");
+        headers.put("sec-ch-ua-platform", "\"Windows\"");
+        headers.put("sec-fetch-dest", "empty");
+        headers.put("sec-fetch-mode", "cors");
+        headers.put("sec-fetch-site", "same-origin");
+        headers.put("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+        headers.put("x-requested-with", "XMLHttpRequest");
+
         HttpRequest request = HttpRequest.post(url).addHeaders(headers);
         configureProxy(request, sucAccount);
 
@@ -1880,6 +2130,9 @@ public class FalaliApi {
         AtomicLong totalAmount = new AtomicLong();
         AtomicLong totalResult = new AtomicLong();
         accounts.forEach(account -> {
+            // 更新余额和未结算金额
+            account(username, account.getId());
+
             // 获取账号今日流水
             JSONObject settled = JSONUtil.parseObj(settled(username, account.getId(), true, 1, true));
             JSONArray list = settled.getJSONArray("list");
@@ -1933,7 +2186,23 @@ public class FalaliApi {
                     .execute()
                     .body();
         } catch (Exception e) {
-            log.error(e.getMessage());
+            Throwable cause = e.getCause(); // 获取原始异常原因
+            if (cause instanceof UnknownHostException) {
+                log.error("代理请求失败：主机未知。可能是域名解析失败或代理地址有误。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "代理请求失败");
+            } else if (cause instanceof ConnectException) {
+                log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接异常");
+            } else if (cause instanceof SocketTimeoutException) {
+                log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
+            } else if (cause instanceof IOException) {
+                log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "IO异常");
+            } else {
+                log.error("代理请求失败：未知异常。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "未知异常");
+            }
         }
 
         // 解析 HTML 数据
@@ -1953,7 +2222,7 @@ public class FalaliApi {
                 }
 
                 JSONObject rowData = new JSONObject();
-                rowData.putOpt("account", userConfigs.get(0).getAccount()); // 账号
+                rowData.putOpt("account", userConfigs.get(0).getAccount() + "(" + (userConfigs.get(0).getBetType() == 1 ? "正" : "反") +")"); // 账号
                 rowData.putOpt("orderNo", cols.get(0).text()); // 注单号
                 rowData.putOpt("time", cols.get(1).text()); // 时间
                 rowData.putOpt("type", cols.get(2).select(".lottery").text()); // 类型

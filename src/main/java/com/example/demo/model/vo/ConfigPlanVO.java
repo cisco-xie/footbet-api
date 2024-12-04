@@ -30,10 +30,16 @@ public class ConfigPlanVO {
     @NotNull(message = "正投数量不能为空")
     @Schema(description = "正投数量")
     private Integer positiveNum;
+    @NotNull(message = "正投账号数量不能为空")
+    @Schema(description = "正投账号数量")
+    private Integer positiveAccountNum;
     // 反投数量
     @NotNull(message = "反投数量不能为空")
     @Schema(description = "反投数量")
     private Integer reverseNum;
+    @NotNull(message = "反投账号数量不能为空")
+    @Schema(description = "反投账号数量")
+    private Integer reverseAccountNum;
     // 正投金额
     @NotNull(message = "正投金额不能为空")
     @Schema(description = "正投金额")

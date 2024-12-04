@@ -16,6 +16,15 @@
 
 package com.example.demo.controller;
 
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.thread.ThreadUtil;
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
+import com.example.demo.common.constants.RedisConstants;
+import com.example.demo.common.enmu.SystemError;
+import com.example.demo.common.utils.KeyUtil;
+import com.example.demo.core.model.UserConfig;
 import com.example.demo.core.support.BaseController;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.json.JSONUtil;
@@ -23,11 +32,14 @@ import com.example.demo.api.ConfigService;
 import com.example.demo.api.FalaliApi;
 import com.example.demo.core.result.Result;
 import com.example.demo.model.dto.AdminLoginDTO;
+import com.example.demo.model.dto.LoginDTO;
 import com.example.demo.model.vo.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.redisson.api.RedissonClient;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -39,6 +51,9 @@ import java.util.List;
 @RequestMapping("/api")
 @RestController
 public class BasicController extends BaseController {
+
+    @Resource
+    private RedissonClient redisson;
 
     @Resource
     private FalaliApi api;
@@ -57,7 +72,14 @@ public class BasicController extends BaseController {
     @GetMapping("/accounts")
     public Result accounts() {
         AdminLoginDTO admin = getUser();
-        return Result.success(configService.accounts(admin.getUsername(), null));
+        List<UserConfig> userList = configService.accounts(admin.getUsername(), null);
+        // 异步更新账号余额并校验是否登录
+        // ThreadUtil.execAsync(() -> {
+        //     userList.forEach(userConfig -> {
+        //         api.token(admin.getUsername(), userConfig.getId());
+        //     });
+        // });
+        return Result.success(userList);
     }
 
     @Operation(summary = "用户配置")
@@ -65,7 +87,13 @@ public class BasicController extends BaseController {
     @ResponseBody
     public Result configAccount(@RequestBody @Validated ConfigUserVO userProxy) {
         AdminLoginDTO admin = getUser();
-        configService.editAccount(admin.getUsername(), userProxy);
+        String id = configService.editAccount(admin.getUsername(), userProxy);
+//        if ("add".equalsIgnoreCase(userProxy.getOperationType())) {
+//            // 新增成功后对盘口账号进行异步登录
+//            ThreadUtil.execAsync(() -> {
+//                api.singleLogin(admin.getUsername(), id);
+//            });
+//        }
         return Result.success();
     }
 
@@ -104,7 +132,7 @@ public class BasicController extends BaseController {
 
     @GetMapping("/code")
     public Object code() {
-        return api.code(null, null);
+        return api.code("1d17d23f-50c1-45a1-a199-c1acf32865c8", null);
     }
 
     @Operation(summary = "一键登录")
@@ -168,7 +196,11 @@ public class BasicController extends BaseController {
     @GetMapping("/balance")
     public Result account(@RequestParam String id) {
         AdminLoginDTO admin = getUser();
-        return Result.success(api.account(admin.getUsername(), id));
+        JSONArray jsonArray = api.account(admin.getUsername(), id);
+        if (CollUtil.isNotEmpty(jsonArray)) {
+            return Result.success();
+        }
+        return Result.failed(SystemError.USER_1002);
     }
 
     @Operation(summary = "获取期数")
@@ -201,7 +233,7 @@ public class BasicController extends BaseController {
         return Result.success();
     }
 
-    @Operation(summary = "获取两周流水记录")
+    @Operation(summary = "获取未结已结流水记录")
     @GetMapping("/settled")
     @ResponseBody
     public Result history(@RequestParam String id,

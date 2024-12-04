@@ -1,7 +1,9 @@
 package com.example.demo;
 
+import cn.hutool.core.codec.Base64;
 import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.http.HtmlUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
@@ -9,7 +11,10 @@ import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.example.demo.api.FalaliApi;
+import com.example.demo.api.LoginService;
 import com.example.demo.model.vo.LoginVO;
+import jakarta.annotation.Resource;
 import net.sourceforge.tess4j.Tesseract;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -27,6 +32,72 @@ import java.util.Map;
 @SpringBootTest
 class FalaliApplicationTests {
 
+    @Resource
+    private LoginService loginService;
+
+    @Resource
+    private FalaliApi api;
+
+    @Test
+    public void base64() {
+        String encoded_str = "oZy8OOERVAj1UHaWypnVHchCivPwKYQxow6CQZAsWrN4yq8hJO4hQ1qIbEroJZQS6nD8KIDfyyHMjAVFryc=";
+        System.out.println(Base64.decodeStr(encoded_str));
+    }
+
+    @Test
+    public void password() {
+        for (int i = 0; i < 10; i++) {
+            System.out.println(RandomUtil.randomString(6) + RandomUtil.randomNumbers(2));
+        }
+        System.out.println(RandomUtil.randomStringUpper(8));
+    }
+    @Test
+    public void loginWeb() {
+//        String response = loginService.simulateLogin("csa1", "WEwe1212", "6523").block();
+
+        try {
+            String uuid = "1d17d23f-50c1-45a1-a199-c1acf32865c8";
+            String fileName = "d://code-" + uuid + ".jpg";
+
+            Map<String, String> headers = new HashMap<>();
+            headers.put("priority", "u=0, i");
+            headers.put("sec-fetch-user", "?1");
+            headers.put("upgrade-insecure-requests", "1");
+            headers.put("Cookie", "visid_incap_3042898=M3qcw+ILSISvGap1LvJiwA+oTmcAAAAAQUIPAAAAAADH+pwU6Aak+93oy43G+3Ln; nlbi_3042898=hTWZBeCWBFRoL63okFTcAQAAAAC1RatlySm0DPITeb1GQvWh; incap_ses_1509_3042898=K6zFVHlWimXJpZ/smgvxFA+oTmcAAAAA9M5cOgcy+ZwplxPmtQRjnQ==; ssid1=3e91457b967da350118bd75e026ee660; random=9241; b-user-id=5f7b230f-c05f-86ba-9111-7527ee9abbe9; 2a29530a2306="+uuid);
+
+//            HttpResponse requestCode = HttpRequest.post("https://7410893256-am.tcr195uhyru.com/code?_=1733210461638")
+//                    .addHeaders(headers)
+//                    .execute();
+//            requestCode.writeBody(fileName);
+//            Tesseract tesseract = new Tesseract();
+//            tesseract.setDatapath("D://tessdata");
+//                tesseract.setDatapath("/usr/local/resources/projects/falali/tessdata");
+//            tesseract.setLanguage("eng");
+//            File image = new File(fileName);
+//            String code = tesseract.doOCR(image).trim();
+
+            // 构建登录 URL
+            String loginUrl = "https://7410893256-am.tcr195uhyru.com/login";
+            String code = api.code(uuid, null);
+            String param = "type=1&account=csa1&password=WEwe1212&code=" + code;
+
+            // 构建并发送请求
+            HttpResponse response = HttpRequest.post(loginUrl)
+                    .header("priority", "u=0, i")
+                    .header("sec-fetch-user", "?1")
+                    .header("upgrade-insecure-requests", "1")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .header("Cookie", "visid_incap_3042898=M3qcw+ILSISvGap1LvJiwA+oTmcAAAAAQUIPAAAAAADH+pwU6Aak+93oy43G+3Ln; nlbi_3042898=hTWZBeCWBFRoL63okFTcAQAAAAC1RatlySm0DPITeb1GQvWh; incap_ses_1509_3042898=K6zFVHlWimXJpZ/smgvxFA+oTmcAAAAA9M5cOgcy+ZwplxPmtQRjnQ; ssid1=3e91457b967da350118bd75e026ee660; random=9241; JSESSIONID=43B429EB2458357C2572599E1061C66F; b-user-id=5f7b230f-c05f-86ba-9111-7527ee9abbe9; 2a29530a2306=" + uuid)
+                    .body(param) // 设置表单内容
+                    .timeout(0) // 设置超时时间
+                    .execute();
+
+            // 打印响应
+            System.out.println(response.getCookies());
+        } catch (Exception e) {
+
+        }
+    }
 
     //    @Test
     public String code(String uuid) {
