@@ -42,6 +42,10 @@ public class UserConfig {
     private BigDecimal balance;
     // 未结算金额
     private BigDecimal betting;
+    // 最新注单期数
+    private String latestDrawNumber;
+    // 最新注单金额
+    private Long latestBetting;
     // 今日流水
     private BigDecimal amount;
     // 今日盈亏
@@ -49,7 +53,8 @@ public class UserConfig {
 
     private String updateTime = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN);
 
-    public UserConfig(String account1) {
+    public UserConfig(String account1, Integer betType) {
         this.account = account1;
+        this.betType = betType;
     }
 }

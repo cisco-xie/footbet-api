@@ -219,6 +219,9 @@ public class ConfigService {
                 String account = parts[8];
                 msg.putOpt("account", account);
                 msg.putOpt("message", jsonObject.getStr("message"));
+                msg.putOpt("lottery", jsonObject.getStr("lottery"));
+                msg.putOpt("drawNumber", jsonObject.getStr("drawNumber"));
+                msg.putOpt("createTime", jsonObject.getStr("createTime"));
                 result.add(msg);
             }
         });
