@@ -971,15 +971,6 @@ public class FalaliApi {
     }
 
     public void autoBet() {
-        // 初始化线程池（动态线程池，避免任务阻塞）
-        ThreadPoolExecutor executorService = new ThreadPoolExecutor(
-                10, 50, 60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(),
-                new ThreadPoolExecutor.CallerRunsPolicy()
-        );
-        // 配置 scheduledExecutorService 用于延迟执行任务
-        ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(10);
-
         // 匹配所有平台用户的 Redis Key
         String pattern = KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, "*");
 
@@ -994,6 +985,25 @@ public class FalaliApi {
         AtomicInteger failureCount = new AtomicInteger();
         AtomicInteger reverseCount = new AtomicInteger();
 
+        int keysCount = keysList.size();
+        int userConfigsPerKey = 15; // 估算每个 key 的 userConfigs 数量
+        int totalTasks = keysCount * userConfigsPerKey; // 总任务数
+
+        // 基于任务总量和 CPU 核数动态调整线程池大小
+        int cpuCoreCount = Runtime.getRuntime().availableProcessors();
+        int threadPoolSize = Math.min(totalTasks, Math.max(cpuCoreCount * 2, 50)); // 不低于 50，不超过总任务数
+
+        // 初始化线程池（动态线程池，避免任务阻塞）
+        ThreadPoolExecutor executorService = new ThreadPoolExecutor(
+                threadPoolSize,
+                threadPoolSize,
+                60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+        // 配置 scheduledExecutorService 用于延迟执行任务
+        ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(threadPoolSize);
+
         // 对每个平台用户的操作并行化
         List<Callable<Void>> tasks = new ArrayList<>();
         for (String key : keysList) {
@@ -1006,6 +1016,10 @@ public class FalaliApi {
                     String username = admin.getUsername();
                     // 获取所有配置计划
                     List<ConfigPlanVO> configs = configService.getAllPlans(username, null);
+                    if (CollUtil.isEmpty(configs)) {
+                        log.info("当前平台账号:{}不存在方案，直接跳过", username);
+                        return null;
+                    }
                     // 过滤掉未启用的配置
                     List<ConfigPlanVO> enabledUserConfigs = configs.stream()
                             .filter(config -> config.getEnable() != 0)
@@ -1013,21 +1027,24 @@ public class FalaliApi {
 
                     // 获取当前平台用户下的盘口账号
                     List<UserConfig> userConfigs = configService.accounts(admin.getUsername(), null);
-                    AtomicReference<UserConfig> accountConfig = new AtomicReference<>();
-                    for (UserConfig userConfig : userConfigs) {
-                        // 先随便获取一个有效的盘口账号
-                        // String token = token(admin.getUsername(), userConfig.getId());
-                        if (1 == userConfig.getIsTokenValid() && StringUtils.isNotBlank(userConfig.getToken())) {
-                            accountConfig.set(userConfig);
-                            break;
-                        }
+                    if (CollUtil.isEmpty(userConfigs)) {
+                        log.info("当前平台账号:{}不存在盘口账号，直接跳过", username);
+                        return null;
+                    }
+                    // 过滤掉未登录的盘口账号
+                    List<UserConfig> tokenVaildConfigs = configService.accounts(admin.getUsername(), null).stream()
+                            .filter(userConfig -> 1 == userConfig.getIsTokenValid() && StringUtils.isNotBlank(userConfig.getToken()))
+                            .collect(Collectors.toList());
+                    if (CollUtil.isEmpty(tokenVaildConfigs)) {
+                        log.info("当前平台账号:{}不存在有效盘口账号，直接跳过", username);
+                        return null;
                     }
                     // 对每个配置计划列表进行并行化
                     List<Callable<Void>> planTasks = new ArrayList<>();
                     for (ConfigPlanVO plan : enabledUserConfigs) {
                         planTasks.add(() -> {
                             // 获取最新期数
-                            String period = period(username, accountConfig.get().getId(), plan.getLottery());
+                            String period = period(username, tokenVaildConfigs.get(0).getId(), plan.getLottery());
                             if (StringUtils.isBlank(period)) return null; // 如果期数为空，跳过
                             JSONObject periodJson = JSONUtil.parseObj(period);
                             String drawNumber = periodJson.getStr("drawNumber");
@@ -1056,7 +1073,7 @@ public class FalaliApi {
                             if (beetTime < 50) { log.info("游戏:{},期数:{},剩余封盘时间:{},即将封盘,不进行下注", plan.getLottery(), drawNumber, beetTime); return null; }; // 如果距离封盘时间小于20秒，跳过不下注
 
                             // 获取赔率
-                            String odds = odds(username, accountConfig.get().getId(), plan.getLottery());
+                            String odds = odds(username, tokenVaildConfigs.get(0).getId(), plan.getLottery());
                             if (StringUtils.isBlank(odds)) return null;
                             JSONObject oddsJson = JSONUtil.parseObj(odds);
 
@@ -1071,9 +1088,9 @@ public class FalaliApi {
                             )).set(1, Duration.ofMillis(10));
 
                             // 获取正投账号数
-                            List<UserConfig> positiveAccounts = getRandomAccount(userConfigs, plan.getPositiveAccountNum(), 1);
+                            List<UserConfig> positiveAccounts = getRandomAccount(tokenVaildConfigs, plan.getPositiveAccountNum(), 1);
                             // 获取反投账号数
-                            List<UserConfig> reverseAccounts = getRandomAccount(userConfigs, plan.getReverseAccountNum(), 2);
+                            List<UserConfig> reverseAccounts = getRandomAccount(tokenVaildConfigs, plan.getReverseAccountNum(), 2);
                             // 把正反投账号集合
                             List<UserConfig> allAccounts = new ArrayList<>();
                             allAccounts.addAll(positiveAccounts);
@@ -1123,7 +1140,7 @@ public class FalaliApi {
 
                                     // 判断是否已下注
                                     boolean exists = redisson.getBucket(isBetRedisKey).isExists();
-                                    if (exists) { log.info("游戏:{},期数:{},账号:{},方案:{},已下过注,不再重复下注", plan.getLottery(), drawNumber, accountConfig.get().getAccount(), plan.getName()); return null; } // 已下注，跳过
+                                    if (exists) { log.info("游戏:{},期数:{},账号:{},方案:{},已下过注,不再重复下注", plan.getLottery(), drawNumber, tokenVaildConfigs.get(0).getAccount(), plan.getName()); return null; } // 已下注，跳过
 
                                     String betTypeStr = userConfig.getBetType() == 1 ? "positive" : "reverse";
 
@@ -1387,7 +1404,7 @@ public class FalaliApi {
             failed.putOpt("message", "代理异常");
             return JSONUtil.toJsonStr(failed);
         }
-        return result;
+        return StringUtils.isEmpty(result) ? null : result;
     }
 
     /**
@@ -1402,8 +1419,8 @@ public class FalaliApi {
      */
     private boolean handleOrderResult(String username, String result, UserConfig userConfig, String drawNumber, ConfigPlanVO plan, List<UserConfig> successAccounts, List<UserConfig> failedAccounts, AtomicInteger successCount,AtomicInteger failureCount,AtomicInteger reverseCount) {
         boolean isSuccess = true;
-        if (StringUtils.isNotBlank(result)) {
-            JSONObject resultJson = JSONUtil.parseObj(result);
+        JSONObject resultJson = JSONUtil.parseObj(result);
+        if (!resultJson.isEmpty()) {
             int status = resultJson.getInt("status");
             if (status == 0) {
                 // 成功逻辑
@@ -1420,6 +1437,11 @@ public class FalaliApi {
                 successAccounts.add(userConfig);
                 successCount.incrementAndGet();
                 log.info("下单成功, 账号:{}, 期数:{}", userConfig.getAccount(), drawNumber);
+            } else if (status == 2) {
+                // 失败逻辑
+                isSuccess = false;
+                resultJson.putOpt("message", "投注超时");
+                log.error("下单失败, 账号:{}, 期数:{}, 返回信息{}", userConfig.getAccount(), drawNumber, resultJson);
             } else {
                 // 失败逻辑
                 isSuccess = false;
@@ -1430,11 +1452,10 @@ public class FalaliApi {
         }
 
         if (!isSuccess) {
-            JSONObject failed = JSONUtil.parseObj(result);
-            failed.putOpt("lottery", plan.getLottery());
-            failed.putOpt("drawNumber", drawNumber);
-            failed.putOpt("createTime", LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-            failed.putOpt("account", userConfig.getAccount());
+            resultJson.putOpt("lottery", plan.getLottery());
+            resultJson.putOpt("drawNumber", drawNumber);
+            resultJson.putOpt("createTime", LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+            resultJson.putOpt("account", userConfig.getAccount());
             // 记录失败信息
             redisson.getBucket(KeyUtil.genKey(
                     RedisConstants.USER_BET_PERIOD_RES_PREFIX,
@@ -1445,7 +1466,7 @@ public class FalaliApi {
                     username,
                     userConfig.getAccount(),
                     String.valueOf(plan.getId())
-            )).set(failed, Duration.ofHours(24));
+            )).set(resultJson, Duration.ofHours(24));
             failedAccounts.add(userConfig);
             failureCount.incrementAndGet();
         }
@@ -1553,9 +1574,9 @@ public class FalaliApi {
             failed.putOpt("createTime", LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
             result = JSONUtil.toJsonStr(failed);
         }
-
-        if (StringUtils.isNotBlank(result)) {
-            JSONObject resultJson = JSONUtil.parseObj(result);
+        result = StringUtils.isEmpty(result) ? null : result;
+        JSONObject resultJson = JSONUtil.parseObj(result);
+        if (!resultJson.isEmpty()) {
             int status = resultJson.getInt("status");
             if (status == 0) {
                 log.info("反补下单成功, 失败账号:{}, 对冲账号:{}, 期数:{}", failedAccount.getAccount(), sucAccount.getAccount(), drawNumber);
@@ -1572,6 +1593,10 @@ public class FalaliApi {
                         String.valueOf(plan.getId())
                 )).set(JSONUtil.toJsonStr(result), Duration.ofHours(24));
                 return true; // 反补成功
+            } else if (status == 2) {
+                // 失败逻辑
+                resultJson.putOpt("message", "反补投注超时");
+                log.error("反补下单失败, 失败账号:{}, 对冲账号:{}, 期数:{}, 返回信息{}", failedAccount.getAccount(), sucAccount.getAccount(), drawNumber, resultJson);
             } else {
                 log.error("反补下单失败, 失败账号:{}, 对冲账号:{}, 期数:{}, 返回信息{}", failedAccount.getAccount(), sucAccount.getAccount(), drawNumber, resultJson);
             }
@@ -1579,11 +1604,10 @@ public class FalaliApi {
             log.error("反补下单失败, 失败账号:{}, 对冲账号:{}, 期数:{}, 返回为空", failedAccount.getAccount(), sucAccount.getAccount(), drawNumber);
         }
         if (!resultBol) {
-            JSONObject failed = JSONUtil.parseObj(result);
-            failed.putOpt("lottery", plan.getLottery());
-            failed.putOpt("drawNumber", drawNumber);
-            failed.putOpt("createTime", LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-            failed.putOpt("account", sucAccount.getAccount());
+            resultJson.putOpt("lottery", plan.getLottery());
+            resultJson.putOpt("drawNumber", drawNumber);
+            resultJson.putOpt("createTime", LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+            resultJson.putOpt("account", sucAccount.getAccount());
             // 反补失败返回参数
             redisson.getBucket(KeyUtil.genKey(
                     RedisConstants.USER_BET_PERIOD_RES_PREFIX,
@@ -1594,7 +1618,7 @@ public class FalaliApi {
                     username,
                     sucAccount.getAccount(),
                     String.valueOf(plan.getId())
-            )).set(failed, Duration.ofHours(24));
+            )).set(resultJson, Duration.ofHours(24));
         }
         return resultBol;
     }
