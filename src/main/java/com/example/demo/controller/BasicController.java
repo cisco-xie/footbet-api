@@ -259,4 +259,18 @@ public class BasicController extends BaseController {
         return Result.success(configService.failedBet(admin.getUsername()));
     }
 
+    @Operation(summary = "获取最新失败投注")
+    @GetMapping("/bet/failed/latest")
+    public Result latest() {
+        AdminLoginDTO admin = getUser();
+        return Result.success(configService.failedBetLatest(admin.getUsername()));
+    }
+
+    @Operation(summary = "确认最新失败投注")
+    @GetMapping("/bet/failed/confirm")
+    public Result confirm(@RequestParam String key) {
+        configService.failedBetLatestConfirm(key);
+        return Result.success();
+    }
+
 }

@@ -3,7 +3,6 @@ package com.example.demo.api;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.date.DateUtil;
-import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
@@ -17,13 +16,11 @@ import com.example.demo.model.vo.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.redisson.api.RBucket;
-import org.redisson.api.RKeys;
-import org.redisson.api.RedissonClient;
-import org.springframework.context.annotation.Lazy;
+import org.redisson.api.*;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 @Component
@@ -226,6 +223,89 @@ public class ConfigService {
             }
         });
         return result;
+    }
+
+    /**
+     * 获取最新失败投注
+     * @param username
+     * @return
+     */
+    public JSONObject failedBetLatest(String username) {
+        JSONObject maxCreateTimeObj = new JSONObject();
+        String maxCreateTime = null;
+        JSONObject maxCreateTimeJson = null;
+
+        // Redis key pattern
+        String pattern = KeyUtil.genKey(
+                RedisConstants.USER_BET_PERIOD_RES_PREFIX,
+                DateUtil.format(DateUtil.date(), "yyyyMMdd"),
+                "*",
+                "*",
+                "failed",
+                username,
+                "*"
+        );
+
+        RKeys keys = redisson.getKeys();
+        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
+        List<String> keysList = new ArrayList<>();
+        iterableKeys.forEach(keysList::add);
+
+        if (!keysList.isEmpty()) {
+            // 创建批量任务
+            RBatch batch = redisson.createBatch();
+            Map<String, RFuture<Object>> futures = new HashMap<>();
+
+            // 将所有 Redis Key 加入批量任务
+            for (String key : keysList) {
+                RFuture<Object> future = batch.getBucket(key).getAsync();
+                futures.put(key, future);
+            }
+
+            // 执行批量任务
+            batch.execute();
+
+            // 遍历批量结果
+            for (Map.Entry<String, RFuture<Object>> entry : futures.entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue().getNow(); // 获取异步结果
+                if (value != null) {
+                    String json = value.toString();
+                    JSONObject jsonObject = JSONUtil.parseObj(json);
+                    String currentCreateTime = jsonObject.getStr("createTime");
+
+                    // 查找最大的 createTime
+                    if (maxCreateTime == null || currentCreateTime.compareTo(maxCreateTime) > 0) {
+                        maxCreateTime = currentCreateTime;
+                        maxCreateTimeJson = jsonObject;
+                        maxCreateTimeObj.putOpt("key", key);
+                    }
+                }
+            }
+
+            // 校验最大时间记录的 confirm 字段是否为 0
+            if (maxCreateTimeJson.containsKey("confirm") && maxCreateTimeJson != null && maxCreateTimeJson.getInt("confirm") == 0) {
+                maxCreateTimeObj.putOpt("value", maxCreateTimeJson);
+            } else {
+                // 如果没有符合条件的记录，返回空对象
+                maxCreateTimeObj = new JSONObject();
+            }
+        }
+
+        return maxCreateTimeObj;
+    }
+
+    /**
+     * 确认下注失败弹窗提示
+     * @param redisKey
+     */
+    public void failedBetLatestConfirm(String redisKey) {
+        if (!redisson.getBucket(redisKey).isExists()) {
+            log.warn("redis key [{}] 不存在", redisKey);
+        }
+        JSONObject jsonObject = JSONUtil.parseObj(redisson.getBucket(redisKey).get());
+        jsonObject.putOpt("confirm", 1);
+        redisson.getBucket(redisKey).set(jsonObject);
     }
 
 }

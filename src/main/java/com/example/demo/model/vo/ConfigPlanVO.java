@@ -26,6 +26,15 @@ public class ConfigPlanVO {
     @Size(max = 10, message = "位置数组最多只能包含10个位置")
     @Schema(description = "位置数组，1到10")
     private List<Integer> positions;
+    @Size(max = 10, message = "大小最多只能包含10个位置")
+    @Schema(description = "双面数组，大小")
+    private List<Integer> twoSidedDxPositions;
+    @Schema(description = "双面数组，单双")
+    @Size(max = 10, message = "单双最多只能包含10个位置")
+    private List<Integer> twoSidedDsPositions;
+    @Size(max = 5, message = "龙虎最多只能包含5个位置")
+    @Schema(description = "双面数组，龙虎")
+    private List<Integer> twoSidedLhPositions;
     // 正投数量
     @NotNull(message = "正投数量不能为空")
     @Schema(description = "正投数量")
