@@ -91,8 +91,8 @@ public class FalaliApi {
         headers.put("upgrade-insecure-requests", "1");
         headers.put("Cookie", "2a29530a2306="+uuid);
 
-        String fileName = "d://code-" + uuid + ".jpg";
-//        String fileName = "/usr/local/resources/projects/falali/code-" + uuid + ".jpg";
+//        String fileName = "d://code-" + uuid + ".jpg";
+        String fileName = "/usr/local/resources/projects/falali/code-" + uuid + ".jpg";
         // 最大重试次数
         int maxRetries = 6;
         // 重试间隔（毫秒）
@@ -123,12 +123,12 @@ public class FalaliApi {
                 }
 
                 // 设置动态库路径
-//                System.setProperty("jna.library.path", "/lib/x86_64-linux-gnu");
+                System.setProperty("jna.library.path", "/lib/x86_64-linux-gnu");
 
                 // OCR 处理
                 Tesseract tesseract = new Tesseract();
-                tesseract.setDatapath("D://tessdata");
-//                tesseract.setDatapath("/usr/local/resources/projects/falali/tessdata");
+//                tesseract.setDatapath("D://tessdata");
+                tesseract.setDatapath("/usr/local/resources/projects/falali/tessdata");
                 tesseract.setLanguage("eng");
                 String result = tesseract.doOCR(image).trim();
                 log.info("验证码解析结果: {}", result);
@@ -1483,6 +1483,18 @@ public class FalaliApi {
         String result = null;
         try {
             result = request.body(JSONUtil.toJsonStr(order)).execute().body();
+            log.error("下单结束, 平台用户:{}, 账号:{}, 期数:{}, 返回信息{}", username, userConfig.getAccount(), drawNumber, result);
+            if (!JSONUtil.isTypeJSONArray(result)) {
+                log.error("下单失败, 平台用户:{}, 账号:{}, 期数:{}, 返回信息{}", username, userConfig.getAccount(), drawNumber, result);
+                JSONObject failed = new JSONObject();
+                failed.putOpt("status", 1);
+                failed.putOpt("lottery", plan.getLottery());
+                failed.putOpt("drawNumber", drawNumber);
+                failed.putOpt("createTime", LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                failed.putOpt("account", userConfig.getAccount());
+                failed.putOpt("message", "代理异常");
+                return JSONUtil.toJsonStr(failed);
+            }
         } catch (Exception e) {
             Throwable cause = e.getCause();
             if (cause instanceof UnknownHostException) {
@@ -1653,6 +1665,29 @@ public class FalaliApi {
         String result = null;
         try {
             result = request.body(JSONUtil.toJsonStr(failedReq)).execute().body();
+            log.error("反补下单结束, 平台用户:{}, 账号:{}, 期数:{}, 返回信息{}", username, failedAccount.getAccount(), drawNumber, result);
+            if (!JSONUtil.isTypeJSONArray(result)) {
+                log.error("反补下单失败, 平台用户:{}, 账号:{}, 期数:{}, 返回信息{}", username, failedAccount.getAccount(), drawNumber, result);
+                JSONObject failed = new JSONObject();
+                failed.putOpt("status", 1);
+                failed.putOpt("lottery", plan.getLottery());
+                failed.putOpt("drawNumber", drawNumber);
+                failed.putOpt("createTime", LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                failed.putOpt("account", failedAccount.getAccount());
+                failed.putOpt("message", "代理异常");
+                // 反补失败返回参数
+                redisson.getBucket(KeyUtil.genKey(
+                        RedisConstants.USER_BET_PERIOD_RES_PREFIX,
+                        DateUtil.format(DateUtil.date(), "yyyyMMdd"),
+                        plan.getLottery(),
+                        drawNumber,
+                        "failed",
+                        username,
+                        sucAccount.getAccount(),
+                        String.valueOf(plan.getId())
+                )).set(failed, Duration.ofHours(24));
+                return resultBol;
+            }
         } catch (Exception e) {
             Throwable cause = e.getCause(); // 获取原始异常原因
             if (cause instanceof UnknownHostException) {
@@ -1681,7 +1716,6 @@ public class FalaliApi {
             int status = resultJson.getInt("status");
             if (status == 0) {
                 log.info("反补下单成功, 平台用户:{}, 失败账号:{}, 对冲账号:{}, 期数:{}", username, failedAccount.getAccount(), sucAccount.getAccount(), drawNumber);
-
                 // 反补成功返回参数
                 redisson.getBucket(KeyUtil.genKey(
                         RedisConstants.USER_BET_PERIOD_RES_PREFIX,
