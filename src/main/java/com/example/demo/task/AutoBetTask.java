@@ -37,6 +37,15 @@ public class AutoBetTask {
     @Scheduled(fixedDelay = 10000)
     public void bet() {
         long startTime = System.currentTimeMillis();
+
+        // 获取当前小时
+        int currentHour = java.time.LocalTime.now().getHour();
+        // 如果当前时间在 6 点到 7 点之间，跳过执行
+        if (currentHour == 6) {
+            log.info("当前时间在 6 点到 7 点之间，跳过本次执行...");
+            return;
+        }
+
         if (isRunning) {
             log.info("上一轮任务还在执行，跳过...");
             return;
@@ -44,7 +53,7 @@ public class AutoBetTask {
         isRunning = true;
         try {
             log.info("开始执行 自动下注...");
-            falaliApi.autoBet();
+            falaliApi.autoBetCompletableFuture();
         } catch (Exception e) {
             log.error("autoBet 执行异常", e);
         } finally {
