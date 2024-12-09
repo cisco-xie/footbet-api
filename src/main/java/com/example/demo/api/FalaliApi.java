@@ -139,33 +139,39 @@ public class FalaliApi {
                 return result;
 
             } catch (Exception e) {
-                Throwable cause = e.getCause();
-                if (cause instanceof UnknownHostException) {
-                    log.error("代理请求失败：主机未知。可能是域名解析失败或代理地址有误。异常信息：{}", e.getMessage(), e);
-                } else if (cause instanceof ConnectException) {
-                    log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
-                } else if (cause instanceof SocketTimeoutException) {
-                    log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
-                } else if (cause instanceof IOException) {
-                    log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
-                } else {
-                    log.error("代理请求失败：未知异常。异常信息：{}", e.getMessage(), e);
-                }
 
+                // 等待一段时间再重试
+                log.warn("验证码第{}次尝试失败，等待{}毫秒后重试。异常信息：{}", attempt, retryDelay, e.getMessage());
                 // 如果达到最大重试次数，抛出异常
                 if (attempt == maxRetries) {
                     log.error("验证码达到最大重试次数，抛出异常");
                     throw new BusinessException(SystemError.USER_1009, userConfig.getAccount(), e);
                 }
 
-                // 等待一段时间再重试
-                log.warn("验证码第{}次尝试失败，等待{}毫秒后重试。异常信息：{}", attempt, retryDelay, e.getMessage());
-                try {
-                    Thread.sleep(retryDelay);
-                } catch (InterruptedException interruptedException) {
-                    Thread.currentThread().interrupt();
-                    log.error("线程中断", interruptedException);
+                Throwable cause = e.getCause();
+                if (cause instanceof UnknownHostException) {
+                    log.error("代理请求失败：主机未知。可能是域名解析失败或代理地址有误。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "代理请求失败");
+                } else if (cause instanceof ConnectException) {
+                    log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接异常");
+                } else if (cause instanceof SocketTimeoutException) {
+                    log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接超时");
+                } else if (cause instanceof IOException) {
+                    log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "IO异常");
+                } else {
+                    log.error("代理请求失败：未知异常。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "未知异常");
                 }
+
+                // try {
+                //    Thread.sleep(retryDelay);
+                //} catch (InterruptedException interruptedException) {
+                //    Thread.currentThread().interrupt();
+                //    log.error("线程中断", interruptedException);
+                //}
             } finally {
                 // 删除临时文件
                 try {
@@ -383,19 +389,14 @@ public class FalaliApi {
             Throwable cause = e.getCause();
             if (cause instanceof UnknownHostException) {
                 log.error("代理请求失败：主机未知。可能是域名解析失败或代理服务器地址有误。异常信息：{}", e.getMessage(), e);
-                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
             } else if (cause instanceof ConnectException) {
                 log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
-                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接异常");
             } else if (cause instanceof SocketTimeoutException) {
                 log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
-                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
             } else if (cause instanceof IOException) {
                 log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
-                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "IO异常");
             } else {
                 log.error("代理请求失败：未知异常。请检查代理配置和网络状态。异常信息：{}", e.getMessage(), e);
-                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "未知异常");
             }
         }
         log.error("修改初始密码-盘口账号:{} 旧密码:{} 新密码:{} 修改失败", userConfigs.get(0).getAccount(), oldPassword, password);
@@ -972,6 +973,9 @@ public class FalaliApi {
         return closeTime - userConfigCloseTime - currentTime;
     }
 
+    /**
+     * 自动下注
+     */
     public void autoBet() {
         // 匹配所有平台用户的 Redis Key
         String pattern = KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, "*");
@@ -1054,9 +1058,18 @@ public class FalaliApi {
                             // 对于每个配置计划，你可以根据需求设置优先级
                             int priority = 1; // 最高优先级
                              Runnable task = () -> {
-                                // 获取最新期数
-                                String period = period(username, tokenVaildConfigs.get(0).getId(), plan.getLottery());
-                                if (StringUtils.isBlank(period)) return; // 如果期数为空，跳过
+                                 String period = null;
+                                 try {
+                                     // 获取最新期数
+                                     period = period(username, tokenVaildConfigs.get(0).getId(), plan.getLottery());
+                                     if (StringUtils.isBlank(period)) {
+                                         log.info("平台用户:{},方案:{},游戏:{},获取期数失败", username, plan.getName(), plan.getLottery());
+                                         return;
+                                     }
+                                 } catch (Exception e) {
+                                     log.info("平台用户:{},方案:{},游戏:{},获取期数失败", username, plan.getName(), plan.getLottery());
+                                     return;
+                                 }
                                 JSONObject periodJson = JSONUtil.parseObj(period);
                                 String drawNumber = periodJson.getStr("drawNumber");
 
@@ -1484,7 +1497,7 @@ public class FalaliApi {
         try {
             result = request.body(JSONUtil.toJsonStr(order)).execute().body();
             log.error("下单结束, 平台用户:{}, 账号:{}, 期数:{}, 返回信息{}", username, userConfig.getAccount(), drawNumber, result);
-            if (!JSONUtil.isTypeJSONArray(result)) {
+            if (!JSONUtil.isTypeJSONObject(result)) {
                 log.error("下单失败, 平台用户:{}, 账号:{}, 期数:{}, 返回信息{}", username, userConfig.getAccount(), drawNumber, result);
                 JSONObject failed = new JSONObject();
                 failed.putOpt("status", 1);
@@ -1666,7 +1679,7 @@ public class FalaliApi {
         try {
             result = request.body(JSONUtil.toJsonStr(failedReq)).execute().body();
             log.error("反补下单结束, 平台用户:{}, 账号:{}, 期数:{}, 返回信息{}", username, failedAccount.getAccount(), drawNumber, result);
-            if (!JSONUtil.isTypeJSONArray(result)) {
+            if (!JSONUtil.isTypeJSONObject(result)) {
                 log.error("反补下单失败, 平台用户:{}, 账号:{}, 期数:{}, 返回信息{}", username, failedAccount.getAccount(), drawNumber, result);
                 JSONObject failed = new JSONObject();
                 failed.putOpt("status", 1);
