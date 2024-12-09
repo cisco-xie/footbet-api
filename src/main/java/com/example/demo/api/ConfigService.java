@@ -121,6 +121,12 @@ public class ConfigService {
     public void plan(String username, ConfigPlanVO plan) {
         String key = null;
         if (BeanUtil.isNotEmpty(plan)) {
+            if (CollUtil.isEmpty(plan.getPositions())
+                    && CollUtil.isEmpty(plan.getTwoSidedDxPositions())
+                    && CollUtil.isEmpty(plan.getTwoSidedDsPositions())
+                    && CollUtil.isEmpty(plan.getTwoSidedLhPositions())) {
+                throw new BusinessException(SystemError.USER_1013);
+            }
             // 设置自增 ID 的 Redis key
             String idKey = KeyUtil.genKey(RedisConstants.USER_PLAN_ID_PREFIX, username);
             ConfigPlanVO configPlan = new ConfigPlanVO();
