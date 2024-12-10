@@ -25,6 +25,32 @@ public class PriorityTaskExecutor {
         }
     }
 
+    // 任务包装类，用来包装 CompletableFuture 和优先级
+    public static class CompletableFutureTask<T> implements Runnable, Comparable<CompletableFutureTask<T>> {
+        private final CompletableFuture<T> completableFuture;
+        private final int priority;
+
+        public CompletableFutureTask(CompletableFuture<T> completableFuture, int priority) {
+            this.completableFuture = completableFuture;
+            this.priority = priority;
+        }
+
+        @Override
+        public void run() {
+            completableFuture.join();  // 等待CompletableFuture执行完成
+        }
+
+        @Override
+        public int compareTo(CompletableFutureTask<T> o) {
+            // 按优先级进行排序
+            return Integer.compare(this.priority, o.priority);
+        }
+
+        public CompletableFuture<T> getCompletableFuture() {
+            return completableFuture;
+        }
+    }
+
     // 使用优先级队列的线程池
     public static ExecutorService createPriorityThreadPool(int poolSize) {
         // 创建带优先级队列的线程池

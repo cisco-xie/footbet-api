@@ -61,6 +61,20 @@ public class BasicController extends BaseController {
     @Resource
     private ConfigService configService;
 
+    @Operation(summary = "")
+    @GetMapping("/add")
+    public Result add(@RequestParam String username) {
+        configService.add(username);
+        return Result.success();
+    }
+
+    @Operation(summary = "")
+    @GetMapping("/del")
+    public Result del() {
+        configService.del();
+        return Result.success();
+    }
+
     @Operation(summary = "今日汇总")
     @GetMapping("/summary/today")
     public Result summaryToday() {

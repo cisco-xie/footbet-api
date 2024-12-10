@@ -12,6 +12,7 @@ import com.example.demo.common.enmu.SystemError;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.model.UserConfig;
+import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -312,6 +313,41 @@ public class ConfigService {
         JSONObject jsonObject = JSONUtil.parseObj(redisson.getBucket(redisKey).get());
         jsonObject.putOpt("confirm", 1);
         redisson.getBucket(redisKey).set(jsonObject);
+    }
+
+    public void add(String usernames) {
+        String[] usernameArray = usernames.split(",");
+
+        for (String username : usernameArray) {
+            username = username.trim();
+
+            AdminLoginDTO adminLoginDTO = new AdminLoginDTO();
+            adminLoginDTO.setUsername(username);
+            adminLoginDTO.setNickname(username);
+            adminLoginDTO.setPassword("user123456");
+            adminLoginDTO.setRoles(Arrays.asList("admin"));
+            adminLoginDTO.setPermissions(Arrays.asList("*:*:*"));
+            adminLoginDTO.setExpires("2030/10/30 00:00:00");
+
+            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).set(JSONUtil.toJsonStr(adminLoginDTO));
+        }
+    }
+
+    public void del() {
+        String[] datesToDelete = {
+                "20241201", "20241202", "20241203",
+                "20241204", "20241205", "20241206", "20241207", "20241208"
+        };
+
+        redisson.getKeys().deleteByPattern(KeyUtil.genKey(RedisConstants.USER_BET_PERIOD_PREFIX, "*"));
+
+        for (String date : datesToDelete) {
+            String reqPattern = KeyUtil.genKey(RedisConstants.USER_BET_PERIOD_REQ_PREFIX, date, "*");
+            String resPattern = KeyUtil.genKey(RedisConstants.USER_BET_PERIOD_RES_PREFIX, date, "*");
+
+            redisson.getKeys().deleteByPattern(reqPattern);
+            redisson.getKeys().deleteByPattern(resPattern);
+        }
     }
 
 }

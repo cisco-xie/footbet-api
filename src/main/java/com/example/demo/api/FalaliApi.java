@@ -6,6 +6,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.date.LocalDateTimeUtil;
+import cn.hutool.core.date.TimeInterval;
 import cn.hutool.core.thread.ThreadUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.NumberUtil;
@@ -852,9 +853,35 @@ public class FalaliApi {
         headers.put("sec-fetch-site", "same-origin");
         headers.put("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
         headers.put("x-requested-with", "XMLHttpRequest");
-        String result = HttpRequest.get(url)
-                .addHeaders(headers)
-                .execute().body();
+
+        // 发送 HTTP 请求
+        String result = null;
+        try {
+            HttpRequest request = HttpRequest.get(url)
+                    .addHeaders(headers);
+            // 引入配置代理
+            configureProxy(request, userConfigs.get(0));
+            // 执行请求
+            result = request.execute().body();
+        } catch (Exception e) {
+            Throwable cause = e.getCause(); // 获取原始异常原因
+            if (cause instanceof UnknownHostException) {
+                log.error("代理请求失败：主机未知。可能是域名解析失败或代理地址有误。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "代理请求失败");
+            } else if (cause instanceof ConnectException) {
+                log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接异常");
+            } else if (cause instanceof SocketTimeoutException) {
+                log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
+            } else if (cause instanceof IOException) {
+                log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "IO异常");
+            } else {
+                log.error("代理请求失败：未知异常。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "未知异常");
+            }
+        }
         if (result.isBlank()) {
             throw new BusinessException(SystemError.USER_1001);
         }
@@ -892,7 +919,6 @@ public class FalaliApi {
         headers.put("sec-fetch-site", "same-origin");
         headers.put("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
         headers.put("x-requested-with", "XMLHttpRequest");
-
 
         // 设置代理和认证
         HttpRequest request = HttpRequest.get(url)
@@ -1332,6 +1358,7 @@ public class FalaliApi {
     }
 
     public void autoBetCompletableFuture() {
+        TimeInterval timerTotal = DateUtil.timer();
         // 匹配所有平台用户的 Redis Key
         String pattern = KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, "*");
 
@@ -1352,24 +1379,25 @@ public class FalaliApi {
 
         // 基于任务总量和 CPU 核数动态调整线程池大小
         int cpuCoreCount = Runtime.getRuntime().availableProcessors();
-        int threadPoolSize = Math.min(totalTasks, Math.max(cpuCoreCount * 2, 100));
-        log.info("自动投注 cpu核数: {}，配置线程池大小: {}", cpuCoreCount, threadPoolSize);
+        int threadPoolUserSize = Math.min(keysCount, cpuCoreCount * 2);
+        int threadPoolPlanSize = Math.min(totalTasks, Math.max(cpuCoreCount * 2, 100));
+        log.info("自动投注 cpu核数: {},平台用户线程池大小: {},用户方案线程池大小: {}", cpuCoreCount, threadPoolUserSize, threadPoolPlanSize);
         // 初始化线程池（动态线程池，避免任务阻塞）
-        ExecutorService executorService = PriorityTaskExecutor.createPriorityThreadPool(threadPoolSize);
+        ExecutorService executorUserService = Executors.newFixedThreadPool(threadPoolUserSize);
+        ExecutorService executorPlanService = Executors.newFixedThreadPool(threadPoolPlanSize);
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         // 对每个平台用户的操作并行化
-        // List<Callable<Void>> tasks = new ArrayList<>();
         for (String key : keysList) {
+            TimeInterval timerFutures = DateUtil.timer();
+            // 使用 Redisson 获取每个平台用户的数据
+            String json = (String) redisson.getBucket(key).get();
+            // 解析 JSON 为 AdminLoginDTO 对象
+            AdminLoginDTO admin = JSONUtil.toBean(json, AdminLoginDTO.class);
+            String username = admin.getUsername();
             CompletableFuture<Void> future = CompletableFuture.supplyAsync(() -> {
                 AtomicInteger successUserCount = new AtomicInteger();
                 AtomicInteger failureUserCount = new AtomicInteger();
                 AtomicInteger reverseUserCount = new AtomicInteger();
-
-                // 使用 Redisson 获取每个平台用户的数据
-                String json = (String) redisson.getBucket(key).get();
-                // 解析 JSON 为 AdminLoginDTO 对象
-                AdminLoginDTO admin = JSONUtil.toBean(json, AdminLoginDTO.class);
-                String username = admin.getUsername();
                 if (json != null) {
                     // 获取所有配置计划
                     List<ConfigPlanVO> configs = configService.getAllPlans(username, null);
@@ -1396,11 +1424,10 @@ public class FalaliApi {
                         log.info("当前平台用户:{}不存在有效盘口账号，直接跳过", username);
                         return null;
                     }
-                    // 对每个配置计划列表进行并行化
-                    List<Callable<Void>> planTasks = new ArrayList<>();
                     // 对每个配置计划进行异步处理
                     List<CompletableFuture<Void>> planFutures = new ArrayList<>();
                     for (ConfigPlanVO plan : enabledUserConfigs) {
+                        TimeInterval timer = DateUtil.timer();
                         planFutures.add(CompletableFuture.runAsync(() -> {
                             // 对于每个配置计划，你可以根据需求设置优先级
                             String period = null;
@@ -1442,13 +1469,14 @@ public class FalaliApi {
                                     username,
                                     String.valueOf(plan.getId())
                             ));
-                            log.info("平台用户:{},游戏:{},期数:{},方案:{},正在尝试加锁", username, plan.getLottery(), drawNumber, plan.getName());
+                            log.info("平台用户:{},游戏:{},期数:{},方案:{},正在尝试获取锁", username, plan.getLottery(), drawNumber, plan.getName());
                             // 尝试加锁，设置加锁超时时间为10秒
                             boolean isLocked = false; // 5秒内尝试获取锁，持锁60秒
                             try {
                                 isLocked = lock.tryLock(5, 60, TimeUnit.SECONDS);
+                                log.info("平台用户:{},游戏:{},期数:{},方案:{},获取锁成功,锁状态:{}", username, plan.getLottery(), drawNumber, plan.getName(), isLocked);
                             } catch (InterruptedException e) {
-                                log.info("平台用户:{},游戏:{},期数:{},方案:{},尝试获取锁失败", username, plan.getLottery(), drawNumber, plan.getName());
+                                log.info("平台用户:{},游戏:{},期数:{},方案:{},获取锁失败", username, plan.getLottery(), drawNumber, plan.getName());
                             }
                             if (!isLocked) {
                                 log.info("平台用户:{},游戏:{},期数:{},方案:{},当前期数正在执行", username, plan.getLottery(), drawNumber, plan.getName());
@@ -1574,12 +1602,6 @@ public class FalaliApi {
 
                                     String betTypeStr = userConfig.getBetType() == 1 ? "positive" : "reverse";
 
-//                                    if (amountJson.isEmpty()) {
-//                                        log.warn("分配金额失败,平台用户:{},跳过账户: {}", username, userConfig.getAccount());
-//                                        failedAccounts.add(userConfig);
-//                                        continue;
-//                                    }
-
                                     // 计算延迟时间
                                     long delay = calculateRemainingTime(closeTime, userConfig.getCloseTime());
                                     delay = Math.max(delay, 0); // 确保延迟时间非负数
@@ -1618,7 +1640,8 @@ public class FalaliApi {
                                 //    lock.unlock();
                                 //}
                             }
-                        }, executorService));
+                        }, executorPlanService));
+                        log.info("平台用户:{}, 游戏:{},方案:{},花费:{}毫秒", username, plan.getLottery(), plan.getName(), timer.interval());
                     }
                     // 等待所有配置计划任务完成
                     CompletableFuture<Void> allPlans = CompletableFuture.allOf(planFutures.toArray(new CompletableFuture[0]));
@@ -1630,29 +1653,39 @@ public class FalaliApi {
                 }
                 log.info("批量下注完成,平台用户:{}, 成功次数: {}, 失败次数: {}, 反补次数: {}", username, successUserCount.get(), failureUserCount.get(), reverseUserCount.get());
                 return null;
-            }, executorService);
+            }, executorUserService);
             futures.add(future);
+            log.info("平台用户:{}, 花费:{}毫秒", username, timerFutures.interval());
         }
         // 等待所有平台用户的任务完成
         CompletableFuture<Void> allTasks = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
         try {
-            allTasks.get(); // 等待所有任务完成
+            allTasks.get(60, TimeUnit.SECONDS); // 等待所有任务完成，设置 60 秒超时
         } catch (Exception e) {
             log.error("执行任务时出现异常", e);
         }
 
-        executorService.shutdown(); // 执行完所有任务后关闭线程池
+        // 执行完所有任务后关闭线程池
+        executorPlanService.shutdown();
+        executorUserService.shutdown();
         try {
-            if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
-                executorService.shutdownNow(); // 如果60秒后任务还没有完成，强制关闭线程池
+            // 如果60秒后任务还没有完成，强制关闭线程池
+            if (!executorUserService.awaitTermination(60, TimeUnit.SECONDS)) {
+                log.error("平台用户线程超时,强制关闭线程池");
+                executorUserService.shutdownNow();
+            }
+            if (!executorPlanService.awaitTermination(60, TimeUnit.SECONDS)) {
+                log.error("用户方案线程超时,强制关闭线程池");
+                executorPlanService.shutdownNow();
             }
         } catch (InterruptedException e) {
-            executorService.shutdownNow(); // 如果当前线程被中断，强制关闭线程池
+            executorUserService.shutdownNow(); // 如果当前线程被中断，强制关闭线程池
+            executorPlanService.shutdownNow(); // 如果当前线程被中断，强制关闭线程池
             Thread.currentThread().interrupt(); // 保持中断状态
         }
 
         // 打印批量登录的成功和失败次数
-        log.info("当前任务批量下注完成，成功次数: {}, 失败次数: {}, 反补次数: {}", successCount.get(), failureCount.get(), reverseCount.get());
+        log.info("当前任务批量下注完成，成功次数: {}, 失败次数: {}, 反补次数: {}, 总花费:{}毫秒", successCount.get(), failureCount.get(), reverseCount.get(), timerTotal.interval());
     }
 
     /**
@@ -1968,7 +2001,7 @@ public class FalaliApi {
             redisson.getBucket(KeyUtil.genKey(
                     RedisConstants.USER_BET_AUTO_PREFIX,
                     username
-            )).set(false);
+            )).set(false, Duration.ofHours(24));
             // 保险起见-再把当前平台用户下的账号全部下线
             // batchLoginOut(username);
             // 把当前平台用户下的所有方案停用
@@ -2739,10 +2772,13 @@ public class FalaliApi {
         // 发送 HTTP 请求
         String result = null;
         try {
-            result = HttpRequest.get(url)
-                    .addHeaders(headers)
-                    .execute()
-                    .body();
+            HttpRequest request = HttpRequest.get(url)
+                    .addHeaders(headers);
+            // 引入配置代理
+            configureProxy(request, userConfigs.get(0));
+
+            // 执行请求
+            result = request.execute().body();
         } catch (Exception e) {
             Throwable cause = e.getCause(); // 获取原始异常原因
             if (cause instanceof UnknownHostException) {
@@ -2865,9 +2901,35 @@ public class FalaliApi {
         headers.put("cookie", "defaultSetting=5%2C10%2C20%2C50%2C100%2C200%2C500%2C1000; settingChecked=0; page=lm; index=; index2=; defaultLT="+lottery+"; token=" + token);
         headers.put("priority", "u=1, i");
         headers.put("x-requested-with", "XMLHttpRequest");
-        String result = HttpRequest.get(url)
-                .addHeaders(headers)
-                .execute().body();
+        // 发送 HTTP 请求
+        String result = null;
+        try {
+            HttpRequest request = HttpRequest.get(url)
+                    .addHeaders(headers);
+            // 引入配置代理
+            configureProxy(request, userConfigs.get(0));
+
+            // 执行请求
+            result = request.execute().body();
+        } catch (Exception e) {
+            Throwable cause = e.getCause(); // 获取原始异常原因
+            if (cause instanceof UnknownHostException) {
+                log.error("代理请求失败：主机未知。可能是域名解析失败或代理地址有误。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "代理请求失败");
+            } else if (cause instanceof ConnectException) {
+                log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接异常");
+            } else if (cause instanceof SocketTimeoutException) {
+                log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
+            } else if (cause instanceof IOException) {
+                log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "IO异常");
+            } else {
+                log.error("代理请求失败：未知异常。异常信息：{}", e.getMessage(), e);
+                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "未知异常");
+            }
+        }
         // 解析 HTML
         Document doc = Jsoup.parse(result);
         JSONObject resultJson = new JSONObject();
