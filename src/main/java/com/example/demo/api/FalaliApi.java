@@ -92,8 +92,8 @@ public class FalaliApi {
         headers.put("upgrade-insecure-requests", "1");
         headers.put("Cookie", "2a29530a2306="+uuid);
 
-//        String fileName = "d://code-" + uuid + ".jpg";
-        String fileName = "/usr/local/resources/projects/falali/code-" + uuid + ".jpg";
+        String fileName = "d://code-" + uuid + ".jpg";
+//        String fileName = "/usr/local/resources/projects/falali/code-" + uuid + ".jpg";
         // 最大重试次数
         int maxRetries = 6;
         // 重试间隔（毫秒）
@@ -128,12 +128,12 @@ public class FalaliApi {
                 }
 
                 // 设置动态库路径
-                System.setProperty("jna.library.path", "/lib/x86_64-linux-gnu");
+//                System.setProperty("jna.library.path", "/lib/x86_64-linux-gnu");
 
                 // OCR 处理
                 Tesseract tesseract = new Tesseract();
-//                tesseract.setDatapath("D://tessdata");
-                tesseract.setDatapath("/usr/local/resources/projects/falali/tessdata");
+                tesseract.setDatapath("D://tessdata");
+//                tesseract.setDatapath("/usr/local/resources/projects/falali/tessdata");
                 tesseract.setLanguage("eng");
                 String result = tesseract.doOCR(image).trim();
                 log.info("验证码解析结果: {}", result);
@@ -1533,13 +1533,41 @@ public class FalaliApi {
                             List<Integer> twoSidedDsPositions = plan.getTwoSidedDsPositions();
                             // 获取龙虎
                             List<Integer> twoSidedLhPositions = plan.getTwoSidedLhPositions();
-                            for (int pos : positions) {
-                                String jsonkey = "B" + pos;
-                                List<String> matchedKeys = oddsJson.keySet().stream()
-                                        .filter(matchedKey -> matchedKey.contains(jsonkey + "_"))
-                                        .collect(Collectors.toList());
-                                Map<String, List<String>> oddKeys = getOdds(matchedKeys, plan.getPositiveNum());
-                                oddsMap.put(pos, oddKeys);
+
+                            int positiveNum = plan.getPositiveNum();
+                            // 随机方案 -- 随机获取正投数量和反投数量 随机选择单面还是双面进行下注
+                            if (null != plan.getPlanType() && plan.getPlanType() == 2) {
+                                positiveNum = RandomUtil.randomInt(1, 9);
+                                if (RandomUtil.randomBoolean()) {
+                                    // 获取单号
+                                    positions = plan.getPositions();
+                                    // 获取大小
+                                    twoSidedDxPositions = null;
+                                    // 获取单双
+                                    twoSidedDsPositions = null;
+                                    // 获取龙虎
+                                    twoSidedLhPositions = null;
+                                } else {
+                                    // 获取单号
+                                    positions = null;
+                                    // 随机获取大小的位置
+                                    twoSidedDxPositions = RandomUtil.randomEleList(plan.getTwoSidedDxPositions(), RandomUtil.randomInt(1,10));
+                                    // 随机获取单双的位置
+                                    twoSidedDsPositions = RandomUtil.randomEleList(plan.getTwoSidedDsPositions(), RandomUtil.randomInt(1,10));
+                                    // 随机获取龙虎的位置
+                                    twoSidedLhPositions = RandomUtil.randomEleList(plan.getTwoSidedLhPositions(), RandomUtil.randomInt(1,5));
+                                }
+                            }
+
+                            if (null != positions) {
+                                for (int pos : positions) {
+                                    String jsonkey = "B" + pos;
+                                    List<String> matchedKeys = oddsJson.keySet().stream()
+                                            .filter(matchedKey -> matchedKey.contains(jsonkey + "_"))
+                                            .collect(Collectors.toList());
+                                    Map<String, List<String>> oddKeys = getOdds(matchedKeys, positiveNum);
+                                    oddsMap.put(pos, oddKeys);
+                                }
                             }
                             if (null != twoSidedDxPositions) {
                                 for (int pos : twoSidedDxPositions) {

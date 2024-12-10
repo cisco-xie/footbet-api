@@ -15,6 +15,8 @@ public class ConfigPlanVO {
     @NotBlank(message = "游戏类型不能为空")
     @Schema(description = "游戏类型")
     private String lottery;
+    @Schema(description = "方案类型（1自定义2随机）")
+    private Integer planType;
     @NotBlank(message = "方案名不能为空")
     @Schema(description = "方案名")
     private String name;
