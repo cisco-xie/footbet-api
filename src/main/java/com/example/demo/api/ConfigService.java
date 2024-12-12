@@ -115,6 +115,25 @@ public class ConfigService {
         return userList;
     }
 
+    public void plan(String username, Integer enable) {
+        // 设置自增 ID 的 Redis key
+        String pattern = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, "*");
+        // 使用通配符获取所有匹配的键
+        Iterable<String> keys = redisson.getKeys().getKeysByPattern(pattern);
+
+        for (String key : keys) {
+            // 根据键值获取数据
+            String configJson = (String) redisson.getBucket(key).get();
+            if (configJson != null) {
+                // 将 JSON 转换为对象
+                ConfigPlanVO configPlan = JSONUtil.toBean(configJson, ConfigPlanVO.class);
+                configPlan.setEnable(enable);
+                // 将更新后的列表保存回 Redis
+                redisson.getBucket(key).set(JSONUtil.toJsonStr(configPlan));
+            }
+        }
+    }
+
     /**
      * 设置账号方案
      * @param plan
@@ -226,6 +245,9 @@ public class ConfigService {
                 msg.putOpt("lottery", jsonObject.getStr("lottery"));
                 msg.putOpt("drawNumber", jsonObject.getStr("drawNumber"));
                 msg.putOpt("createTime", jsonObject.getStr("createTime"));
+                msg.putOpt("isRepair", jsonObject.getInt("isRepair"));
+                msg.putOpt("repair", jsonObject.getInt("repair"));
+                msg.putOpt("repairAccount", jsonObject.getStr("repairAccount"));
                 result.add(msg);
             }
         });

@@ -29,6 +29,10 @@ public class RedisConstants {
      */
     public static final String USER_BET_PERIOD_PREFIX = "user:bet:period";
     /**
+     * 期数赔率前缀 - 用于获取当前期数的赔率情况
+     */
+    public static final String USER_BET_ODDS_PREFIX = "user:bet:odds";
+    /**
      * 下注参数日志前缀 - 用于获取当前期数下注参数日志
      */
     public static final String USER_BET_PERIOD_REQ_PREFIX = "user:bet:req";

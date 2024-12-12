@@ -119,6 +119,21 @@ public class BasicController extends BaseController {
         return Result.success();
     }
 
+    @Operation(summary = "一键启用方案配置")
+    @GetMapping("/config/plan/enable")
+    public Result configPlanEnable() {
+        AdminLoginDTO admin = getUser();
+        configService.plan(admin.getUsername(), 1);
+        return Result.success();
+    }
+    @Operation(summary = "一键停用方案配置")
+    @GetMapping("/config/plan/unenable")
+    public Result configPlanUnenable() {
+        AdminLoginDTO admin = getUser();
+        configService.plan(admin.getUsername(), 0);
+        return Result.success();
+    }
+
     @Operation(summary = "方案配置")
     @PostMapping("/config/plan")
     @ResponseBody
