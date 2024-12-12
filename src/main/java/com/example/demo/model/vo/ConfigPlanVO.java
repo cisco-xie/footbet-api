@@ -37,6 +37,16 @@ public class ConfigPlanVO {
     @Size(max = 5, message = "龙虎最多只能包含5个位置")
     @Schema(description = "双面数组，龙虎")
     private List<Integer> twoSidedLhPositions;
+
+    @Schema(description = "号码位置数量")
+    private Integer positionsNum;
+    @Schema(description = "大小位置数量")
+    private Integer twoSidedDxNum;
+    @Schema(description = "单双位置数量")
+    private Integer twoSidedDsNum;
+    @Schema(description = "龙虎位置数量")
+    private Integer twoSidedLhNum;
+
     // 正投数量
     @NotNull(message = "正投数量不能为空")
     @Schema(description = "正投数量")

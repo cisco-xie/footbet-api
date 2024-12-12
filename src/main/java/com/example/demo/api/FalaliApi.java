@@ -674,13 +674,12 @@ public class FalaliApi {
             throw new BusinessException(SystemError.USER_1007);
         }
         log.info("获取盘口账号redis信息:{}", userConfigs.get(0));
-        String baseUrl = userConfigs.get(0).getBaseUrl();
-        String token = userConfigs.get(0).getToken();
-        String url = baseUrl + "member/accounts";
+        UserConfig userConfig = userConfigs.get(0);
+        String url = userConfig.getBaseUrl() + "member/accounts";
         Map<String, String> headers = new HashMap<>();
         headers.put("accept", "*/*");
         headers.put("accept-language", "zh-CN,zh;q=0.9");
-        headers.put("cookie", "defaultSetting=5%2C10%2C20%2C50%2C100%2C200%2C500%2C1000; settingChecked=0; index=; index2=; oid=3a9cad1bfcc69f05fd202bb3ddbc9df05b3bc062; defaultLT=PK10JSC; page=lm; token=" + token);
+        headers.put("cookie", "defaultSetting=5%2C10%2C20%2C50%2C100%2C200%2C500%2C1000; settingChecked=0; index=; index2=; oid=3a9cad1bfcc69f05fd202bb3ddbc9df05b3bc062; defaultLT=PK10JSC; page=lm; token=" + userConfig.getToken());
         headers.put("priority", "u=1, i");
         headers.put("sec-ch-ua-mobile", "?0");
         headers.put("sec-ch-ua-platform", "\"Windows\"");
@@ -694,7 +693,7 @@ public class FalaliApi {
         HttpRequest request = HttpRequest.get(url)
                 .addHeaders(headers);
         // 动态设置代理类型
-        configureProxy(request, userConfigs.get(0));
+        configureProxy(request, userConfig);
 
         String result = "";
         try {
@@ -705,22 +704,22 @@ public class FalaliApi {
             Throwable cause = e.getCause();
             if (cause instanceof UnknownHostException) {
                 log.error("代理请求失败：主机未知。可能是域名解析失败或代理服务器地址有误。异常信息：{}", e.getMessage(), e);
-                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
+                throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接超时");
             } else if (cause instanceof ConnectException) {
                 log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
-                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接异常");
+                throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接异常");
             } else if (cause instanceof SocketTimeoutException) {
                 log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
-                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "连接超时");
+                throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接超时");
             } else if (cause instanceof IOException) {
                 log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
-                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "IO异常");
+                throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "IO异常");
             } else {
                 log.error("代理请求失败：未知异常。请检查代理配置和网络状态。异常信息：{}", e.getMessage(), e);
-                throw new BusinessException(SystemError.SYS_419, userConfigs.get(0).getAccount(), "未知异常");
+                throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "未知异常");
             }
         }
-        log.info("获取盘口账号{},接口返回信息:{}", userConfigs.get(0).getAccount(), result);
+        log.info("获取盘口账号{},接口返回信息:{}", userConfig.getAccount(), result);
         JSONArray jsonArray = new JSONArray();
         if (StringUtils.isNotBlank(result) && JSONUtil.isTypeJSONArray(result)) {
             jsonArray = JSONUtil.parseArray(result);
@@ -729,28 +728,52 @@ public class FalaliApi {
 
                 // 同步一下余额信息
                 if (object.getLong("balance") > 0) {
-                    userConfigs.get(0).setBalance(object.getBigDecimal("balance"));
-                    userConfigs.get(0).setBetting(object.getBigDecimal("betting"));
+                    userConfig.setBalance(object.getBigDecimal("balance"));
+                    userConfig.setBetting(object.getBigDecimal("betting"));
 
                     if (0 == object.getInt("type")) {
-                        userConfigs.get(0).setAccountType("A");
+                        userConfig.setAccountType("A");
                     } else if (1 == object.getInt("type")) {
-                        userConfigs.get(0).setAccountType("B");
+                        userConfig.setAccountType("B");
                     } else if (2 == object.getInt("type")) {
-                        userConfigs.get(0).setAccountType("C");
+                        userConfig.setAccountType("C");
                     } else if (3 == object.getInt("type")) {
-                        userConfigs.get(0).setAccountType("D");
+                        userConfig.setAccountType("D");
                     }
-                    userConfigs.get(0).setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-                    redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfigs.get(0)));
+                    userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                    redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
                 }
 
                 // 添加新字段
-                object.putOpt("account", userConfigs.get(0).getAccount());
+                object.putOpt("account", userConfig.getAccount());
                 // 替换回原数组
                 jsonArray.set(i, object);
             }
         }
+
+        // 获取账号今日流水
+        JSONObject settled = JSONUtil.parseObj(settled(username, id, true, 1, true));
+        JSONArray list = settled.getJSONArray("list");
+        if (list != null && !list.isEmpty()) {
+            // 只处理符合条件的流水数据
+            list.forEach(object -> {
+                // 获取每条流水的详细信息
+                JSONObject jsonObject = JSONUtil.parseObj(object);
+
+                // 先检查必要的字段是否存在
+                if (jsonObject.containsKey("account") && jsonObject.containsKey("totalAmount")) {
+                    // 更新 userConfig 对象
+                    userConfig.setAmount(jsonObject.getBigDecimal("totalAmount"));
+                    userConfig.setResult(jsonObject.getBigDecimal("totalResult"));
+                    userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+
+                    // 更新 Redis 缓存
+                    String cacheKey = KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id);
+                    redisson.getBucket(cacheKey).set(JSONUtil.toJsonStr(userConfig));
+                }
+            });
+        }
+
         return jsonArray;
     }
 
@@ -1554,6 +1577,7 @@ public class FalaliApi {
                             int positiveNum = plan.getPositiveNum();
                             // 随机方案 -- 随机获取正投数量和反投数量 随机选择单面还是双面进行下注
                             if (null != plan.getPlanType() && plan.getPlanType() == 2) {
+                                // 完全随机方案
                                 positiveNum = RandomUtil.randomInt(1, 9);
                                 if (RandomUtil.randomBoolean()) {
                                     // 获取单号
@@ -1574,6 +1598,17 @@ public class FalaliApi {
                                     // 随机获取龙虎的位置
                                     twoSidedLhPositions = RandomUtil.randomEleList(plan.getTwoSidedLhPositions(), RandomUtil.randomInt(1,5));
                                 }
+                            } else if (null != plan.getPlanType() && plan.getPlanType() == 3) {
+                                // 指定位置数量随机方案
+                                positiveNum = RandomUtil.randomInt(1, 9);
+                                // 获取单号
+                                positions = RandomUtil.randomEleList(plan.getPositions(), plan.getPositionsNum());
+                                // 随机获取大小的位置
+                                twoSidedDxPositions = RandomUtil.randomEleList(plan.getTwoSidedDxPositions(), plan.getTwoSidedDxNum());
+                                // 随机获取单双的位置
+                                twoSidedDsPositions = RandomUtil.randomEleList(plan.getTwoSidedDsPositions(), plan.getTwoSidedDsNum());
+                                // 随机获取龙虎的位置
+                                twoSidedLhPositions = RandomUtil.randomEleList(plan.getTwoSidedLhPositions(), plan.getTwoSidedLhNum());
                             }
 
                             if (null != positions) {
@@ -1913,7 +1948,7 @@ public class FalaliApi {
      * @return
      */
     private String submitOrder(String username, OrderVO order, UserConfig userConfig, ConfigPlanVO plan, String drawNumber, List<UserConfig> successAccounts, List<UserConfig> failedAccounts, AtomicInteger successCount,AtomicInteger failureCount) {
-        log.info("发起下单, 平台用户:{}, 账号:{}, 期数:{}, 方案:{}", username, userConfig.getAccount(), drawNumber, plan.getName());
+        log.info("发起下单, 平台用户:{}, 账号:{}, 账号token:{}, 期数:{}, 方案:{}, 订单:{}", username, userConfig.getAccount(), userConfig.getToken(), drawNumber, plan.getName(), order);
         String url = userConfig.getBaseUrl() + "member/bet";
         Map<String, String> headers = new HashMap<>();
         headers.put("accept", "*/*");
@@ -1926,7 +1961,7 @@ public class FalaliApi {
         headers.put("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
         headers.put("x-requested-with", "XMLHttpRequest");
 
-        HttpRequest request = HttpRequest.post(url).addHeaders(headers).timeout(5000);
+        HttpRequest request = HttpRequest.post(url).addHeaders(headers).timeout(10000);
         configureProxy(request, userConfig);
 
         // 记录订单请求
@@ -1942,9 +1977,9 @@ public class FalaliApi {
         String result = null;
         try {
             result = request.body(JSONUtil.toJsonStr(order)).execute().body();
-            log.info("下单结束, 平台用户:{}, 账号:{}, 期数:{}, 返回信息{}", username, userConfig.getAccount(), drawNumber, result);
+            log.info("下单结束, 平台用户:{}, 账号:{}, 期数:{}, 方案:{}, 返回信息{}", username, userConfig.getAccount(), drawNumber, plan.getName(), result);
             if (!JSONUtil.isTypeJSONObject(result)) {
-                log.error("下单失败, 平台用户:{}, 账号:{}, 期数:{}, 返回信息{}", username, userConfig.getAccount(), drawNumber, result);
+                log.error("下单失败, 平台用户:{}, 账号:{}, 期数:{}, 方案:{}, 返回信息{}", username, userConfig.getAccount(), drawNumber, plan.getName(), result);
                 JSONObject failed = new JSONObject();
                 failed.putOpt("status", 1);
                 failed.putOpt("lottery", plan.getLottery());
@@ -2097,7 +2132,7 @@ public class FalaliApi {
     }
 
     private boolean handleReverseBet(String username, UserConfig failedAccount, UserConfig sucAccount, String failedReq, ConfigPlanVO plan, String drawNumber, AtomicInteger reverseCount, AtomicInteger reverseUserCount) {
-        log.info("发起补单, 平台用户:{}, 账号:{}, 期数:{}, 方案:{}", username, failedAccount.getAccount(), drawNumber, plan.getName());
+        log.info("发起补单, 平台用户:{}, 账号:{}, 账号token:{}, 期数:{}, 方案:{}, 补单参数:{}", username, failedAccount.getAccount(), failedAccount.getToken(), drawNumber, plan.getName(), failedReq);
         // 提交反补订单
         String url = sucAccount.getBaseUrl() + "member/bet";
         Map<String, String> headers = new HashMap<>();
