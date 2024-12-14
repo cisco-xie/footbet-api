@@ -208,11 +208,12 @@ public class BasicController extends BaseController {
         configService.addGroup(group);
         return Result.success();
     }
+
     @Operation(summary = "创建后台用户")
     @PostMapping("/admin/user")
     @ResponseBody
-    public Result adminUser(@RequestBody AdminLoginVO login) {
-        configService.add(login);
+    public Result adminUser(@RequestBody AdminUserVO admin) {
+        configService.add(admin.getUsers());
         return Result.success();
     }
 

@@ -20,6 +20,7 @@ import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.GameType;
 import com.example.demo.common.enmu.SystemError;
 import com.example.demo.common.utils.KeyUtil;
+import com.example.demo.common.utils.ToDayRangeUtil;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.model.UserConfig;
@@ -106,7 +107,8 @@ public class FalaliApi {
 
                 // 创建请求对象
                 HttpRequest request = HttpRequest.get(url)
-                        .addHeaders(headers);
+                        .addHeaders(headers)
+                        .timeout(10000);
 
                 // 引入代理配置
                 configureProxy(request, userConfig);
@@ -464,6 +466,7 @@ public class FalaliApi {
             // 创建请求对象
             HttpRequest request = HttpRequest.post(url)
                     .addHeaders(headers)
+                    .timeout(10000)
 //                    .cookie(cok)
                     .body(params);
 
@@ -1248,8 +1251,8 @@ public class FalaliApi {
 
                                         String isBetRedisKey = KeyUtil.genKey(
                                                 RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                                                DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                                                 StringUtils.isNotBlank(plan.getLottery()) ? plan.getLottery() : "*",
+                                                ToDayRangeUtil.getToDayRange(),
                                                 drawNumber,
                                                 "success",
                                                 username,
@@ -1596,8 +1599,8 @@ public class FalaliApi {
 
                                 String isBetRedisKey = KeyUtil.genKey(
                                         RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                                        DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                                         StringUtils.isNotBlank(plan.getLottery()) ? plan.getLottery() : "*",
+                                        ToDayRangeUtil.getToDayRange(),
                                         drawNumber,
                                         "success",
                                         username,
@@ -1913,7 +1916,7 @@ public class FalaliApi {
      * @return
      */
     private String submitOrder(String username, OrderVO order, UserConfig userConfig, ConfigPlanVO plan, String drawNumber, List<UserConfig> successAccounts, List<UserConfig> failedAccounts, AtomicInteger successCount,AtomicInteger failureCount) {
-        log.info("发起下单, 平台用户:{}, 账号:{}, 账号token:{}, 期数:{}, 方案:{}, 订单:{}", username, userConfig.getAccount(), userConfig.getToken(), drawNumber, plan.getName(), order);
+        log.info("发起下单, 平台用户:{}, 账号:{}, 期数:{}, 方案:{}, 账号token:{}, 订单:{}", username, userConfig.getAccount(), drawNumber, plan.getName(), userConfig.getToken(), order);
         TimeInterval timeBet = DateUtil.timer();
         boolean success = true;
         String url = userConfig.getBaseUrl() + "member/bet";
@@ -1934,8 +1937,8 @@ public class FalaliApi {
         // 记录订单请求
         redisson.getBucket(KeyUtil.genKey(
                 RedisConstants.USER_BET_PERIOD_REQ_PREFIX,
-                DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                 plan.getLottery(),
+                ToDayRangeUtil.getToDayRange(),
                 drawNumber,
                 username,
                 userConfig.getAccount(),
@@ -1989,15 +1992,15 @@ public class FalaliApi {
 
     /**
      * 封装处理下注结果
+     *
      * @param result
      * @param userConfig
      * @param drawNumber
      * @param plan
      * @param successAccounts
      * @param failedAccounts
-     * @return
      */
-    private boolean handleOrderResult(String username, String result, UserConfig userConfig, String drawNumber, ConfigPlanVO plan, List<UserConfig> successAccounts, List<UserConfig> failedAccounts, AtomicInteger successCount,AtomicInteger failureCount, AtomicInteger successUserCount, AtomicInteger failureUserCount) {
+    private void handleOrderResult(String username, String result, UserConfig userConfig, String drawNumber, ConfigPlanVO plan, List<UserConfig> successAccounts, List<UserConfig> failedAccounts, AtomicInteger successCount, AtomicInteger failureCount, AtomicInteger successUserCount, AtomicInteger failureUserCount) {
         boolean isSuccess = true;
         JSONObject resultJson = JSONUtil.parseObj(result);
         if (!resultJson.isEmpty()) {
@@ -2006,8 +2009,8 @@ public class FalaliApi {
                 // 成功逻辑
                 redisson.getBucket(KeyUtil.genKey(
                         RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                        DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                         plan.getLottery(),
+                        ToDayRangeUtil.getToDayRange(),
                         drawNumber,
                         "success",
                         username,
@@ -2041,8 +2044,8 @@ public class FalaliApi {
             // 记录失败信息
             redisson.getBucket(KeyUtil.genKey(
                     RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                    DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                     plan.getLottery(),
+                    ToDayRangeUtil.getToDayRange(),
                     drawNumber,
                     "failed",
                     username,
@@ -2053,8 +2056,6 @@ public class FalaliApi {
             failureCount.incrementAndGet();
             failureUserCount.incrementAndGet();
         }
-
-        return isSuccess;
     }
 
     /**
@@ -2071,8 +2072,8 @@ public class FalaliApi {
                 // 获取到下注失败的请求参数
                 String failedReq = (String) redisson.getBucket(KeyUtil.genKey(
                         RedisConstants.USER_BET_PERIOD_REQ_PREFIX,
-                        DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                         plan.getLottery(),
+                        ToDayRangeUtil.getToDayRange(),
                         drawNumber,
                         admin.getUsername(),
                         account.getAccount(),
@@ -2125,7 +2126,7 @@ public class FalaliApi {
         // 记录反补的请求参数
         redisson.getBucket(KeyUtil.genKey(
                 RedisConstants.USER_BET_PERIOD_REQ_PREFIX,
-                DateUtil.format(DateUtil.date(), "yyyyMMdd"),
+                ToDayRangeUtil.getToDayRange(),
                 plan.getLottery(),
                 drawNumber,
                 username,
@@ -2151,8 +2152,8 @@ public class FalaliApi {
                 // 反补失败返回参数
                 redisson.getBucket(KeyUtil.genKey(
                         RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                        DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                         plan.getLottery(),
+                        ToDayRangeUtil.getToDayRange(),
                         drawNumber,
                         "failed",
                         username,
@@ -2196,8 +2197,8 @@ public class FalaliApi {
                 // 反补成功返回参数
                 redisson.getBucket(KeyUtil.genKey(
                         RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                        DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                         StringUtils.isNotBlank(plan.getLottery()) ? plan.getLottery() : "*",
+                        ToDayRangeUtil.getToDayRange(),
                         drawNumber,
                         "reverse",
                         username,
@@ -2208,8 +2209,8 @@ public class FalaliApi {
                 // 把下单失败的日志加上补单是否成功的信息
                 String failedKey = KeyUtil.genKey(
                         RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                        DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                         plan.getLottery(),
+                        ToDayRangeUtil.getToDayRange(),
                         drawNumber,
                         "failed",
                         username,
@@ -2242,8 +2243,8 @@ public class FalaliApi {
             // 反补失败返回参数
             redisson.getBucket(KeyUtil.genKey(
                     RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                    DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                     plan.getLottery(),
+                    ToDayRangeUtil.getToDayRange(),
                     drawNumber,
                     "failed",
                     username,
@@ -2254,8 +2255,8 @@ public class FalaliApi {
             // 把下单失败的日志加上补单是否成功的信息
             String failedKey = KeyUtil.genKey(
                     RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                    DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                     plan.getLottery(),
+                    ToDayRangeUtil.getToDayRange(),
                     drawNumber,
                     "failed",
                     username,
@@ -2892,7 +2893,8 @@ public class FalaliApi {
         String result = null;
         try {
             HttpRequest request = HttpRequest.get(url)
-                    .addHeaders(headers);
+                    .addHeaders(headers)
+                    .timeout(10000);
             // 引入配置代理
             configureProxy(request, userConfigs.get(0));
 

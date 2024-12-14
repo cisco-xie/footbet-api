@@ -47,14 +47,9 @@ class FalaliApplicationTests {
     @Test
     public void testj() {
         System.out.println(DateUtil.format(LocalDateTime.now(), "yyyyMMddHHmm00"));
+        System.out.println(DateUtil.format(DateUtil.date(), "HH"));
         System.out.println(passwordEncoder.encode("123456"));
         System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
-        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
-        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
-        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
-        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
-        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
-        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 0));
         TimeInterval timeInterval = DateUtil.timer();
         try {
             HttpRequest.get("https://xxx.com")

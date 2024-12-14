@@ -10,6 +10,7 @@ import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.SystemError;
 import com.example.demo.common.utils.KeyUtil;
+import com.example.demo.common.utils.ToDayRangeUtil;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.model.UserConfig;
 import com.example.demo.model.dto.AdminLoginDTO;
@@ -248,8 +249,8 @@ public class ConfigService {
     public JSONArray failedBet(String username) {
         String pattern = KeyUtil.genKey(
                 RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                 "*",
+                ToDayRangeUtil.getToDayRange(),
                 "*",
                 "failed",
                 username,
@@ -296,8 +297,8 @@ public class ConfigService {
         // Redis key pattern
         String pattern = KeyUtil.genKey(
                 RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                DateUtil.format(DateUtil.date(), "yyyyMMdd"),
                 "*",
+                ToDayRangeUtil.getToDayRange(),
                 "*",
                 "failed",
                 username,
@@ -386,18 +387,23 @@ public class ConfigService {
                 .collect(Collectors.toList());
     }
 
-    public void add(AdminLoginVO admin) {
+    public void add(List<AdminLoginVO> admins) {
 
-        AdminLoginDTO adminLoginDTO = new AdminLoginDTO();
-        adminLoginDTO.setUsername(admin.getUsername());
-        adminLoginDTO.setNickname(admin.getUsername());
-        adminLoginDTO.setPassword(admin.getPassword());
-        adminLoginDTO.setGroup(admin.getGroup());
-        adminLoginDTO.setRoles(List.of("admin"));
-        adminLoginDTO.setPermissions(List.of("*:*:*"));
-        adminLoginDTO.setExpires("2030/10/30 00:00:00");
+        for (AdminLoginVO admin : admins) {
+            if (null == admin.getUsername()) {
+                continue;
+            }
+            AdminLoginDTO adminLoginDTO = new AdminLoginDTO();
+            adminLoginDTO.setUsername(admin.getUsername());
+            adminLoginDTO.setNickname(admin.getUsername());
+            adminLoginDTO.setPassword(admin.getPassword());
+            adminLoginDTO.setGroup(admin.getGroup());
+            adminLoginDTO.setRoles(List.of("common"));
+            adminLoginDTO.setPermissions(List.of("*:*:*"));
+            adminLoginDTO.setExpires("2030/10/30 00:00:00");
 
-        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, admin.getUsername())).set(JSONUtil.toJsonStr(adminLoginDTO));
+            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, admin.getUsername())).set(JSONUtil.toJsonStr(adminLoginDTO));
+        };
     }
 
     public void delUser(String username) {
