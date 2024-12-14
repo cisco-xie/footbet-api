@@ -38,14 +38,6 @@ public class AutoBetTask {
     public void bet() {
         long startTime = System.currentTimeMillis();
 
-        // 获取当前小时
-        int currentHour = java.time.LocalTime.now().getHour();
-        // 如果当前时间在 6 点到 7 点之间，跳过执行
-        if (currentHour == 6) {
-            log.info("当前时间在 6 点到 7 点之间，跳过本次执行...");
-            return;
-        }
-
         if (isRunning) {
             log.info("上一轮任务还在执行，跳过...");
             return;
