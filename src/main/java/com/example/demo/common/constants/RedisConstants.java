@@ -5,7 +5,10 @@ public class RedisConstants {
      * 平台登录账号前缀
      */
     public static final String USER_ADMIN_PREFIX = "user:admin";
-
+    /**
+     * 平台账号小组前缀
+     */
+    public static final String USER_ADMIN_GROUP_PREFIX = "user:group";
     /**
      * 令牌前缀
      */

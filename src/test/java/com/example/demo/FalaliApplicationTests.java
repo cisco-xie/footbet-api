@@ -1,6 +1,8 @@
 package com.example.demo;
 
 import cn.hutool.core.codec.Base64;
+import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.date.TimeInterval;
 import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.RandomUtil;
@@ -24,8 +26,10 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.io.File;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @SpringBootTest
@@ -36,6 +40,36 @@ class FalaliApplicationTests {
 
     @Resource
     private FalaliApi api;
+
+    @Resource
+    private PasswordEncoder passwordEncoder;
+
+    @Test
+    public void testj() {
+        System.out.println(DateUtil.format(LocalDateTime.now(), "yyyyMMddHHmm00"));
+        System.out.println(passwordEncoder.encode("123456"));
+        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
+        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
+        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
+        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
+        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
+        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
+        System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 0));
+        TimeInterval timeInterval = DateUtil.timer();
+        try {
+            HttpRequest.get("https://xxx.com")
+                    .execute();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            System.out.println(timeInterval.intervalMs());
+        }
+        if (JSONUtil.isTypeJSONArray(null)) {
+            System.out.println("1");
+        } else {
+            System.out.println("2");
+        }
+    }
 
     @Test
     public void json() {
@@ -215,6 +249,7 @@ class FalaliApplicationTests {
                 "}";
         odds = StringUtils.isEmpty(odds) ? null : odds;
         JSONObject oddsJson = JSONUtil.parseObj(odds);
+        System.out.println(oddsJson.getStr("cisco"));
         JSONObject twoSidedDXJson = new JSONObject();
         JSONObject twoSidedDSJson = new JSONObject();
         JSONObject twoSidedLHJson = new JSONObject();

@@ -6,4 +6,5 @@ import lombok.Data;
 public class AdminLoginVO {
     private String username;
     private String password;
+    private String group;
 }

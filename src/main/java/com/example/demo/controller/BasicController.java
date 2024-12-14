@@ -75,6 +75,21 @@ public class BasicController extends BaseController {
         return Result.success();
     }
 
+    @Operation(summary = "获取平台用户是否自动下注")
+    @GetMapping("/auto")
+    public Result getAutoBet() {
+        AdminLoginDTO admin = getUser();
+        return Result.success(configService.getAutoBet(admin.getUsername()));
+    }
+
+    @Operation(summary = "设置平台用户是否自动下注")
+    @PostMapping("/auto/{auto}")
+    public Result autoBet(@PathVariable("auto") Integer auto) {
+        AdminLoginDTO admin = getUser();
+        configService.autoBet(admin.getUsername(), auto);
+        return Result.success();
+    }
+
     @Operation(summary = "今日汇总")
     @GetMapping("/summary/today")
     public Result summaryToday() {
@@ -126,6 +141,7 @@ public class BasicController extends BaseController {
         configService.plan(admin.getUsername(), 1);
         return Result.success();
     }
+
     @Operation(summary = "一键停用方案配置")
     @GetMapping("/config/plan/unenable")
     public Result configPlanUnenable() {
@@ -171,6 +187,41 @@ public class BasicController extends BaseController {
         String code = api.code(uuid, null);
         String params = "type=1&account=cs22222&password=WEwe2323&code=" + code;
         return Result.success(api.login(params, uuid));
+    }
+
+    @Operation(summary = "获取后台用户列表")
+    @GetMapping("/admin/user")
+    public Result adminUser() {
+        return Result.success(configService.getUsers());
+    }
+
+    @Operation(summary = "获取后台用户小组列表")
+    @GetMapping("/admin/group")
+    @ResponseBody
+    public Result group() {
+        return Result.success(configService.getGroup());
+    }
+    @Operation(summary = "创建后台用户小组")
+    @PostMapping("/admin/group")
+    @ResponseBody
+    public Result group(@RequestParam String group) {
+        configService.addGroup(group);
+        return Result.success();
+    }
+    @Operation(summary = "创建后台用户")
+    @PostMapping("/admin/user")
+    @ResponseBody
+    public Result adminUser(@RequestBody AdminLoginVO login) {
+        configService.add(login);
+        return Result.success();
+    }
+
+    @Operation(summary = "删除后台用户")
+    @DeleteMapping("/admin/user/{username}")
+    @ResponseBody
+    public Result adminUserDel(@PathVariable("username") String username) {
+        configService.delUser(username);
+        return Result.success();
     }
 
     @Operation(summary = "后台登录")

@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -29,6 +30,28 @@ public class ConfigService {
 
     @Resource
     private RedissonClient redisson;
+
+    /**
+     * 获取平台用户是否开启自动下注
+     * @param username
+     * @return
+     */
+    public int getAutoBet(String username) {
+        String admin = String.valueOf(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).get());
+        return JSONUtil.parseObj(admin).getInt("autoBet");
+    }
+
+    /**
+     * 设置平台用户是否开启自动下注
+     * @param username
+     * @return
+     */
+    public void autoBet(String username, int autoBet) {
+        String admin = String.valueOf(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).get());
+        JSONObject json = JSONUtil.parseObj(admin);
+        json.putOpt("autoBet", autoBet);
+        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).set(json);
+    }
 
     /**
      * 设置账号代理
@@ -76,7 +99,13 @@ public class ConfigService {
                     JSONUtil.parseObj(redisson.getBucket(redisKey).get()),
                     UserConfig.class
             );
+            proxy.setIsAutoLogin(existingConfig.getIsAutoLogin());
+            proxy.setIsTokenValid(existingConfig.getIsTokenValid());
             proxy.setToken(existingConfig.getToken());
+            proxy.setBalance(existingConfig.getBalance());
+            proxy.setBetting(existingConfig.getBetting());
+            proxy.setAmount(existingConfig.getAmount());
+            proxy.setResult(existingConfig.getResult());
             redisson.getBucket(redisKey).set(JSONUtil.toJsonStr(proxy));
             log.info("用户 [{}] 修改成功。", userProxy.getAccount());
 
@@ -335,6 +364,66 @@ public class ConfigService {
         JSONObject jsonObject = JSONUtil.parseObj(redisson.getBucket(redisKey).get());
         jsonObject.putOpt("confirm", 1);
         redisson.getBucket(redisKey).set(jsonObject);
+    }
+
+    /**
+     * 获取所有平台用户
+     * @return
+     */
+    public List<AdminLoginDTO> getUsers() {
+        // 匹配所有平台用户的 Redis Key
+        String pattern = KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, "*");
+        // 使用 Redisson 执行扫描所有平台用户操作
+        RKeys keys = redisson.getKeys();
+        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
+        List<String> keysList = new ArrayList<>();
+        iterableKeys.forEach(keysList::add);
+        return keysList.stream()
+                .map(key -> {
+                    String json = (String) redisson.getBucket(key).get();
+                    return JSONUtil.toBean(json, AdminLoginDTO.class);
+                })
+                .collect(Collectors.toList());
+    }
+
+    public void add(AdminLoginVO admin) {
+
+        AdminLoginDTO adminLoginDTO = new AdminLoginDTO();
+        adminLoginDTO.setUsername(admin.getUsername());
+        adminLoginDTO.setNickname(admin.getUsername());
+        adminLoginDTO.setPassword(admin.getPassword());
+        adminLoginDTO.setGroup(admin.getGroup());
+        adminLoginDTO.setRoles(List.of("admin"));
+        adminLoginDTO.setPermissions(List.of("*:*:*"));
+        adminLoginDTO.setExpires("2030/10/30 00:00:00");
+
+        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, admin.getUsername())).set(JSONUtil.toJsonStr(adminLoginDTO));
+    }
+
+    public void delUser(String username) {
+        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).delete();
+    }
+
+    public List<String> getGroup() {
+        // 匹配所有平台用户的 Redis Key
+        String pattern = KeyUtil.genKey(RedisConstants.USER_ADMIN_GROUP_PREFIX, "*");
+        // 使用 Redisson 执行扫描所有平台用户操作
+        RKeys keys = redisson.getKeys();
+        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
+        List<String> groupList = new ArrayList<>();
+        // 遍历所有匹配的键
+        for (String key : iterableKeys) {
+            String[] parts = key.split(":");
+            // 检查数组长度，确保索引存在
+            if (parts.length > 2) {
+                groupList.add(parts[2]);
+            }
+        }
+        return groupList;
+    }
+
+    public void addGroup(String group) {
+        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_GROUP_PREFIX, group)).set(1);
     }
 
     public void add(String usernames) {
