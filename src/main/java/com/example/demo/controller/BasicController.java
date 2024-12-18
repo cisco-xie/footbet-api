@@ -70,8 +70,8 @@ public class BasicController extends BaseController {
 
     @Operation(summary = "")
     @GetMapping("/del")
-    public Result del() {
-        configService.del();
+    public Result del(@RequestParam String date) {
+        configService.del(date);
         return Result.success();
     }
 

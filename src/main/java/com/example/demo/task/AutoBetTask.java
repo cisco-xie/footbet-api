@@ -24,15 +24,6 @@ public class AutoBetTask {
     @Resource
     private FalaliApi falaliApi;
 
-    @Bean
-    public TaskScheduler taskScheduler() {
-        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(5);  // 设置线程池大小
-        scheduler.setThreadNamePrefix("autoBet-task-");
-        scheduler.initialize();
-        return scheduler;
-    }
-
     // 上一次任务完成后再延迟 10 秒执行
     @Scheduled(fixedDelay = 10000)
     public void bet() {
@@ -47,17 +38,16 @@ public class AutoBetTask {
             log.info("开始执行 自动下注...");
             falaliApi.autoBetCompletableFuture();
         } catch (Exception e) {
-            log.error("autoBet 执行异常", e);
+            log.error("自动下注 执行异常", e);
         } finally {
             long endTime = System.currentTimeMillis();
             long costTime = (endTime - startTime) / 1000;
             log.info("此轮下注任务执行花费{}s", costTime);
-            if (costTime > 10) {
-                log.warn("autoBet 执行时间过长，可能导致任务重叠");
+            if (costTime > 20) {
+                log.warn("自动下注 执行时间过长");
             }
             isRunning = false;  // 任务结束后重置标志位
         }
     }
-
 
 }

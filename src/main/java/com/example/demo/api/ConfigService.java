@@ -442,22 +442,16 @@ public class ConfigService {
             adminLoginDTO.setUsername(username);
             adminLoginDTO.setNickname(username);
             adminLoginDTO.setPassword("user123456");
-            adminLoginDTO.setRoles(Arrays.asList("admin"));
-            adminLoginDTO.setPermissions(Arrays.asList("*:*:*"));
+            adminLoginDTO.setRoles(List.of("admin"));
+            adminLoginDTO.setPermissions(List.of("*:*:*"));
             adminLoginDTO.setExpires("2030/10/30 00:00:00");
 
             redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).set(JSONUtil.toJsonStr(adminLoginDTO));
         }
     }
 
-    public void del() {
-        String[] datesToDelete = {
-                "20241201", "20241202", "20241203",
-                "20241204", "20241205", "20241206", "20241207", "20241208"
-        };
-
-        redisson.getKeys().deleteByPattern(KeyUtil.genKey(RedisConstants.USER_BET_PERIOD_PREFIX, "*"));
-
+    public void del(String dateStr) {
+        String[] datesToDelete = dateStr.split(",");
         for (String date : datesToDelete) {
             String reqPattern = KeyUtil.genKey(RedisConstants.USER_BET_PERIOD_REQ_PREFIX, date, "*");
             String resPattern = KeyUtil.genKey(RedisConstants.USER_BET_PERIOD_RES_PREFIX, date, "*");

@@ -1368,35 +1368,91 @@ public class FalaliApi {
         // 使用 Redisson 执行扫描所有平台用户操作
         RKeys keys = redisson.getKeys();
         Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
-        List<String> keysList = new ArrayList<>();
-        iterableKeys.forEach(keysList::add);
 
-        // 提取出已开启方案的平台用户
-        List<AdminLoginDTO> adminUsers = keysList.stream()
-                .map(key -> {
-                    String json = (String) redisson.getBucket(key).get();
-                    return JSONUtil.toBean(json, AdminLoginDTO.class);
-                })
-                .filter(admin -> admin != null && null != admin.getAutoBet() && 1 == admin.getAutoBet())
-                .collect(Collectors.toList());
-        if (CollUtil.isEmpty(adminUsers)) {
-            log.info("所有平台用户都未开启方案，直接退出当前任务");
-            return;
-        }
-        log.info("当前任务有{}位平台用户开启方案", adminUsers.size());
         // 计数器，用于统计成功/失败数量
         AtomicInteger successCount = new AtomicInteger();
         AtomicInteger failureCount = new AtomicInteger();
         AtomicInteger reverseCount = new AtomicInteger();
 
-        int keysCount = adminUsers.size();
-        int userConfigsPerKey = 10; // 估算每个 key 的 userConfigs 数量
-        int totalTasks = keysCount * userConfigsPerKey; // 总任务数
+        // 计数器，用于统计总的有效方案数量
+        AtomicInteger totalTasks = new AtomicInteger(0);
+        // 提取出已开启方案的平台用户和方案 使用线程安全的列表
+        List<AdminLoginDTO> adminUsers = new CopyOnWriteArrayList<>();
+        // 使用一个列表保存需要删除的用户
+        List<AdminLoginDTO> toRemoveUsers = new ArrayList<>();
+        Map<String, List<ConfigPlanVO>> enabledUserConfigsMap = new ConcurrentHashMap<>();
+        Map<String, List<UserConfig>> tokenVaildConfigsMap = new ConcurrentHashMap<>();
+        TimeInterval timerPre = DateUtil.timer();
 
-        // 基于任务总量和 CPU 核数动态调整线程池大小
+        log.info("前置操作，获取真正有效的平台用户和方案...");
+        // 第一阶段：过滤出有效用户
+        iterableKeys.forEach(key -> {
+            String json = (String) redisson.getBucket(key).get();
+            AdminLoginDTO admin = JSONUtil.toBean(json, AdminLoginDTO.class);
+            // 过滤未开启方案的用户
+            if (admin == null || admin.getAutoBet() == null || admin.getAutoBet() != 1) {
+                return; // 跳过该用户
+            }
+            // 将有效用户加入列表
+            adminUsers.add(admin);
+        });
+
+        // 如果没有有效用户，直接退出
+        if (CollUtil.isEmpty(adminUsers)) {
+            log.info("所有平台用户都未开启自动下注，直接退出当前任务");
+            return;
+        }
+
+        // 第二阶段：并发处理每个有效用户的方案和登录账号
         int cpuCoreCount = Runtime.getRuntime().availableProcessors();
-        int threadPoolUserSize = Math.min(keysCount, cpuCoreCount * 2);
-        int threadPoolPlanSize = Math.min(totalTasks, Math.max(cpuCoreCount * 2, 100));
+        ExecutorService executorAdminUserService = Executors.newFixedThreadPool(Math.min(adminUsers.size(), cpuCoreCount * 2));
+        List<CompletableFuture<Void>> adminFutures = new ArrayList<>();
+        // 为每个用户执行并发任务
+        adminUsers.forEach(admin -> {
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                // 获取该用户的启用方案
+                List<ConfigPlanVO> enabledUserConfigs = getEnabledConfigPlans(admin.getUsername());
+                if (CollUtil.isEmpty(enabledUserConfigs)) {
+                    toRemoveUsers.add(admin);
+                    return;
+                }
+
+                // 过滤获取当前平台用户下有效登录的盘口账号
+                List<UserConfig> tokenVaildConfigs = getTokenValidConfigs(admin.getUsername());
+                if (CollUtil.isEmpty(tokenVaildConfigs)) {
+                    toRemoveUsers.add(admin);
+                    return;
+                }
+
+                // 存入启用方案
+                enabledUserConfigsMap.put(admin.getUsername(), enabledUserConfigs);
+
+                // 存入有效登录账号
+                tokenVaildConfigsMap.put(admin.getUsername(), tokenVaildConfigs);
+
+                // 更新 totalTasks 计数
+                totalTasks.addAndGet(enabledUserConfigs.size());
+            }, executorAdminUserService);
+
+            adminFutures.add(future); // 将任务添加到 futures 列表中
+        });
+
+        // 等待所有 CompletableFuture 完成
+        CompletableFuture<Void> adminOf = CompletableFuture.allOf(adminFutures.toArray(new CompletableFuture[0]));
+        adminOf.join(); // 阻塞等待所有任务完成
+        shutdownExecutor(executorAdminUserService);
+
+        // 过滤掉需要删除的用户
+        adminUsers.removeAll(toRemoveUsers);
+        // 如果没有有效用户，直接退出
+        if (CollUtil.isEmpty(adminUsers)) {
+            log.info("所有平台用户都未开启方案或者不存在有效登录账号，直接退出当前任务");
+            return;
+        }
+        log.info("前置操作结束,当前任务有:{}位平台用户开启方案并且存在有效登录账号,花费:{}毫秒", adminUsers.size(), timerPre.interval());
+
+        int threadPoolUserSize = Math.min(adminUsers.size(), cpuCoreCount * 2);
+        int threadPoolPlanSize = Math.min(totalTasks.get(), Math.max(cpuCoreCount * 2, 100));
         log.info("自动投注 cpu核数: {},平台用户线程池大小: {},用户方案线程池大小: {}", cpuCoreCount, threadPoolUserSize, threadPoolPlanSize);
         // 初始化线程池（动态线程池，避免任务阻塞）
         ExecutorService executorUserService = Executors.newFixedThreadPool(threadPoolUserSize);
@@ -1410,30 +1466,14 @@ public class FalaliApi {
                 AtomicInteger successUserCount = new AtomicInteger();
                 AtomicInteger failureUserCount = new AtomicInteger();
                 AtomicInteger reverseUserCount = new AtomicInteger();
-                // 获取所有配置计划
-                List<ConfigPlanVO> configs = configService.getAllPlans(username, null);
-                if (CollUtil.isEmpty(configs)) {
-                    log.info("当前平台用户:{}不存在方案，直接跳过", username);
-                    return null;
-                }
-                // 过滤掉未启用的配置
-                List<ConfigPlanVO> enabledUserConfigs = configs.stream()
-                        .filter(config -> config.getEnable() != 0)
-                        .toList();
+                // 获取该用户的启用方案
+                List<ConfigPlanVO> enabledUserConfigs = enabledUserConfigsMap.get(admin.getUsername());
                 if (CollUtil.isEmpty(enabledUserConfigs)) {
                     log.info("当前平台用户:{}不存在启用方案，直接跳过", username);
                     return null;
                 }
-                // 获取当前平台用户下的盘口账号
-                List<UserConfig> userConfigs = configService.accounts(admin.getUsername(), null);
-                if (CollUtil.isEmpty(userConfigs)) {
-                    log.info("当前平台用户:{}不存在盘口账号，直接跳过", username);
-                    return null;
-                }
                 // 过滤掉未登录的盘口账号
-                List<UserConfig> tokenVaildConfigs = userConfigs.stream()
-                        .filter(userConfig -> 1 == userConfig.getIsTokenValid() && StringUtils.isNotBlank(userConfig.getToken()))
-                        .collect(Collectors.toList());
+                List<UserConfig> tokenVaildConfigs = tokenVaildConfigsMap.get(admin.getUsername());
                 if (CollUtil.isEmpty(tokenVaildConfigs)) {
                     log.info("当前平台用户:{}不存在有效盘口账号，直接跳过", username);
                     return null;
@@ -1511,7 +1551,6 @@ public class FalaliApi {
                         if (StringUtils.isBlank(odds)) {
                             log.error("获取赔率失败 游戏:{},期数:{},平台用户:{},方案:{},释放当前期数锁", plan.getLottery(), drawNumber, username, plan.getName());
                             // 确保锁释放
-                            // 防止释放锁后，同一期任务再次进来时因为没有锁导致同一个方案重复下单，暂时先只使用tryLock的超时时间自动释放看看效果如何
                             if (lock.isHeldByCurrentThread()) {
                                 lock.unlock();
                             }
@@ -1596,7 +1635,6 @@ public class FalaliApi {
                         JSONObject amountJson = distributeAmount(oddsMap, positiveAccounts, reverseAccounts, plan);
                         for (UserConfig userConfig : allAccounts) {
                             try {
-
                                 String isBetRedisKey = KeyUtil.genKey(
                                         RedisConstants.USER_BET_PERIOD_RES_PREFIX,
                                         StringUtils.isNotBlank(plan.getLottery()) ? plan.getLottery() : "*",
@@ -1607,7 +1645,6 @@ public class FalaliApi {
                                         userConfig.getAccount(),
                                         String.valueOf(plan.getId())
                                 );
-
                                 // 判断是否已下注
                                 boolean exists = redisson.getBucket(isBetRedisKey).isExists();
                                 if (exists) {
@@ -1681,26 +1718,60 @@ public class FalaliApi {
         }
 
         // 执行完所有任务后关闭线程池
-        executorPlanService.shutdown();
-        executorUserService.shutdown();
-        try {
-            // 如果60秒后任务还没有完成，强制关闭线程池
-            if (!executorUserService.awaitTermination(60, TimeUnit.SECONDS)) {
-                log.error("平台用户线程超时,强制关闭线程池");
-                executorUserService.shutdownNow();
-            }
-            if (!executorPlanService.awaitTermination(60, TimeUnit.SECONDS)) {
-                log.error("用户方案线程超时,强制关闭线程池");
-                executorPlanService.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executorUserService.shutdownNow(); // 如果当前线程被中断，强制关闭线程池
-            executorPlanService.shutdownNow(); // 如果当前线程被中断，强制关闭线程池
-            Thread.currentThread().interrupt(); // 保持中断状态
-        }
-
+        shutdownExecutor(executorUserService);
+        shutdownExecutor(executorPlanService);
         // 打印批量登录的成功和失败次数
         log.info("当前任务批量下注完成，成功次数: {}, 失败次数: {}, 反补次数: {}, 总花费:{}毫秒", successCount.get(), failureCount.get(), reverseCount.get(), timerTotal.interval());
+    }
+
+    /**
+     * 优化线程池关闭逻辑
+     * @param executorService
+     */
+    private void shutdownExecutor(ExecutorService executorService) {
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
+                log.error("任务超时，强制关闭线程池");
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * 获取已启用的方案
+     * @param username
+     * @return
+     */
+    private List<ConfigPlanVO> getEnabledConfigPlans(String username) {
+        List<ConfigPlanVO> configs = configService.getAllPlans(username, null);
+        if (CollUtil.isEmpty(configs)) {
+            return Collections.emptyList();
+        }
+        return configs.stream()
+                .filter(config -> config.getEnable() != 0)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 获取token有效的账号
+     * @param username
+     * @return
+     */
+    private List<UserConfig> getTokenValidConfigs(String username) {
+        List<UserConfig> userConfigs = configService.accounts(username, null);
+
+        if (CollUtil.isEmpty(userConfigs)) {
+            return Collections.emptyList();
+        }
+
+        // 过滤掉未登录的盘口账号，直接返回有效的账户列表
+        return userConfigs.stream()
+                .filter(userConfig -> 1 == userConfig.getIsTokenValid() && StringUtils.isNotBlank(userConfig.getToken()))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -2096,11 +2167,11 @@ public class FalaliApi {
             // 保险起见-再把当前平台用户下的账号全部下线
             // batchLoginOut(username);
             // 把当前平台用户下的所有方案停用
-            List<ConfigPlanVO> configPlans = configService.getAllPlans(admin.getUsername(), null);
-            configPlans.forEach(configPlan -> {
-                configPlan.setEnable(0);
-                configService.plan(admin.getUsername(), configPlan);
-            });
+            // List<ConfigPlanVO> configPlans = configService.getAllPlans(admin.getUsername(), null);
+            // configPlans.forEach(configPlan -> {
+            //     configPlan.setEnable(0);
+            //     configService.plan(admin.getUsername(), configPlan);
+            // });
         }
     }
 
@@ -2596,8 +2667,7 @@ public class FalaliApi {
 
         // 如果过滤后的list的大小小于betNum，则返回整个过滤后的list
         if (filteredList.size() <= betNum) {
-            log.info("Warning: Requested count ({}) exceeds available items ({}) after filtering by betType. Returning all items.", betNum, filteredList.size());
-            log.info("指定账户json key:{}", filteredList);
+            log.info("过滤后的list的大小小于betNum，则返回整个过滤后的list 指定账户json key:{}", filteredList);
             return filteredList;
         }
 
@@ -2759,16 +2829,24 @@ public class FalaliApi {
         return amountJson;
     }
 
-
     /**
      * 获取今日汇总
      * @return
      */
     public List<UserConfig> summaryToday(String username) {
         List<UserConfig> accounts = configService.accounts(username, null);
+        if (CollUtil.isEmpty(accounts)) {
+            return Collections.emptyList();
+        }
+        List<UserConfig> tokenVaildConfigs = accounts.stream()
+                .filter(userConfig -> 1 == userConfig.getIsTokenValid() && StringUtils.isNotBlank(userConfig.getToken()))
+                .toList();
+        if (CollUtil.isEmpty(tokenVaildConfigs)) {
+            return Collections.emptyList();
+        }
         AtomicLong totalAmount = new AtomicLong();
         AtomicLong totalResult = new AtomicLong();
-        int keysCount = accounts.size();
+        int keysCount = tokenVaildConfigs.size();
         // 基于任务总量和 CPU 核数动态调整线程池大小
         int cpuCoreCount = Runtime.getRuntime().availableProcessors();
         int threadPoolSize = Math.min(keysCount, Math.max(cpuCoreCount * 2, 10));
@@ -2777,7 +2855,7 @@ public class FalaliApi {
         ExecutorService executorService = PriorityTaskExecutor.createPriorityThreadPool(threadPoolSize);
 
         List<Future<?>> futures = new ArrayList<>();
-        accounts.forEach(account -> {
+        tokenVaildConfigs.forEach(account -> {
             futures.add(executorService.submit(new PriorityTaskExecutor.PriorityTask(() -> {
                 try {
                     // 更新余额和未结算金额
