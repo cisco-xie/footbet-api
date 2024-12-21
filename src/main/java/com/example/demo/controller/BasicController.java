@@ -38,8 +38,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import org.redisson.api.RedissonClient;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -51,9 +49,6 @@ import java.util.List;
 @RequestMapping("/api")
 @RestController
 public class BasicController extends BaseController {
-
-    @Resource
-    private RedissonClient redisson;
 
     @Resource
     private FalaliApi api;
@@ -178,15 +173,6 @@ public class BasicController extends BaseController {
     @GetMapping("/code")
     public Object code() {
         return api.code("1d17d23f-50c1-45a1-a199-c1acf32865c8", null);
-    }
-
-    @Operation(summary = "一键登录")
-    @GetMapping("/login")
-    public Result login() {
-        String uuid = IdUtil.randomUUID();
-        String code = api.code(uuid, null);
-        String params = "type=1&account=cs22222&password=WEwe2323&code=" + code;
-        return Result.success(api.login(params, uuid));
     }
 
     @Operation(summary = "获取后台用户列表")

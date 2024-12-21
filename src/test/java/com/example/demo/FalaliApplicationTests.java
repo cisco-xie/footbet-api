@@ -3,20 +3,16 @@ package com.example.demo;
 import cn.hutool.core.codec.Base64;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.date.TimeInterval;
-import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.RandomUtil;
-import cn.hutool.http.HtmlUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
-import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.api.FalaliApi;
 import com.example.demo.api.LoginService;
 import com.example.demo.core.model.UserConfig;
-import com.example.demo.model.vo.LoginVO;
 import jakarta.annotation.Resource;
 import net.sourceforge.tess4j.Tesseract;
 import org.apache.commons.lang3.StringUtils;
@@ -26,7 +22,6 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.io.File;
 import java.time.LocalDateTime;
@@ -41,14 +36,30 @@ class FalaliApplicationTests {
     @Resource
     private FalaliApi api;
 
-    @Resource
-    private PasswordEncoder passwordEncoder;
 
     @Test
     public void testj() {
+
+        String cgrr01_3 = "{\"drawNumber\":\"33421730\",\"ignore\":false,\"lottery\":\"PK10JSC\",\"bets\":[{\"game\":\"DX1\",\"amount\":3,\"contents\":\"X\",\"odds\":1.9939},{\"game\":\"DX4\",\"amount\":9,\"contents\":\"D\",\"odds\":1.9939},{\"game\":\"DX10\",\"amount\":8,\"contents\":\"X\",\"odds\":1.9939},{\"game\":\"DX2\",\"amount\":3,\"contents\":\"D\",\"odds\":1.9939},{\"game\":\"DX9\",\"amount\":4,\"contents\":\"X\",\"odds\":1.9939},{\"game\":\"DX8\",\"amount\":3,\"contents\":\"X\",\"odds\":1.9939},{\"game\":\"DX6\",\"amount\":3,\"contents\":\"X\",\"odds\":1.9939},{\"game\":\"DX5\",\"amount\":5,\"contents\":\"X\",\"odds\":1.9939}],\"fastBets\":false}";
+
+        JSONObject cgrr01Json = JSONUtil.parseObj(cgrr01_3);
+        JSONArray betsArray = cgrr01Json.getJSONArray("bets");
+
+        // 计算 amount 总金额
+        double totalAmount = 0;
+        for (int i = 0; i < betsArray.size(); i++) {
+            JSONObject bet = betsArray.getJSONObject(i);
+            totalAmount += bet.getDouble("amount");
+        }
+        System.out.println(totalAmount);
+
+        int cpuCoreCount = Runtime.getRuntime().availableProcessors();
+        int threadPoolUserSize = Math.min(5, cpuCoreCount * 2);
+        int threadPoolPlanSize = Math.min(20, Math.max(cpuCoreCount * 2, 100));
+        System.out.println(threadPoolUserSize+"==="+threadPoolPlanSize);
+
         System.out.println(DateUtil.format(LocalDateTime.now(), "yyyyMMddHHmm00"));
         System.out.println(DateUtil.format(DateUtil.date(), "HH"));
-        System.out.println(passwordEncoder.encode("123456"));
         System.out.println(RandomUtil.randomEleList(Arrays.asList(1,2,3,4,5,6), 2));
         TimeInterval timeInterval = DateUtil.timer();
         try {
@@ -410,7 +421,7 @@ class FalaliApplicationTests {
 
             // 构建登录 URL
             String loginUrl = "https://7410893256-am.tcr195uhyru.com/login";
-            String code = api.code(uuid, null);
+            Map<String, String> code = api.code(uuid, null);
             String param = "type=1&account=csa1&password=WEwe1212&code=" + code;
 
             // 构建并发送请求

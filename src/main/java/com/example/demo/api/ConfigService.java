@@ -22,6 +22,7 @@ import org.redisson.api.*;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -29,8 +30,11 @@ import java.util.stream.Collectors;
 @Component
 public class ConfigService {
 
-    @Resource
+    @Resource(name = "defaultRedissonClient")
     private RedissonClient redisson;
+
+    @Resource(name = "businessUserRedissonClient")
+    private RedissonClient businessUserRedissonClient;
 
     /**
      * 获取平台用户是否开启自动下注
@@ -38,7 +42,7 @@ public class ConfigService {
      * @return
      */
     public int getAutoBet(String username) {
-        String admin = String.valueOf(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).get());
+        String admin = String.valueOf(businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).get());
         return JSONUtil.parseObj(admin).getInt("autoBet");
     }
 
@@ -48,10 +52,10 @@ public class ConfigService {
      * @return
      */
     public void autoBet(String username, int autoBet) {
-        String admin = String.valueOf(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).get());
+        String admin = String.valueOf(businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).get());
         JSONObject json = JSONUtil.parseObj(admin);
         json.putOpt("autoBet", autoBet);
-        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).set(json);
+        businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).set(json);
     }
 
     /**
@@ -80,24 +84,24 @@ public class ConfigService {
 
         // 操作类型处理
         if ("add".equalsIgnoreCase(userProxy.getOperationType())) {
-            if (redisson.getBucket(redisKey).isExists()) {
+            if (businessUserRedissonClient.getBucket(redisKey).isExists()) {
                 log.warn("用户 [{}] 已存在，无法新增。", userProxy.getAccount());
                 throw new BusinessException(SystemError.USER_1003, userProxy.getAccount());
             }
 
             // 设置 ID 并保存到 Redis
             proxy.setId(id);
-            redisson.getBucket(redisKey).set(JSONUtil.toJsonStr(proxy));
+            businessUserRedissonClient.getBucket(redisKey).set(JSONUtil.toJsonStr(proxy));
             log.info("用户 [{}] 新增成功。", userProxy.getAccount());
         } else if ("update".equalsIgnoreCase(userProxy.getOperationType())) {
-            if (!redisson.getBucket(redisKey).isExists()) {
+            if (!businessUserRedissonClient.getBucket(redisKey).isExists()) {
                 log.warn("用户 [{}] 不存在，无法修改。", userProxy.getAccount());
                 throw new BusinessException(SystemError.USER_1004, userProxy.getAccount());
             }
 
             // 保留 token 并更新
             UserConfig existingConfig = JSONUtil.toBean(
-                    JSONUtil.parseObj(redisson.getBucket(redisKey).get()),
+                    JSONUtil.parseObj(businessUserRedissonClient.getBucket(redisKey).get()),
                     UserConfig.class
             );
             proxy.setIsAutoLogin(existingConfig.getIsAutoLogin());
@@ -107,7 +111,7 @@ public class ConfigService {
             proxy.setBetting(existingConfig.getBetting());
             proxy.setAmount(existingConfig.getAmount());
             proxy.setResult(existingConfig.getResult());
-            redisson.getBucket(redisKey).set(JSONUtil.toJsonStr(proxy));
+            businessUserRedissonClient.getBucket(redisKey).set(JSONUtil.toJsonStr(proxy));
             log.info("用户 [{}] 修改成功。", userProxy.getAccount());
 
         } else {
@@ -121,7 +125,7 @@ public class ConfigService {
      * @param id
      */
     public void deleteAccount(String username, String id) {
-        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).delete();
+        businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).delete();
     }
 
     /**
@@ -129,12 +133,12 @@ public class ConfigService {
      */
     public List<UserConfig> accounts(String username, String id) {
         // 使用通配符获取所有匹配的键
-        Iterable<String> keys = redisson.getKeys().getKeysByPattern(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, StringUtils.isNotBlank(id) ? id : "*"));
+        Iterator<String> keys = businessUserRedissonClient.getKeys().getKeysByPattern(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, StringUtils.isNotBlank(id) ? id : "*")).iterator();
 
         List<UserConfig> userList = new ArrayList<>();
-        for (String key : keys) {
+        while (keys.hasNext()) {
             // 根据键值获取数据
-            String userJson = (String) redisson.getBucket(key).get();
+            String userJson = (String) businessUserRedissonClient.getBucket(keys.next()).get();
             if (userJson != null) {
                 // 将 JSON 转换为对象
                 UserConfig userConfig = JSONUtil.toBean(userJson, UserConfig.class);
@@ -145,21 +149,55 @@ public class ConfigService {
         return userList;
     }
 
+    /**
+     * 获取所有账号 - 使用RBatch批量执行
+     */
+    public List<UserConfig> accountsRBatch(String username, String id) {
+        // 使用通配符获取所有匹配的键
+        Iterator<String> keys = businessUserRedissonClient.getKeys().getKeysByPattern(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, StringUtils.isNotBlank(id) ? id : "*")).iterator();
+
+        // 创建 RBatch 批处理对象
+        RBatch batch = businessUserRedissonClient.createBatch();
+
+        // 存储 RBucket 实例
+        List<RBucket<String>> buckets = new ArrayList<>();
+
+        // 将每个操作添加到批处理队列
+        while (keys.hasNext()) {
+            RBucket<String> bucket = businessUserRedissonClient.getBucket(keys.next()); // 获取 RBucket 对象
+            bucket.getAsync(); // 为每个键添加获取操作
+            buckets.add(bucket);
+        };
+
+        // 提交所有批量请求
+        batch.execute();
+
+        // 收集结果
+        List<UserConfig> userList = new ArrayList<>();
+        buckets.forEach(bucket -> {
+            String userJson = bucket.get();  // 获取异步任务的结果
+            if (userJson != null) {
+                // 将 JSON 转换为对象
+                userList.add(JSONUtil.toBean(userJson, UserConfig.class));
+            }
+        });
+
+        return userList;
+    }
+
     public void plan(String username, Integer enable) {
         // 设置自增 ID 的 Redis key
         String pattern = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, "*");
         // 使用通配符获取所有匹配的键
-        Iterable<String> keys = redisson.getKeys().getKeysByPattern(pattern);
-
-        for (String key : keys) {
+        for (String key : businessUserRedissonClient.getKeys().getKeysByPattern(pattern)) {
             // 根据键值获取数据
-            String configJson = (String) redisson.getBucket(key).get();
+            String configJson = (String) businessUserRedissonClient.getBucket(key).get();
             if (configJson != null) {
                 // 将 JSON 转换为对象
                 ConfigPlanVO configPlan = JSONUtil.toBean(configJson, ConfigPlanVO.class);
                 configPlan.setEnable(enable);
                 // 将更新后的列表保存回 Redis
-                redisson.getBucket(key).set(JSONUtil.toJsonStr(configPlan));
+                businessUserRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(configPlan));
             }
         }
     }
@@ -182,7 +220,7 @@ public class ConfigService {
             ConfigPlanVO configPlan = new ConfigPlanVO();
             if (plan.getId() == null) {
                 // 如果传入的 ID 为空，表示新增
-                long newId = redisson.getAtomicLong(idKey).incrementAndGet(); // 生成自增 ID
+                long newId = businessUserRedissonClient.getAtomicLong(idKey).incrementAndGet(); // 生成自增 ID
                 if (newId > Integer.MAX_VALUE) {
                     log.error("生成的 ID 超出 Integer 范围: {}", newId);
                     throw new BusinessException(SystemError.SYS_400);
@@ -193,7 +231,7 @@ public class ConfigService {
             configPlan = plan;
             key = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, plan.getLottery(), String.valueOf(plan.getId()));
             // 将更新后的列表保存回 Redis
-            redisson.getBucket(key).set(JSONUtil.toJsonStr(configPlan));
+            businessUserRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(configPlan));
         }
     }
 
@@ -213,7 +251,7 @@ public class ConfigService {
 
             // 生成 Redis 键
             String key = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, username, plan.getLottery(), String.valueOf(plan.getId()));
-            redisson.getBucket(key).delete();
+            businessUserRedissonClient.getBucket(key).delete();
         });
     }
 
@@ -226,17 +264,14 @@ public class ConfigService {
         String pattern = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX, StringUtils.isNotBlank(username) ? username : "*", StringUtils.isNotBlank(lottery) ? lottery : "*", "*");
 
         // 使用 Redisson 执行扫描操作
-        RKeys keys = redisson.getKeys();
-        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
-
-        List<String> keysList = new ArrayList<>();
-        iterableKeys.forEach(keysList::add);
+        RKeys keys = businessUserRedissonClient.getKeys();
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
 
         // 批量获取所有方案
         List<ConfigPlanVO> plans = new ArrayList<>();
-        for (String key : keysList) {
+        while (iterableKeys.hasNext()) {
             // 使用 Redisson 获取每个 key 的数据
-            String json = (String) redisson.getBucket(key).get();
+            String json = (String) businessUserRedissonClient.getBucket(iterableKeys.next()).get();
             if (json != null) {
                 // 解析 JSON 为 ConfigPlanVO 对象
                 plans.add(JSONUtil.toBean(json, ConfigPlanVO.class));
@@ -245,6 +280,60 @@ public class ConfigService {
 
         return plans;
     }
+
+    /**
+     * 获取用户的所有方案 - 使用RBatch批量执行
+     * @param username
+     * @param lottery
+     * @return
+     */
+    public List<ConfigPlanVO> getAllPlansRBatch(String username, String lottery) {
+        // 匹配所有用户和 lottery 的 Redis Key
+        String pattern = KeyUtil.genKey(RedisConstants.USER_PLAN_PREFIX,
+                StringUtils.isNotBlank(username) ? username : "*",
+                StringUtils.isNotBlank(lottery) ? lottery : "*",
+                "*");
+
+        // 使用 Redisson 执行扫描操作
+        RKeys keys = businessUserRedissonClient.getKeys();
+        Iterator<String> iterator = keys.getKeysByPattern(pattern).iterator();  // 使用 scanIterator 替代 getKeysByPattern
+
+        List<String> keysList = new ArrayList<>();
+
+        // 增量遍历键
+        while (iterator.hasNext()) {
+            String key = iterator.next();
+            keysList.add(key);
+        }
+
+        // 创建一个 RBatch 批处理对象
+        RBatch batch = businessUserRedissonClient.createBatch();
+
+        // 用于存储每个 Redis 获取操作的结果
+        List<RBucket<String>> buckets = new ArrayList<>();
+
+        // 添加批量获取操作
+        keysList.forEach(key -> {
+            RBucket<String> bucket = businessUserRedissonClient.getBucket(key); // 获取 RBucket 对象
+            bucket.getAsync(); // 为每个键添加获取操作
+            buckets.add(bucket);
+        });
+
+        // 提交所有批量请求
+        batch.execute();
+
+        // 收集结果
+        List<ConfigPlanVO> plans = new ArrayList<>();
+        buckets.forEach(bucket -> {
+            String json = bucket.get();  // 获取每个键的值
+            if (json != null) {
+                plans.add(JSONUtil.toBean(json, ConfigPlanVO.class));
+            }
+        });
+
+        return plans;
+    }
+
 
     public JSONArray failedBet(String username) {
         String pattern = KeyUtil.genKey(
@@ -258,13 +347,12 @@ public class ConfigService {
         );
         JSONArray result = new JSONArray();
         // 使用 Redisson 执行扫描所有平台用户操作
-        RKeys keys = redisson.getKeys();
-        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
-        List<String> keysList = new ArrayList<>();
-        iterableKeys.forEach(keysList::add);
-        keysList.forEach(key -> {
+        RKeys keys = businessUserRedissonClient.getKeys();
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
+        while (iterableKeys.hasNext()) {
             // 使用 Redisson 获取每个 平台用户 的数据
-            String json = (String) redisson.getBucket(key).get();
+            String key = iterableKeys.next();
+            String json = (String) businessUserRedissonClient.getBucket(key).get();
             if (json != null) {
                 JSONObject jsonObject = JSONUtil.parseObj(json);
                 JSONObject msg = new JSONObject();
@@ -280,8 +368,61 @@ public class ConfigService {
                 msg.putOpt("repairAccount", jsonObject.getStr("repairAccount"));
                 result.add(msg);
             }
-        });
+        };
         return result;
+    }
+
+    /**
+     * 获取失败投注最新
+     * @param username
+     * @return
+     */
+    public JSONObject failedBetLatestNomore(String username) {
+        JSONObject maxCreateTimeObj = new JSONObject();
+        String maxCreateTime = null;
+        JSONObject maxCreateTimeJson = null;
+
+        // Redis key pattern
+        String pattern = KeyUtil.genKey(
+                RedisConstants.USER_BET_PERIOD_RES_PREFIX,
+                "*",
+                ToDayRangeUtil.getToDayRange(),
+                "*",
+                "failed",
+                username,
+                "*"
+        );
+
+        RKeys keys = redisson.getKeys();
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
+        List<String> keysList = new ArrayList<>();
+        while (iterableKeys.hasNext()) {
+            keysList.add(iterableKeys.next());
+        }
+
+        if (!keysList.isEmpty()) {
+            // 创建批量任务
+            for (String key : keysList) {
+                String json = (String) redisson.getBucket(key).get();
+                JSONObject jsonObject = JSONUtil.parseObj(json);
+                String currentCreateTime = jsonObject.getStr("createTime");
+                // 查找最大的 createTime
+                if (maxCreateTime == null || currentCreateTime.compareTo(maxCreateTime) > 0) {
+                    maxCreateTime = currentCreateTime;
+                    maxCreateTimeJson = jsonObject;
+                    maxCreateTimeObj.putOpt("key", key);
+                }
+            };
+            // 校验最大时间记录的 confirm 字段是否为 0
+            if (maxCreateTimeJson != null && maxCreateTimeJson.containsKey("confirm") && maxCreateTimeJson.getInt("confirm") == 0) {
+                maxCreateTimeObj.putOpt("value", maxCreateTimeJson);
+            } else {
+                // 如果没有符合条件的记录，返回空对象
+                maxCreateTimeObj.clear();
+            }
+        }
+
+        return maxCreateTimeObj;
     }
 
     /**
@@ -305,14 +446,16 @@ public class ConfigService {
                 "*"
         );
 
-        RKeys keys = redisson.getKeys();
-        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
+        RKeys keys = businessUserRedissonClient.getKeys();
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
         List<String> keysList = new ArrayList<>();
-        iterableKeys.forEach(keysList::add);
+        while (iterableKeys.hasNext()) {
+            keysList.add(iterableKeys.next());
+        }
 
         if (!keysList.isEmpty()) {
             // 创建批量任务
-            RBatch batch = redisson.createBatch();
+            RBatch batch = businessUserRedissonClient.createBatch();
             Map<String, RFuture<Object>> futures = new HashMap<>();
 
             // 将所有 Redis Key 加入批量任务
@@ -327,44 +470,49 @@ public class ConfigService {
             // 遍历批量结果
             for (Map.Entry<String, RFuture<Object>> entry : futures.entrySet()) {
                 String key = entry.getKey();
-                Object value = entry.getValue().getNow(); // 获取异步结果
-                if (value != null) {
-                    String json = value.toString();
-                    JSONObject jsonObject = JSONUtil.parseObj(json);
-                    String currentCreateTime = jsonObject.getStr("createTime");
+                try {
+                    Object value = entry.getValue().get(); // 获取异步结果
+                    if (value != null) {
+                        String json = value.toString();
+                        JSONObject jsonObject = JSONUtil.parseObj(json);
+                        String currentCreateTime = jsonObject.getStr("createTime");
 
-                    // 查找最大的 createTime
-                    if (maxCreateTime == null || currentCreateTime.compareTo(maxCreateTime) > 0) {
-                        maxCreateTime = currentCreateTime;
-                        maxCreateTimeJson = jsonObject;
-                        maxCreateTimeObj.putOpt("key", key);
+                        // 查找最大的 createTime
+                        if (maxCreateTime == null || currentCreateTime.compareTo(maxCreateTime) > 0) {
+                            maxCreateTime = currentCreateTime;
+                            maxCreateTimeJson = jsonObject;
+                            maxCreateTimeObj.putOpt("key", key);
+                        }
                     }
+                } catch (InterruptedException | ExecutionException e) {
+                    log.error("Redis 批量处理获取下注失败数据时发生错误 Redis key: {}", entry.getKey(), e);
                 }
             }
 
             // 校验最大时间记录的 confirm 字段是否为 0
-            if (maxCreateTimeJson.containsKey("confirm") && maxCreateTimeJson != null && maxCreateTimeJson.getInt("confirm") == 0) {
+            if (maxCreateTimeJson != null && maxCreateTimeJson.containsKey("confirm") && maxCreateTimeJson.getInt("confirm") == 0) {
                 maxCreateTimeObj.putOpt("value", maxCreateTimeJson);
             } else {
                 // 如果没有符合条件的记录，返回空对象
-                maxCreateTimeObj = new JSONObject();
+                maxCreateTimeObj.clear();
             }
         }
 
         return maxCreateTimeObj;
     }
 
+
     /**
      * 确认下注失败弹窗提示
      * @param redisKey
      */
     public void failedBetLatestConfirm(String redisKey) {
-        if (!redisson.getBucket(redisKey).isExists()) {
+        if (!businessUserRedissonClient.getBucket(redisKey).isExists()) {
             log.warn("redis key [{}] 不存在", redisKey);
         }
-        JSONObject jsonObject = JSONUtil.parseObj(redisson.getBucket(redisKey).get());
+        JSONObject jsonObject = JSONUtil.parseObj(businessUserRedissonClient.getBucket(redisKey).get());
         jsonObject.putOpt("confirm", 1);
-        redisson.getBucket(redisKey).set(jsonObject);
+        businessUserRedissonClient.getBucket(redisKey).set(jsonObject);
     }
 
     /**
@@ -375,13 +523,15 @@ public class ConfigService {
         // 匹配所有平台用户的 Redis Key
         String pattern = KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, "*");
         // 使用 Redisson 执行扫描所有平台用户操作
-        RKeys keys = redisson.getKeys();
-        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
+        RKeys keys = businessUserRedissonClient.getKeys();
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
         List<String> keysList = new ArrayList<>();
-        iterableKeys.forEach(keysList::add);
+        while (iterableKeys.hasNext()) {
+            keysList.add(iterableKeys.next());
+        }
         return keysList.stream()
                 .map(key -> {
-                    String json = (String) redisson.getBucket(key).get();
+                    String json = (String) businessUserRedissonClient.getBucket(key).get();
                     return JSONUtil.toBean(json, AdminLoginDTO.class);
                 })
                 .collect(Collectors.toList());
@@ -402,24 +552,24 @@ public class ConfigService {
             adminLoginDTO.setPermissions(List.of("*:*:*"));
             adminLoginDTO.setExpires("2030/10/30 00:00:00");
 
-            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, admin.getUsername())).set(JSONUtil.toJsonStr(adminLoginDTO));
+            businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, admin.getUsername())).set(JSONUtil.toJsonStr(adminLoginDTO));
         };
     }
 
     public void delUser(String username) {
-        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).delete();
+        businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).delete();
     }
 
     public List<String> getGroup() {
         // 匹配所有平台用户的 Redis Key
         String pattern = KeyUtil.genKey(RedisConstants.USER_ADMIN_GROUP_PREFIX, "*");
         // 使用 Redisson 执行扫描所有平台用户操作
-        RKeys keys = redisson.getKeys();
-        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
+        RKeys keys = businessUserRedissonClient.getKeys();
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
         List<String> groupList = new ArrayList<>();
         // 遍历所有匹配的键
-        for (String key : iterableKeys) {
-            String[] parts = key.split(":");
+        while (iterableKeys.hasNext()) {
+            String[] parts = iterableKeys.next().split(":");
             // 检查数组长度，确保索引存在
             if (parts.length > 2) {
                 groupList.add(parts[2]);
@@ -429,7 +579,7 @@ public class ConfigService {
     }
 
     public void addGroup(String group) {
-        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_GROUP_PREFIX, group)).set(1);
+        businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_GROUP_PREFIX, group)).set(1);
     }
 
     public void add(String usernames) {
@@ -446,7 +596,7 @@ public class ConfigService {
             adminLoginDTO.setPermissions(List.of("*:*:*"));
             adminLoginDTO.setExpires("2030/10/30 00:00:00");
 
-            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).set(JSONUtil.toJsonStr(adminLoginDTO));
+            businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, username)).set(JSONUtil.toJsonStr(adminLoginDTO));
         }
     }
 

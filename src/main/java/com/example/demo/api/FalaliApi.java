@@ -3,6 +3,7 @@ package com.example.demo.api;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.collection.IterUtil;
 import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.date.LocalDateTimeUtil;
@@ -35,9 +36,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-import org.redisson.api.RKeys;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
+import org.redisson.api.*;
 import org.springframework.stereotype.Component;
 
 import javax.imageio.ImageIO;
@@ -56,13 +55,18 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 @Slf4j
 @Component
 public class FalaliApi {
 
-    @Resource
+    @Resource(name = "defaultRedissonClient")
     private RedissonClient redisson;
+
+    @Resource(name = "businessUserRedissonClient")
+    private RedissonClient businessUserRedissonClient;
 
     @Resource
     private ConfigService configService;
@@ -77,7 +81,7 @@ public class FalaliApi {
     public void config(ConfigUserVO userProxy) {
         UserConfig proxy = BeanUtil.copyProperties(userProxy, UserConfig.class);
         if (BeanUtil.isNotEmpty(proxy)) {
-            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, userProxy.getAccount())).set(JSONUtil.toJsonStr(proxy));
+            businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, userProxy.getAccount())).set(JSONUtil.toJsonStr(proxy));
         }
     }
 
@@ -86,7 +90,8 @@ public class FalaliApi {
      *
      * @return 验证码id
      */
-    public String code(String uuid, UserConfig userConfig) {
+    public Map<String, String> code(String uuid, UserConfig userConfig) {
+        Map<String, String> resultMap = new HashMap<>();
         String url = userConfig.getBaseUrl() + "code?_=" + System.currentTimeMillis();
         Map<String, String> headers = new HashMap<>();
         headers.put("priority", "u=0, i");
@@ -94,8 +99,8 @@ public class FalaliApi {
         headers.put("upgrade-insecure-requests", "1");
         headers.put("Cookie", "2a29530a2306="+uuid);
 
-//        String fileName = "d://code-" + uuid + ".jpg";
-        String fileName = "/usr/local/resources/projects/falali/code-" + uuid + ".jpg";
+//        String fileName = "d://code-" + IdUtil.randomUUID() + ".jpg";
+        String fileName = "/usr/local/resources/projects/falali/code-" + IdUtil.randomUUID() + ".jpg";
         // 最大重试次数
         int maxRetries = 6;
         // 重试间隔（毫秒）
@@ -118,7 +123,8 @@ public class FalaliApi {
 
                 if (resultRes.body().contains("416 Range Not Satisfiable")) {
                     log.error("代理请求失败：出现416代理异常信息：{}", resultRes.body());
-                    return "0000";
+                    resultMap.put("code", "0000");
+                    return resultMap;
                 }
                 // 保存验证码图片
                 resultRes.writeBody(fileName);
@@ -127,7 +133,8 @@ public class FalaliApi {
                 File image = new File(fileName);
                 if (ImageIO.read(image) == null) {
                     log.error("下载的文件不是有效图片: {}", fileName);
-                    return "0000";
+                    resultMap.put("code", "0000");
+                    return resultMap;
                 }
 
                 // 设置动态库路径
@@ -144,7 +151,9 @@ public class FalaliApi {
                     log.info("验证码解析结果: {},不是纯4位数字", result);
                     continue;
                 }
-                return result;
+                resultMap.put("code", result);
+                resultMap.put("2a29530a2306", resultRes.getCookieValue("2a29530a2306"));
+                return resultMap;
 
             } catch (Exception e) {
 
@@ -191,7 +200,8 @@ public class FalaliApi {
         }
 
         // 如果循环结束后仍未成功，返回失败标识
-        return "0000";
+        resultMap.put("code", "0000");
+        return resultMap;
     }
 
     /**
@@ -279,9 +289,9 @@ public class FalaliApi {
         String redisKey = KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, login.getUsername());
 
         // 判断 Redis 中是否存在该用户数据
-        boolean exists = redisson.getBucket(redisKey).isExists();
+        boolean exists = businessUserRedissonClient.getBucket(redisKey).isExists();
         if (exists) {
-            AdminLoginDTO adminLogin = JSONUtil.toBean(JSONUtil.parseObj(redisson.getBucket(redisKey).get()), AdminLoginDTO.class);
+            AdminLoginDTO adminLogin = JSONUtil.toBean(JSONUtil.parseObj(businessUserRedissonClient.getBucket(redisKey).get()), AdminLoginDTO.class);
             if (StringUtils.equals(login.getPassword(), adminLogin.getPassword())) {
                 String token = JWTUtil.createToken(BeanUtil.beanToMap(adminLogin), "admin".getBytes());
                 adminLogin.setAccessToken(token);
@@ -301,7 +311,7 @@ public class FalaliApi {
      * @param id
      */
     public void singleLoginOut(String username, String id) {
-        UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).get()), UserConfig.class);
+        UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).get()), UserConfig.class);
         if (BeanUtil.isNotEmpty(userConfig)) {
             userConfig.setToken("");
             userConfig.setIsAutoLogin(0);
@@ -312,7 +322,7 @@ public class FalaliApi {
             userConfig.setAmount(null);
             userConfig.setResult(null);
             userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
+            businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
         }
     }
 
@@ -332,7 +342,7 @@ public class FalaliApi {
             userConfig.setAmount(null);
             userConfig.setResult(null);
             userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfig.getId())).set(JSONUtil.toJsonStr(userConfig));
+            businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfig.getId())).set(JSONUtil.toJsonStr(userConfig));
         });
     }
 
@@ -436,7 +446,7 @@ public class FalaliApi {
                 userConfig.setToken(userConfigs.get(0).getToken());
                 userConfig.setIsTokenValid(1);
                 userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-                redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfigs.get(0).getId())).set(JSONUtil.toJsonStr(userConfig));
+                businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfigs.get(0).getId())).set(JSONUtil.toJsonStr(userConfig));
                 return loginDTO;
             }
         }
@@ -446,11 +456,17 @@ public class FalaliApi {
         String token = null;
 
         String uuid = IdUtil.randomUUID();
+        if (userConfig.getBaseUrl().contains("www.cq88")) {
+            uuid = "ZrbRtM30gQzIhLcEqoKd2YeReMR9zrbldCzNYRN9imOeUpD+VUOtT3vqOe7tT6iE+DCbJuZcF5+AgGPo8BM=";
+        }
         while (retryCount < maxRetries) {
-            String code = code(uuid, userConfig);
-            if ("0000".equals(code)) {
+            Map<String, String> code = code(uuid, userConfig);
+            if ("0000".equals(code.get("code"))) {
                 retryCount++;
                 continue;
+            }
+            if (userConfig.getBaseUrl().contains("www.cq88") && code.containsKey("2a29530a2306") && !code.get("2a29530a2306").isBlank()) {
+                uuid = code.get("2a29530a2306");
             }
             Map<String, String> headers = new HashMap<>();
             String url = baseUrl + "login";
@@ -460,7 +476,7 @@ public class FalaliApi {
             headers.put("content-type", "application/x-www-form-urlencoded");
             headers.put("Cookie", "2a29530a2306="+uuid);
 
-            String params = "type=1&account=" + userConfig.getAccount() + "&password=" + userConfig.getPassword() + "&code=" + code;
+            String params = "type=1&account=" + userConfig.getAccount() + "&password=" + userConfig.getPassword() + "&code=" + code.get("code");
 
             log.info("登录请求 账号 {} uuid 为: {} 完整url {} 参数{}", userConfig.getAccount(), uuid, url, params);
             // 创建请求对象
@@ -479,7 +495,8 @@ public class FalaliApi {
                 if (StringUtils.isNotBlank(location)) {
                     if (location.contains("login?e=3")) {
                         // 验证码错误
-                        retryCount--;
+                        log.info("登录请求 账号{} 验证码{} 验证码错误", userConfigs.get(0).getAccount(), code.get("code"));
+                        retryCount++;
                         continue;
                     } else if (location.contains("login?e=4")) {
                         throw new BusinessException(SystemError.USER_1008);
@@ -499,7 +516,7 @@ public class FalaliApi {
                         userConfig.setToken(null); // 清理旧 Token
                         userConfig.setIsTokenValid(0);
                         userConfig.setIsTokenValid(0);
-                        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfig.getId())).set(JSONUtil.toJsonStr(userConfig));
+                        businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfig.getId())).set(JSONUtil.toJsonStr(userConfig));
                         // 重新登录以获取新的 token
                         // retryCount--;
                         // continue;
@@ -517,7 +534,7 @@ public class FalaliApi {
                     userConfig.setToken(token);
                     userConfig.setIsTokenValid(1);
                     userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-                    redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfigs.get(0).getId())).set(JSONUtil.toJsonStr(userConfig));
+                    businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfigs.get(0).getId())).set(JSONUtil.toJsonStr(userConfig));
                     log.info("登录请求 账号 {} 参数{} 获取token成功 token:{}", userConfigs.get(0).getAccount(), params, token);
                     // JSONArray jsonArray = account(username, id);
                     return loginDTO;
@@ -528,25 +545,23 @@ public class FalaliApi {
                 // 延迟重试
                 // ThreadUtil.sleep(150);
             } catch (Exception e) {
-                if (StringUtils.isBlank(token) && retryCount == maxRetries) {
-                    log.warn("账号 {} 获取 token 异常", userConfigs.get(0).getAccount());
-                    Throwable cause = e.getCause();
-                    if (cause instanceof UnknownHostException) {
-                        log.error("代理请求失败：主机未知。可能是域名解析失败或代理地址有误。异常信息：{}", e.getMessage(), e);
-                        throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "代理请求失败");
-                    } else if (cause instanceof ConnectException) {
-                        log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
-                        throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接异常");
-                    } else if (cause instanceof SocketTimeoutException) {
-                        log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
-                        throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接超时");
-                    } else if (cause instanceof IOException) {
-                        log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
-                        throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "IO异常");
-                    } else {
-                        log.error("代理请求失败：未知异常。异常信息：{}", e.getMessage(), e);
-                        throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "未知异常");
-                    }
+                log.warn("账号 {} 获取 token 异常", userConfigs.get(0).getAccount());
+                Throwable cause = e.getCause();
+                if (cause instanceof UnknownHostException) {
+                    log.error("代理请求失败：主机未知。可能是域名解析失败或代理地址有误。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "代理请求失败");
+                } else if (cause instanceof ConnectException) {
+                    log.error("代理请求失败：连接异常。可能是代理服务器未开启或网络不可达。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接异常");
+                } else if (cause instanceof SocketTimeoutException) {
+                    log.error("代理请求失败：连接超时。可能是网络延迟过高或代理服务器响应缓慢。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "连接超时");
+                } else if (cause instanceof IOException) {
+                    log.error("代理请求失败：IO异常。可能是数据传输错误或代理配置不正确。异常信息：{}", e.getMessage(), e);
+                    throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "IO异常");
+                } else {
+                    log.error("代理请求失败：未知异常。异常信息：{}", e.getMessage(), e);
+                    // throw new BusinessException(SystemError.SYS_419, userConfig.getAccount(), "未知异常");
                 }
             }
         }
@@ -554,8 +569,12 @@ public class FalaliApi {
         if (StringUtils.isBlank(token) && retryCount == maxRetries) {
             userConfig.setToken(null);
             userConfig.setIsTokenValid(0);
+            userConfig.setBalance(null);
+            userConfig.setBetting(null);
+            userConfig.setAmount(null);
+            userConfig.setResult(null);
             userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfigs.get(0).getId())).set(JSONUtil.toJsonStr(userConfig));
+            businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, userConfigs.get(0).getId())).set(JSONUtil.toJsonStr(userConfig));
             log.warn("账号 {} 获取 token 失败，已达到最大重试次数", userConfigs.get(0).getAccount());
         }
         return loginDTO;
@@ -622,50 +641,6 @@ public class FalaliApi {
         return result;
     }
 
-//    public List<LoginDTO> batchLogin(List<LoginVO> logins) {
-//        List<LoginDTO> results = Collections.synchronizedList(new ArrayList<>());
-//        Set<String> tokenSet = ConcurrentHashMap.newKeySet();
-//
-//        // 动态线程池
-//        ThreadPoolExecutor executor = new ThreadPoolExecutor(
-//                5, 20, 60L, TimeUnit.SECONDS,
-//                new LinkedBlockingQueue<>(100), new ThreadPoolExecutor.CallerRunsPolicy()
-//        );
-//
-//        List<CompletableFuture<Void>> futures = logins.stream()
-//                .map(login -> CompletableFuture.runAsync(() -> {
-//                    int retryCount = 0;
-//                    final int maxRetries = 3;
-//
-//                    while (retryCount < maxRetries) {
-//                        LoginDTO loginDTO = singleLogin(login);
-//                        String token = loginDTO.getToken();
-//
-//                        if (StringUtils.isNotBlank(token) && tokenSet.add(token)) {
-//                            results.add(loginDTO);
-//                            log.info("账号 {} 登录成功", login.getAccount());
-//                            return;
-//                        }
-//
-//                        log.warn("账号 {} 登录失败，token {} 重复，重试次数: {}", login.getAccount(), token, retryCount + 1);
-//                        retryCount++;
-//                    }
-//
-//                    log.error("账号 {} 登录失败，重试已达上限", login.getAccount());
-//                    results.add(new LoginDTO(login.getAccount(), null)); // 标记登录失败
-//                }, executor))
-//                .toList();
-//
-//        // 等待所有任务完成
-//        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-//        executor.shutdown();
-//
-//        log.info("批量登录完成，成功: {}，失败: {}", results.stream().filter(r -> r.getToken() != null).count(),
-//                results.stream().filter(r -> r.getToken() == null).count());
-//
-//        return results;
-//    }
-
     /**
      * 获取账号余额信息
      *
@@ -728,25 +703,14 @@ public class FalaliApi {
             jsonArray = JSONUtil.parseArray(result);
             for (int i = 0; i < jsonArray.size(); i++) {
                 JSONObject object = jsonArray.getJSONObject(i);
-
                 // 同步一下余额信息
                 if (object.getLong("balance") > 0) {
                     userConfig.setBalance(object.getBigDecimal("balance"));
                     userConfig.setBetting(object.getBigDecimal("betting"));
-
-                    if (0 == object.getInt("type")) {
-                        userConfig.setAccountType("A");
-                    } else if (1 == object.getInt("type")) {
-                        userConfig.setAccountType("B");
-                    } else if (2 == object.getInt("type")) {
-                        userConfig.setAccountType("C");
-                    } else if (3 == object.getInt("type")) {
-                        userConfig.setAccountType("D");
-                    }
+                    userConfig.setAccountType(getAccountType(object.getInt("type")));
                     userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-                    redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
+                    businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
                 }
-
                 // 添加新字段
                 object.putOpt("account", userConfig.getAccount());
                 // 替换回原数组
@@ -762,7 +726,7 @@ public class FalaliApi {
      * @return
      */
     public String token(String username, String id) {
-        UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).get()), UserConfig.class);
+        UserConfig userConfig = JSONUtil.toBean(JSONUtil.parseObj(businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).get()), UserConfig.class);
         log.info("获取到账户id:{} Redis数据:{}", id, userConfig);
         if (BeanUtil.isNotEmpty(userConfig)) {
             String token = userConfig.getToken();
@@ -787,7 +751,7 @@ public class FalaliApi {
                                 userConfig.setAccountType("D");
                             }
                             userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-                            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
+                            businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
                         }
                     });
             } else {
@@ -804,21 +768,21 @@ public class FalaliApi {
                             userConfig.setIsTokenValid(1);
                             userConfig.setToken(token);
                             userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-                            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
+                            businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
                             return token;
                         } else {
                             log.info("盘口账号自动登录失败:{}", userConfig.getAccount());
                             userConfig.setIsTokenValid(0);
                             userConfig.setToken(null);
                             userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-                            redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
+                            businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
                             return null;
                         }
                     } else {
                         userConfig.setIsTokenValid(0);
                         userConfig.setToken(null);
                         userConfig.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-                        redisson.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
+                        businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, id)).set(JSONUtil.toJsonStr(userConfig));
                         return null;
                     }
                 }
@@ -1014,6 +978,50 @@ public class FalaliApi {
     }
 
     /**
+     * 获取所有开启下注的平台用户
+     * @return
+     */
+    private List<AdminLoginDTO> getAutoBetAdminUsers() {
+        // 匹配所有平台用户的 Redis Key
+        String pattern = KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, "*");
+
+        // 使用 Redisson 执行扫描所有平台用户操作
+        RKeys keys = businessUserRedissonClient.getKeys();
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
+
+        // 提取出已开启方案的平台用户和方案 使用线程安全的列表
+        List<AdminLoginDTO> adminUsers = new ArrayList<>();
+
+        // 创建批量操作实例
+        RBatch batch = businessUserRedissonClient.createBatch();
+
+        // 存储 RBucket 实例
+        List<RBucket<String>> buckets = new ArrayList<>();
+
+        // 将每个操作添加到批处理队列
+        while (iterableKeys.hasNext()) {
+            String key = iterableKeys.next();
+            RBucket<String> bucket = businessUserRedissonClient.getBucket(key); // 获取 RBucket 对象
+            bucket.getAsync(); // 为每个键添加获取操作
+            buckets.add(bucket);
+        }
+        // 执行所有批量操作
+        batch.execute();
+
+        // 处理结果
+        buckets.forEach(bucket -> {
+            String json = bucket.get();  // 获取每个键的值
+            if (json != null) {
+                AdminLoginDTO admin = JSONUtil.toBean(json, AdminLoginDTO.class);
+                if (null != admin.getAutoBet() && admin.getAutoBet() != 0) {
+                    adminUsers.add(admin);
+                }
+            }
+        });
+        return adminUsers;
+    }
+
+    /**
      * 自动下注
      */
     public void autoBet() {
@@ -1022,9 +1030,11 @@ public class FalaliApi {
 
         // 使用 Redisson 执行扫描所有平台用户操作
         RKeys keys = redisson.getKeys();
-        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
         List<String> keysList = new ArrayList<>();
-        iterableKeys.forEach(keysList::add);
+        while (iterableKeys.hasNext()) {
+            keysList.add(iterableKeys.next());
+        }
 
         // 计数器，用于统计成功/失败数量
         AtomicInteger successCount = new AtomicInteger();
@@ -1132,7 +1142,7 @@ public class FalaliApi {
                                 // 获取期数锁
                                 RLock lock = redisson.getLock(KeyUtil.genKey(
                                         RedisConstants.USER_BET_PERIOD_PREFIX,
-                                        StringUtils.isNotBlank(plan.getLottery()) ? plan.getLottery() : "*",
+                                        plan.getLottery(),
                                         drawNumber,
                                         username,
                                         String.valueOf(plan.getId())
@@ -1362,86 +1372,90 @@ public class FalaliApi {
 
     public void autoBetCompletableFuture() {
         TimeInterval timerTotal = DateUtil.timer();
-        // 匹配所有平台用户的 Redis Key
-        String pattern = KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, "*");
-
-        // 使用 Redisson 执行扫描所有平台用户操作
-        RKeys keys = redisson.getKeys();
-        Iterable<String> iterableKeys = keys.getKeysByPattern(pattern);
-
-        // 计数器，用于统计成功/失败数量
-        AtomicInteger successCount = new AtomicInteger();
-        AtomicInteger failureCount = new AtomicInteger();
-        AtomicInteger reverseCount = new AtomicInteger();
-
-        // 计数器，用于统计总的有效方案数量
-        AtomicInteger totalTasks = new AtomicInteger(0);
-        // 提取出已开启方案的平台用户和方案 使用线程安全的列表
-        List<AdminLoginDTO> adminUsers = new CopyOnWriteArrayList<>();
-        // 使用一个列表保存需要删除的用户
-        List<AdminLoginDTO> toRemoveUsers = new ArrayList<>();
-        Map<String, List<ConfigPlanVO>> enabledUserConfigsMap = new ConcurrentHashMap<>();
-        Map<String, List<UserConfig>> tokenVaildConfigsMap = new ConcurrentHashMap<>();
         TimeInterval timerPre = DateUtil.timer();
-
         log.info("前置操作，获取真正有效的平台用户和方案...");
-        // 第一阶段：过滤出有效用户
-        iterableKeys.forEach(key -> {
-            String json = (String) redisson.getBucket(key).get();
-            AdminLoginDTO admin = JSONUtil.toBean(json, AdminLoginDTO.class);
-            // 过滤未开启方案的用户
-            if (admin == null || admin.getAutoBet() == null || admin.getAutoBet() != 1) {
-                return; // 跳过该用户
-            }
-            // 将有效用户加入列表
-            adminUsers.add(admin);
-        });
-
+        TimeInterval timerRedis = DateUtil.timer();
+        // 提取出已开启下注的平台用户和方案 使用线程安全的列表
+        // 第一阶段：过滤出有效平台用户
+        List<AdminLoginDTO> adminUsers = getAutoBetAdminUsers();
+        log.info("过滤出开启下注的平台用户花费:{}毫秒", timerRedis.interval());
         // 如果没有有效用户，直接退出
         if (CollUtil.isEmpty(adminUsers)) {
             log.info("所有平台用户都未开启自动下注，直接退出当前任务");
             return;
         }
 
+        // 计数器，用于统计成功/失败数量
+        AtomicInteger successCount = new AtomicInteger();
+        AtomicInteger failureCount = new AtomicInteger();
+        AtomicInteger reverseCount = new AtomicInteger();
+        // 计数器，用于统计总的有效方案数量
+        AtomicInteger totalTasks = new AtomicInteger(0);
+        // 使用一个列表保存需要删除的用户
+        List<AdminLoginDTO> toRemoveUsers = new ArrayList<>();
+        Map<String, List<ConfigPlanVO>> enabledUserConfigsMap = new HashMap<>();
+        Map<String, List<UserConfig>> tokenVaildConfigsMap = new HashMap<>();
+
         // 第二阶段：并发处理每个有效用户的方案和登录账号
+        TimeInterval timerThear = DateUtil.timer();
         int cpuCoreCount = Runtime.getRuntime().availableProcessors();
         ExecutorService executorAdminUserService = Executors.newFixedThreadPool(Math.min(adminUsers.size(), cpuCoreCount * 2));
+//        ExecutorService executorAdminUserService = Executors.newCachedThreadPool();
+
+        // 使用 ForkJoinPool 进行更高效的任务执行
+//        ForkJoinPool forkJoinPool = new ForkJoinPool(Math.min(adminUsers.size(), cpuCoreCount * 2));
         List<CompletableFuture<Void>> adminFutures = new ArrayList<>();
-        // 为每个用户执行并发任务
+
+        // 先请求所有用户的数据
         adminUsers.forEach(admin -> {
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                // 获取该用户的启用方案
-                List<ConfigPlanVO> enabledUserConfigs = getEnabledConfigPlans(admin.getUsername());
-                if (CollUtil.isEmpty(enabledUserConfigs)) {
-                    toRemoveUsers.add(admin);
-                    return;
-                }
+                // 批量请求启用方案和有效配置
+                CompletableFuture<List<ConfigPlanVO>> enabledUserConfigsFuture = getEnabledConfigPlansAsync(admin.getUsername());
+                CompletableFuture<List<UserConfig>> tokenVaildConfigsFuture = getTokenValidConfigsAsync(admin.getUsername());
 
-                // 过滤获取当前平台用户下有效登录的盘口账号
-                List<UserConfig> tokenVaildConfigs = getTokenValidConfigs(admin.getUsername());
-                if (CollUtil.isEmpty(tokenVaildConfigs)) {
-                    toRemoveUsers.add(admin);
-                    return;
-                }
+                CompletableFuture<Void> combinedFuture = CompletableFuture.allOf(
+                        enabledUserConfigsFuture,
+                        tokenVaildConfigsFuture
+                ).thenRun(() -> {
+                    try {
+                        // 获取启用的配置方案和有效配置
+                        List<ConfigPlanVO> enabledUserConfigs = enabledUserConfigsFuture.join();
+                        List<UserConfig> tokenVaildConfigs = tokenVaildConfigsFuture.join();
 
-                // 存入启用方案
-                enabledUserConfigsMap.put(admin.getUsername(), enabledUserConfigs);
+                        // 校验结果并更新
+                        if (CollUtil.isEmpty(enabledUserConfigs) || CollUtil.isEmpty(tokenVaildConfigs)) {
+                            toRemoveUsers.add(admin);
+                            return;
+                        }
+                        // 校验正反投账号
+                        List<UserConfig> validUserConfigs = validUserBetTypeAsync(admin, tokenVaildConfigs).join();
+                        if (CollUtil.isEmpty(validUserConfigs)) {
+                            toRemoveUsers.add(admin);
+                            return;
+                        }
 
-                // 存入有效登录账号
-                tokenVaildConfigsMap.put(admin.getUsername(), tokenVaildConfigs);
+                        // 将有效方案添加到 map
+                        enabledUserConfigsMap.put(admin.getUsername(), enabledUserConfigs);
+                        tokenVaildConfigsMap.put(admin.getUsername(), tokenVaildConfigs);
 
-                // 更新 totalTasks 计数
-                totalTasks.addAndGet(enabledUserConfigs.size());
+                        // 更新总有效方案数量
+                        totalTasks.addAndGet(enabledUserConfigs.size());
+                    } catch (Exception e) {
+                        log.error("处理用户 {} 时出错", admin.getUsername(), e);
+                    }
+                });
+                // 使用 ForkJoinPool 提高并发性能
+                combinedFuture.join();
             }, executorAdminUserService);
 
-            adminFutures.add(future); // 将任务添加到 futures 列表中
+            adminFutures.add(future);
         });
 
-        // 等待所有 CompletableFuture 完成
-        CompletableFuture<Void> adminOf = CompletableFuture.allOf(adminFutures.toArray(new CompletableFuture[0]));
-        adminOf.join(); // 阻塞等待所有任务完成
+        // 等待所有任务完成
+        CompletableFuture<Void> allOf = CompletableFuture.allOf(adminFutures.toArray(new CompletableFuture[0]));
+        allOf.join(); // 等待所有任务完成
         shutdownExecutor(executorAdminUserService);
-
+        log.info("过滤出所有开启方案和已登录账号花费:{}", timerThear.interval());
         // 过滤掉需要删除的用户
         adminUsers.removeAll(toRemoveUsers);
         // 如果没有有效用户，直接退出
@@ -1449,7 +1463,7 @@ public class FalaliApi {
             log.info("所有平台用户都未开启方案或者不存在有效登录账号，直接退出当前任务");
             return;
         }
-        log.info("前置操作结束,当前任务有:{}位平台用户开启方案并且存在有效登录账号,花费:{}毫秒", adminUsers.size(), timerPre.interval());
+        log.info("前置操作结束,当前任务有:{}位平台用户开启方案并且存在有效登录账号,总有效方案数量:{},花费:{}毫秒", adminUsers.size(), totalTasks.get(), timerPre.interval());
 
         int threadPoolUserSize = Math.min(adminUsers.size(), cpuCoreCount * 2);
         int threadPoolPlanSize = Math.min(totalTasks.get(), Math.max(cpuCoreCount * 2, 100));
@@ -1516,9 +1530,9 @@ public class FalaliApi {
                         };
 
                         // 获取期数锁
-                        RLock lock = redisson.getLock(KeyUtil.genKey(
+                        RLock lock = businessUserRedissonClient.getLock(KeyUtil.genKey(
                                 RedisConstants.USER_BET_PERIOD_PREFIX,
-                                StringUtils.isNotBlank(plan.getLottery()) ? plan.getLottery() : "*",
+                                plan.getLottery(),
                                 drawNumber,
                                 username,
                                 String.valueOf(plan.getId())
@@ -1637,7 +1651,7 @@ public class FalaliApi {
                             try {
                                 String isBetRedisKey = KeyUtil.genKey(
                                         RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                                        StringUtils.isNotBlank(plan.getLottery()) ? plan.getLottery() : "*",
+                                        plan.getLottery(),
                                         ToDayRangeUtil.getToDayRange(),
                                         drawNumber,
                                         "success",
@@ -1747,7 +1761,7 @@ public class FalaliApi {
      * @return
      */
     private List<ConfigPlanVO> getEnabledConfigPlans(String username) {
-        List<ConfigPlanVO> configs = configService.getAllPlans(username, null);
+        List<ConfigPlanVO> configs = configService.getAllPlansRBatch(username, null);
         if (CollUtil.isEmpty(configs)) {
             return Collections.emptyList();
         }
@@ -1762,7 +1776,7 @@ public class FalaliApi {
      * @return
      */
     private List<UserConfig> getTokenValidConfigs(String username) {
-        List<UserConfig> userConfigs = configService.accounts(username, null);
+        List<UserConfig> userConfigs = configService.accountsRBatch(username, null);
 
         if (CollUtil.isEmpty(userConfigs)) {
             return Collections.emptyList();
@@ -1772,6 +1786,68 @@ public class FalaliApi {
         return userConfigs.stream()
                 .filter(userConfig -> 1 == userConfig.getIsTokenValid() && StringUtils.isNotBlank(userConfig.getToken()))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 校验list中正反投账号是否都存在
+     * @param userConfigs
+     * @return
+     */
+    private List<UserConfig> validUserBetType(AdminLoginDTO admin, List<UserConfig> userConfigs) {
+        // 校验正投和反投账户数量是否都大于1
+        long positiveCount = userConfigs.stream().filter(userConfig -> userConfig.getBetType() == 1).count();
+        long reverseCount = userConfigs.stream().filter(userConfig -> userConfig.getBetType() == 2).count();
+        if (positiveCount < 1 || reverseCount < 1) {
+            // 如果正投或反投账户数量不满足条件，返回空列表
+            // 关闭自动下注
+            admin.setAutoBet(0);
+            businessUserRedissonClient.getBucket(KeyUtil.genKey(
+                    RedisConstants.USER_ADMIN_PREFIX,
+                    admin.getUsername()
+            )).set(JSONUtil.toJsonStr(admin));
+            return Collections.emptyList();
+        }
+        return userConfigs;
+    }
+
+    private CompletableFuture<List<ConfigPlanVO>> getEnabledConfigPlansAsync(String username) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<ConfigPlanVO> configs = configService.getAllPlansRBatch(username, null);
+            if (CollUtil.isEmpty(configs)) {
+                return Collections.emptyList();
+            }
+            return configs.stream()
+                    .filter(config -> config.getEnable() != 0)
+                    .collect(Collectors.toList());
+        });
+    }
+
+    private CompletableFuture<List<UserConfig>> getTokenValidConfigsAsync(String username) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<UserConfig> userConfigs = configService.accountsRBatch(username, null);
+            if (CollUtil.isEmpty(userConfigs)) {
+                return Collections.emptyList();
+            }
+            return userConfigs.stream()
+                    .filter(userConfig -> 1 == userConfig.getIsTokenValid() && StringUtils.isNotBlank(userConfig.getToken()))
+                    .collect(Collectors.toList());
+        });
+    }
+
+    private CompletableFuture<List<UserConfig>> validUserBetTypeAsync(AdminLoginDTO admin, List<UserConfig> userConfigs) {
+        return CompletableFuture.supplyAsync(() -> {
+            long positiveCount = userConfigs.stream().filter(userConfig -> userConfig.getBetType() == 1).count();
+            long reverseCount = userConfigs.stream().filter(userConfig -> userConfig.getBetType() == 2).count();
+            if (positiveCount < 1 || reverseCount < 1) {
+                admin.setAutoBet(0);
+                businessUserRedissonClient.getBucket(KeyUtil.genKey(
+                        RedisConstants.USER_ADMIN_PREFIX,
+                        admin.getUsername()
+                )).set(JSONUtil.toJsonStr(admin));
+                return Collections.emptyList();
+            }
+            return userConfigs;
+        });
     }
 
     /**
@@ -2019,7 +2095,19 @@ public class FalaliApi {
         try {
             result = request.body(JSONUtil.toJsonStr(order)).execute().body();
             log.info("下单结束, 平台用户:{}, 账号:{}, 期数:{}, 方案:{}, 返回信息{}", username, userConfig.getAccount(), drawNumber, plan.getName(), result);
-            if (!JSONUtil.isTypeJSONObject(result)) {
+            if (StringUtils.isBlank(result)) {
+                log.error("下单失败, 平台用户:{}, 账号:{}, 期数:{}, 方案:{}, 返回信息{}", username, userConfig.getAccount(), drawNumber, plan.getName(), result);
+                JSONObject failed = new JSONObject();
+                failed.putOpt("status", 1);
+                failed.putOpt("lottery", plan.getLottery());
+                failed.putOpt("drawNumber", drawNumber);
+                failed.putOpt("createTime", LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                failed.putOpt("account", userConfig.getAccount());
+                failed.putOpt("isRepair", 0);// 是否为补单 0:否 1:是
+                failed.putOpt("message", "账号异常,请检查登录状态以及账号是否正常");
+                success = false;
+                return JSONUtil.toJsonStr(failed);
+            } else if (!JSONUtil.isTypeJSONObject(result)) {
                 log.error("下单失败, 平台用户:{}, 账号:{}, 期数:{}, 方案:{}, 返回信息{}", username, userConfig.getAccount(), drawNumber, plan.getName(), result);
                 JSONObject failed = new JSONObject();
                 failed.putOpt("status", 1);
@@ -2113,7 +2201,7 @@ public class FalaliApi {
             resultJson.putOpt("account", userConfig.getAccount());
             resultJson.putOpt("isRepair", 0);// 是否为补单 0:否 1:是
             // 记录失败信息
-            redisson.getBucket(KeyUtil.genKey(
+            businessUserRedissonClient.getBucket(KeyUtil.genKey(
                     RedisConstants.USER_BET_PERIOD_RES_PREFIX,
                     plan.getLottery(),
                     ToDayRangeUtil.getToDayRange(),
@@ -2160,7 +2248,7 @@ public class FalaliApi {
             });
             // 关闭自动下注
             admin.setAutoBet(0);
-            redisson.getBucket(KeyUtil.genKey(
+            businessUserRedissonClient.getBucket(KeyUtil.genKey(
                             RedisConstants.USER_ADMIN_PREFIX,
                     admin.getUsername()
                     )).set(JSONUtil.toJsonStr(admin));
@@ -2197,8 +2285,8 @@ public class FalaliApi {
         // 记录反补的请求参数
         redisson.getBucket(KeyUtil.genKey(
                 RedisConstants.USER_BET_PERIOD_REQ_PREFIX,
-                ToDayRangeUtil.getToDayRange(),
                 plan.getLottery(),
+                ToDayRangeUtil.getToDayRange(),
                 drawNumber,
                 username,
                 sucAccount.getAccount(),
@@ -2221,7 +2309,7 @@ public class FalaliApi {
                 failed.putOpt("message", "代理异常");
                 failed.putOpt("isRepair", 1);// 是否为补单 0:否 1:是
                 // 反补失败返回参数
-                redisson.getBucket(KeyUtil.genKey(
+                businessUserRedissonClient.getBucket(KeyUtil.genKey(
                         RedisConstants.USER_BET_PERIOD_RES_PREFIX,
                         plan.getLottery(),
                         ToDayRangeUtil.getToDayRange(),
@@ -2268,12 +2356,12 @@ public class FalaliApi {
                 // 反补成功返回参数
                 redisson.getBucket(KeyUtil.genKey(
                         RedisConstants.USER_BET_PERIOD_RES_PREFIX,
-                        StringUtils.isNotBlank(plan.getLottery()) ? plan.getLottery() : "*",
+                        plan.getLottery(),
                         ToDayRangeUtil.getToDayRange(),
                         drawNumber,
                         "reverse",
                         username,
-                        StringUtils.isNotBlank(sucAccount.getAccount()) ? sucAccount.getAccount() : "*",
+                        sucAccount.getAccount(),
                         String.valueOf(plan.getId())
                 )).set(JSONUtil.toJsonStr(result), Duration.ofHours(24));
 
@@ -2288,11 +2376,11 @@ public class FalaliApi {
                         failedAccount.getAccount(),
                         String.valueOf(plan.getId())
                 );
-                JSONObject failedJson = JSONUtil.parseObj(redisson.getBucket(failedKey).get());
+                JSONObject failedJson = JSONUtil.parseObj(businessUserRedissonClient.getBucket(failedKey).get());
                 if (null != failedJson && !failedJson.isEmpty()) {
                     failedJson.putOpt("repair", 1);
                     failedJson.putOpt("repairAccount", sucAccount.getAccount());
-                    redisson.getBucket(failedKey).set(failedJson, Duration.ofHours(24));
+                    businessUserRedissonClient.getBucket(failedKey).set(failedJson, Duration.ofHours(24));
                 }
 
                 reverseCount.incrementAndGet();
@@ -2312,7 +2400,7 @@ public class FalaliApi {
             resultJson.putOpt("account", sucAccount.getAccount());
             resultJson.putOpt("isRepair", 1);// 是否为补单 0:否 1:是
             // 反补失败返回参数
-            redisson.getBucket(KeyUtil.genKey(
+            businessUserRedissonClient.getBucket(KeyUtil.genKey(
                     RedisConstants.USER_BET_PERIOD_RES_PREFIX,
                     plan.getLottery(),
                     ToDayRangeUtil.getToDayRange(),
@@ -2334,11 +2422,11 @@ public class FalaliApi {
                     failedAccount.getAccount(),
                     String.valueOf(plan.getId())
             );
-            JSONObject failedJson = JSONUtil.parseObj(redisson.getBucket(failedKey).get());
+            JSONObject failedJson = JSONUtil.parseObj(businessUserRedissonClient.getBucket(failedKey).get());
             if (null != failedJson && !failedJson.isEmpty()) {
                 failedJson.putOpt("repair", 0);
                 failedJson.putOpt("repairAccount", (StringUtils.isBlank(failedJson.getStr("repairAccount")) ? "" : failedJson.getStr("repairAccount") + ",") + sucAccount.getAccount());
-                redisson.getBucket(failedKey).set(failedJson, Duration.ofHours(24));
+                businessUserRedissonClient.getBucket(failedKey).set(failedJson, Duration.ofHours(24));
             }
 
         }
@@ -2830,10 +2918,90 @@ public class FalaliApi {
     }
 
     /**
+     * 自动刷新今日汇总 - 用于防止盘口token失效
+     */
+    public void autoRefreshBalance() {
+        TimeInterval timer = DateUtil.timer();
+        List<AdminLoginDTO> adminUsers = getAutoBetAdminUsers();
+        // 如果没有有效用户，直接退出
+        if (CollUtil.isEmpty(adminUsers)) {
+            return;
+        }
+
+        // 基于任务总量和 CPU 核数动态调整线程池大小
+        int cpuCoreCount = Runtime.getRuntime().availableProcessors();
+        int threadPoolSize = Math.min(adminUsers.size(), Math.max(cpuCoreCount * 2, 100));
+        log.info("自动刷新账号额度 cpu核数: {}，配置线程池大小: {}", cpuCoreCount, threadPoolSize);
+
+        // 使用一个大的线程池来管理所有任务
+        ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
+
+        // 创建一个List来存储所有的 CompletableFuture 任务
+        List<CompletableFuture<Void>> futures = adminUsers.stream()
+                .map(admin -> CompletableFuture.runAsync(() -> {
+                    List<UserConfig> accounts = configService.accounts(admin.getUsername(), null);
+                    if (CollUtil.isEmpty(accounts)) {
+                        return;
+                    }
+                    List<UserConfig> tokenVaildConfigs = accounts.stream()
+                            .filter(userConfig -> 1 == userConfig.getIsTokenValid() && StringUtils.isNotBlank(userConfig.getToken()))
+                            .toList();
+                    if (CollUtil.isEmpty(tokenVaildConfigs)) {
+                        return;
+                    }
+
+                    // 处理账户列表的任务
+                    processTokenValidConfigs(admin, tokenVaildConfigs, cpuCoreCount);
+
+                }, executorService))  // 提交给线程池
+                .toList();
+
+        // 等待所有的 CompletableFuture 完成
+        CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+        allOf.join();  // 阻塞当前线程，直到所有任务完成
+
+        // 关闭线程池
+        shutdownExecutor(executorService);
+        log.info("自动刷新账号额度 平台用户数:{}，总刷新花费:{}毫秒", adminUsers.size(), timer.interval());
+    }
+
+    /**
+     * 获取每个 admin 用户下的有效账户额度任务
+     * @param admin 当前 admin 用户
+     * @param tokenVaildConfigs 该 admin 下的有效账户列表
+     * @param cpuCoreCount 系统 CPU 核心数，用来计算线程池大小
+     */
+    private void processTokenValidConfigs(AdminLoginDTO admin, List<UserConfig> tokenVaildConfigs, int cpuCoreCount) {
+        // 基于任务总量和 CPU 核数动态调整线程池大小
+        int threadPoolAccountSize = Math.min(tokenVaildConfigs.size(), Math.max(cpuCoreCount * 2, 10));
+        ExecutorService executorService = Executors.newFixedThreadPool(threadPoolAccountSize);
+
+        // 为每个有效账户创建 CompletableFuture 任务
+        List<CompletableFuture<Void>> futuresAccount = tokenVaildConfigs.stream()
+                .map(account -> CompletableFuture.runAsync(() -> {
+                    try {
+                        // 更新账户信息
+                        account(admin.getUsername(), account.getId());
+                    } catch (Exception e) {
+                        log.error("获取平台用户:{} 账号:{}额度失败", admin.getUsername(), account.getAccount(), e);
+                    }
+                }, executorService))
+                .toList();
+
+        // 等待所有账户的任务完成
+        CompletableFuture<Void> allAccount = CompletableFuture.allOf(futuresAccount.toArray(new CompletableFuture[0]));
+        allAccount.join();  // 阻塞当前线程，直到所有任务完成
+
+        // 关闭账户线程池
+        shutdownExecutor(executorService);
+    }
+
+    /**
      * 获取今日汇总
      * @return
      */
     public List<UserConfig> summaryToday(String username) {
+        TimeInterval timer = DateUtil.timer();
         List<UserConfig> accounts = configService.accounts(username, null);
         if (CollUtil.isEmpty(accounts)) {
             return Collections.emptyList();
@@ -2844,67 +3012,42 @@ public class FalaliApi {
         if (CollUtil.isEmpty(tokenVaildConfigs)) {
             return Collections.emptyList();
         }
-        AtomicLong totalAmount = new AtomicLong();
-        AtomicLong totalResult = new AtomicLong();
         int keysCount = tokenVaildConfigs.size();
         // 基于任务总量和 CPU 核数动态调整线程池大小
         int cpuCoreCount = Runtime.getRuntime().availableProcessors();
         int threadPoolSize = Math.min(keysCount, Math.max(cpuCoreCount * 2, 10));
         log.info("获取今日汇总 cpu核数: {}，配置线程池大小: {}", cpuCoreCount, threadPoolSize);
         // 初始化线程池（动态线程池，避免任务阻塞）
-        ExecutorService executorService = PriorityTaskExecutor.createPriorityThreadPool(threadPoolSize);
+        ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
 
-        List<Future<?>> futures = new ArrayList<>();
-        tokenVaildConfigs.forEach(account -> {
-            futures.add(executorService.submit(new PriorityTaskExecutor.PriorityTask(() -> {
-                try {
-                    // 更新余额和未结算金额
-                    JSONArray balance = account(username, account.getId());
-                    if (balance.isEmpty()) {
-                        account.setBalance(BigDecimal.ZERO);
-                        account.setBetting(BigDecimal.ZERO);
-                        account.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-                    } else {
-                        JSONArray jsonArray = JSONUtil.parseArray(balance);
-                        for (int i = 0; i < jsonArray.size(); i++) {
-                            JSONObject object = jsonArray.getJSONObject(i);
-                            // 同步一下余额信息
-                            if (object.getLong("balance") > 0) {
-                                account.setBalance(object.getBigDecimal("balance"));
-                                account.setBetting(object.getBigDecimal("betting"));
-
-                                if (0 == object.getInt("type")) {
-                                    account.setAccountType("A");
-                                } else if (1 == object.getInt("type")) {
-                                    account.setAccountType("B");
-                                } else if (2 == object.getInt("type")) {
-                                    account.setAccountType("C");
-                                } else if (3 == object.getInt("type")) {
-                                    account.setAccountType("D");
-                                }
-                                account.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-                                // 更新 Redis 缓存
-                                String cacheKey = KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, account.getId());
-                                redisson.getBucket(cacheKey).set(JSONUtil.toJsonStr(account));
-                            }
-
-                            // 添加新字段
-                            object.putOpt("account", account.getAccount());
-                            // 替换回原数组
-                            jsonArray.set(i, object);
+        // 创建一个List来存储所有的 CompletableFuture 任务
+        List<CompletableFuture<Void>> futures = tokenVaildConfigs.stream()
+            .map(account -> CompletableFuture.runAsync(() -> {
+            try {
+                // 更新余额和未结算金额
+                JSONArray balance = account(username, account.getId());
+                if (balance.isEmpty()) {
+                    account.setBalance(BigDecimal.ZERO);
+                    account.setBetting(BigDecimal.ZERO);
+                } else {
+                    JSONArray jsonArray = JSONUtil.parseArray(balance);
+                    for (int i = 0; i < jsonArray.size(); i++) {
+                        JSONObject object = jsonArray.getJSONObject(i);
+                        // 同步一下余额信息
+                        if (object.getLong("balance") > 0) {
+                            account.setBalance(object.getBigDecimal("balance"));
+                            account.setBetting(object.getBigDecimal("betting"));
+                            account.setAccountType(getAccountType(object.getInt("type")));
                         }
                     }
-                    // 获取账号今日流水
-                    JSONObject settled = JSONUtil.parseObj(settled(username, account.getId(), true, 1, true));
-                    JSONArray list = settled.getJSONArray("list");
-                    if (list.isEmpty()) {
-                        account.setAmount(BigDecimal.ZERO);
-                        account.setResult(BigDecimal.ZERO);
-                        // 更新 Redis 缓存
-                        String cacheKey = KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, account.getId());
-                        redisson.getBucket(cacheKey).set(JSONUtil.toJsonStr(account));
-                        return;
-                    }
+                }
+                // 获取账号今日流水
+                JSONObject settled = JSONUtil.parseObj(settled(username, account.getId(), true, 1, true));
+                JSONArray list = settled.getJSONArray("list");
+                if (list.isEmpty()) {
+                    account.setAmount(BigDecimal.ZERO);
+                    account.setResult(BigDecimal.ZERO);
+                } else {
                     list.forEach(object -> {
                         // 获取账号今日汇总
                         JSONObject jsonObject = JSONUtil.parseObj(object);
@@ -2912,34 +3055,41 @@ public class FalaliApi {
                         jsonObject.forEach((key, value) -> {
                             if (jsonObject.containsKey("account") && jsonObject.containsKey("totalAmount")) {
                                 // 总金额
-                                totalAmount.addAndGet(jsonObject.getLong("totalAmount"));
-                                totalResult.addAndGet(jsonObject.getLong("totalResult"));
                                 account.setAmount(jsonObject.getBigDecimal("totalAmount"));
                                 account.setResult(jsonObject.getBigDecimal("totalResult"));
-                                // 更新 Redis 缓存
-                                String cacheKey = KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, account.getId());
-                                redisson.getBucket(cacheKey).set(JSONUtil.toJsonStr(account));
                             }
                         });
                     });
-                } catch (Exception e) {
-                    log.error("获取账号:{}今日汇总失败", account.getAccount(), e);
                 }
-            }, 2)));// 设置优先级为 2
-        });
-        // 等待所有任务完成
-        futures.forEach(future -> {
-            try {
-                future.get(); // 阻塞等待任务完成
+                account.setUpdateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                // 更新流水 Redis 缓存
+                updateRedisCache(username, account);
             } catch (Exception e) {
-                throw new RuntimeException("任务执行失败", e);
+                log.error("获取平台用户:{} 账号:{}今日汇总失败", username, account.getAccount(), e);
             }
-        });
-
+        }, executorService)).toList();  // 提交给线程池
+        // 等待所有的 CompletableFuture 完成
+        CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+        allOf.join();  // 阻塞当前线程，直到所有任务完成
         // 关闭线程池
-        executorService.shutdown();
-
+        shutdownExecutor(executorService);
+        log.info("获取今日汇总 平台用户:{}，刷新花费:{}毫秒", username, timer.interval());
         return accounts;
+    }
+
+    private void updateRedisCache(String username, UserConfig account) {
+        String cacheKey = KeyUtil.genKey(RedisConstants.USER_PROXY_PREFIX, username, account.getId());
+        businessUserRedissonClient.getBucket(cacheKey).set(JSONUtil.toJsonStr(account));
+    }
+
+    private String getAccountType(int type) {
+        return switch (type) {
+            case 0 -> "A";
+            case 1 -> "B";
+            case 2 -> "C";
+            case 3 -> "D";
+            default -> "UNKNOWN";
+        };
     }
 
     public String settled(String username, String id, Boolean settled, Integer pageNo, Boolean isSummary) {
