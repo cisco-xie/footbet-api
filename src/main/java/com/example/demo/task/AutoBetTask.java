@@ -55,7 +55,7 @@ public class AutoBetTask {
         long startTime = System.currentTimeMillis();
         try {
             log.info("开始执行 自动刷新账号额度...");
-            falaliApi.autoRefreshBalance();
+            // falaliApi.autoRefreshBalance();
         } catch (Exception e) {
             log.error("自动刷新账号额度 执行异常", e);
         } finally {

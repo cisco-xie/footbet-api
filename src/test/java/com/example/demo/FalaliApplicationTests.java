@@ -1,7 +1,9 @@
 package com.example.demo;
 
 import cn.hutool.core.codec.Base64;
+import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.core.date.TimeInterval;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.RandomUtil;
@@ -13,6 +15,7 @@ import cn.hutool.json.JSONUtil;
 import com.example.demo.api.FalaliApi;
 import com.example.demo.api.LoginService;
 import com.example.demo.core.model.UserConfig;
+import com.example.demo.model.dto.AdminLoginDTO;
 import jakarta.annotation.Resource;
 import net.sourceforge.tess4j.Tesseract;
 import org.apache.commons.lang3.StringUtils;
@@ -22,8 +25,12 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.io.File;
+import java.io.InputStream;
+import java.net.*;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -36,10 +43,84 @@ class FalaliApplicationTests {
     @Resource
     private FalaliApi api;
 
+    @Test
+    void testa() {
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.set("datetime", "2024-12-25 18:35:01");
+        LocalDateTime localDateTime = jsonObject.getLocalDateTime("datetime", LocalDateTime.now().plusSeconds(-60));
+        System.out.println(localDateTime);
+        Duration between = LocalDateTimeUtil.between(localDateTime, LocalDateTime.now());
+        System.out.println(between.getSeconds());
+    }
+
+    @Test
+    public void testWebClient() {
+        WebClient webClient = WebClient.create("https://3575978705.tcrax4d8j.com/");
+        try {
+            var response = webClient.post()
+                    .uri("member/bet")
+                    .retrieve()
+                    .toBodilessEntity()
+                    .block(); // 阻塞直到获取响应
+            System.out.println("API is healthy: " + response.getStatusCode());
+        } catch (Exception e) {
+            System.out.println("API is not healthy: " + e.getMessage());
+        }
+    }
+
+    @Test
+    void isApiHealthy() {
+        try {
+            Proxy proxy = new Proxy(
+                    Proxy.Type.HTTP,
+                    new InetSocketAddress("182.106.184.224", 29259)
+            );
+            String healthCheckUrl = "https://3575978705.tcrax4d8j.com/member/bet";
+            HttpRequest healthCheckRequest = HttpRequest.post(healthCheckUrl);
+            healthCheckRequest.setProxy(proxy);
+            healthCheckRequest.basicProxyAuth("4B22F6C4", "58B847D9ED8C");
+            String response = healthCheckRequest.execute().body();
+            System.out.println("API is healthy: " + response);
+        } catch (Exception e) {
+            System.out.println("API 健康检查失败 异常: {}"+ e.getMessage());
+        }
+    }
+
+    @Test
+    void isApiHealthyWithHttpURLConnection() {
+        Authenticator.setDefault(new Authenticator() {
+            @Override
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication("4B22F6C4", "58B847D9ED8C".toCharArray());
+            }
+        });
+
+        String healthCheckUrl = "https://3575978705.tcrax4d8j.com/member/bet";
+        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress("120.71.7.75", 53557));
+
+        try {
+            URL url = new URL(healthCheckUrl);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection(proxy);
+            connection.setRequestMethod("POST");
+            connection.connect();
+
+            int responseCode = connection.getResponseCode();
+            try (InputStream inputStream = connection.getInputStream()) {
+                byte[] response = inputStream.readAllBytes();
+                System.out.println("API is healthy: " + responseCode + " - " + new String(response));
+            }
+        } catch (Exception e) {
+            System.out.println("API 健康检查失败 异常: " + e.getMessage());
+        }
+    }
 
     @Test
     public void testj() {
-
+        System.out.println(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+        System.out.println(LocalDateTimeUtil.formatNormal(LocalDateTime.now()));
+        String json = null;
+        AdminLoginDTO oldAdmin = JSONUtil.toBean(json, AdminLoginDTO.class);
+        System.out.println(oldAdmin);
         String cgrr01_3 = "{\"drawNumber\":\"33421730\",\"ignore\":false,\"lottery\":\"PK10JSC\",\"bets\":[{\"game\":\"DX1\",\"amount\":3,\"contents\":\"X\",\"odds\":1.9939},{\"game\":\"DX4\",\"amount\":9,\"contents\":\"D\",\"odds\":1.9939},{\"game\":\"DX10\",\"amount\":8,\"contents\":\"X\",\"odds\":1.9939},{\"game\":\"DX2\",\"amount\":3,\"contents\":\"D\",\"odds\":1.9939},{\"game\":\"DX9\",\"amount\":4,\"contents\":\"X\",\"odds\":1.9939},{\"game\":\"DX8\",\"amount\":3,\"contents\":\"X\",\"odds\":1.9939},{\"game\":\"DX6\",\"amount\":3,\"contents\":\"X\",\"odds\":1.9939},{\"game\":\"DX5\",\"amount\":5,\"contents\":\"X\",\"odds\":1.9939}],\"fastBets\":false}";
 
         JSONObject cgrr01Json = JSONUtil.parseObj(cgrr01_3);

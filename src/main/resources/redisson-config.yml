@@ -6,7 +6,7 @@ singleServerConfig:
   #  database: 0
   idleConnectionTimeout: 10000
   connectTimeout: 10000
-  timeout: 3000
+  timeout: 5000
   retryAttempts: 2
   retryInterval: 1000
   subscriptionsPerConnection: 5
@@ -21,5 +21,6 @@ nettyThreads: 32   # 设置为与 CPU 核心数相等
 
 codec:
   class: "org.redisson.codec.JsonJacksonCodec"
+#  class: "org.redisson.codec.FstCodec"
 #transportMode: "NIO"
 transportMode: "EPOLL"

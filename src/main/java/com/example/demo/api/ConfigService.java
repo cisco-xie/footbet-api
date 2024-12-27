@@ -2,6 +2,7 @@ package com.example.demo.api;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.json.JSONArray;
@@ -21,6 +22,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.*;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -519,7 +522,7 @@ public class ConfigService {
      * 获取所有平台用户
      * @return
      */
-    public List<AdminLoginDTO> getUsers() {
+    public List<AdminLoginDTO> getUsers(String group) {
         // 匹配所有平台用户的 Redis Key
         String pattern = KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, "*");
         // 使用 Redisson 执行扫描所有平台用户操作
@@ -534,6 +537,7 @@ public class ConfigService {
                     String json = (String) businessUserRedissonClient.getBucket(key).get();
                     return JSONUtil.toBean(json, AdminLoginDTO.class);
                 })
+                .filter(user -> StringUtils.isBlank(group) || group.equals(user.getGroup())) // 如果 group 为空，跳过过滤
                 .collect(Collectors.toList());
     }
 
@@ -543,16 +547,23 @@ public class ConfigService {
             if (null == admin.getUsername()) {
                 continue;
             }
+            String key = KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, admin.getUsername());
             AdminLoginDTO adminLoginDTO = new AdminLoginDTO();
             adminLoginDTO.setUsername(admin.getUsername());
             adminLoginDTO.setNickname(admin.getUsername());
             adminLoginDTO.setPassword(admin.getPassword());
             adminLoginDTO.setGroup(admin.getGroup());
-            adminLoginDTO.setRoles(List.of("common"));
-            adminLoginDTO.setPermissions(List.of("*:*:*"));
             adminLoginDTO.setExpires("2030/10/30 00:00:00");
-
-            businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_ADMIN_PREFIX, admin.getUsername())).set(JSONUtil.toJsonStr(adminLoginDTO));
+            if (businessUserRedissonClient.getBucket(key).isExists()) {
+                String json = (String) businessUserRedissonClient.getBucket(key).get();
+                AdminLoginDTO oldAdmin = JSONUtil.toBean(json, AdminLoginDTO.class);
+                adminLoginDTO.setRoles(oldAdmin.getRoles());
+                adminLoginDTO.setPermissions(oldAdmin.getPermissions());
+            } else {
+                adminLoginDTO.setRoles(List.of("common"));
+                adminLoginDTO.setPermissions(List.of("*:*:*"));
+            }
+            businessUserRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(adminLoginDTO));
         };
     }
 
@@ -609,6 +620,103 @@ public class ConfigService {
             redisson.getKeys().deleteByPattern(reqPattern);
             redisson.getKeys().deleteByPattern(resPattern);
         }
+    }
+
+    /**
+     * 获取当日投注异常通知
+     * @param username
+     * @return
+     */
+    public JSONArray notices(String username) {
+        // 获取 Redis 中现有的异常数据，如果存在
+        RBucket<String> bucket = businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_BET_SKIP_PREFIX,
+                ToDayRangeUtil.getToDayRange(),
+                username));
+
+        String existingErrorsStr = bucket.get(); // 获取 Redis 中的字符串数据
+
+        // 如果没有数据，初始化为一个空的 JSON 数组
+        JSONArray existingErrors = (existingErrorsStr == null) ? new JSONArray() : JSONUtil.parseArray(existingErrorsStr);
+
+        if (!existingErrors.isEmpty()) {
+            // 将 JSONArray 转为 List<JSONObject> 以便排序
+            List<JSONObject> errorList = existingErrors.toList(JSONObject.class);
+
+            // 按照 datetime 字段倒序排序
+            errorList.sort(new Comparator<JSONObject>() {
+                @Override
+                public int compare(JSONObject o1, JSONObject o2) {
+                    // 获取 datetime 字段并进行比较，注意日期格式的解析
+                    String datetime1 = o1.getStr("datetime");
+                    String datetime2 = o2.getStr("datetime");
+
+                    // 解析成 LocalDateTime 后进行比较，确保是倒序
+                    LocalDateTime time1 = LocalDateTime.parse(datetime1, DateTimeFormatter.ofPattern(DatePattern.NORM_DATETIME_PATTERN));
+                    LocalDateTime time2 = LocalDateTime.parse(datetime2, DateTimeFormatter.ofPattern(DatePattern.NORM_DATETIME_PATTERN));
+
+                    return time2.compareTo(time1);  // 倒序排列
+                }
+            });
+
+            // 排序后再转回 JSONArray
+            existingErrors = new JSONArray(errorList);
+        }
+        JSONArray result = new JSONArray();
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.putOpt("key", "1");
+        jsonObject.putOpt("name", "status.pureNotify");
+        jsonObject.putOpt("emptyText", "status.pureNoNotify");
+        jsonObject.putOpt("list", existingErrors);
+        result.add(jsonObject);
+        return result;
+    }
+
+    /**
+     * 获取最新的异常跳过数据
+     * @param username
+     * @return
+     */
+    public JSONObject getMaxDatetimeNotice(String username) {
+        // 获取 Redis 中现有的异常数据，如果存在
+        RBucket<String> bucket = businessUserRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.USER_BET_SKIP_PREFIX,
+                ToDayRangeUtil.getToDayRange(),
+                username));
+
+        String existingErrorsStr = bucket.get(); // 获取 Redis 中的字符串数据
+
+        // 如果没有数据，返回 null
+        if (existingErrorsStr == null) {
+            return null;
+        }
+
+        // 将 JSON 字符串转为 JSONArray
+        JSONArray existingErrors = JSONUtil.parseArray(existingErrorsStr);
+
+        if (existingErrors.isEmpty()) {
+            return null;  // 如果数组为空，返回 null
+        }
+
+        // 找到最大 datetime 的 JSONObject
+        // 转为 JSONObject
+        // 获取 datetime 字段并进行比较，确保是倒序
+        // 解析成 LocalDateTime 后进行比较
+        // 正序排列：最大值为最新的时间
+        // 如果没有元素，返回 null
+
+        return existingErrors.stream()
+                .map(obj -> (JSONObject) obj)  // 转为 JSONObject
+                .max((o1, o2) -> {
+                    // 获取 datetime 字段并进行比较，确保是倒序
+                    String datetime1 = o1.getStr("datetime");
+                    String datetime2 = o2.getStr("datetime");
+
+                    // 解析成 LocalDateTime 后进行比较
+                    LocalDateTime time1 = LocalDateTime.parse(datetime1, DateTimeFormatter.ofPattern(DatePattern.NORM_DATETIME_PATTERN));
+                    LocalDateTime time2 = LocalDateTime.parse(datetime2, DateTimeFormatter.ofPattern(DatePattern.NORM_DATETIME_PATTERN));
+
+                    return time1.compareTo(time2);  // 正序排列：最大值为最新的时间
+                })
+                .orElse(null);
     }
 
 }

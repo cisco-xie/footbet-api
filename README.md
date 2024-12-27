@@ -3,7 +3,9 @@
 
 
 ## Getting started
-
+nohup java -Duser.timezone=Asia/Shanghai -jar falali-api-0.0.1-SNAPSHOT.jar &
+grep "下单花费" nohup.out | awk -F "下单花费:" '{if($2+0 > 10000) print $0}'
+redis-cli -a dajusheng@20241201. --rdb dump.rdb
 To make it easy for you to get started with GitLab, here's a list of recommended next steps.
 
 Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!

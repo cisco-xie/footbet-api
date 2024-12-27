@@ -47,4 +47,12 @@ public class RedisConstants {
      * 自动下注前缀 - 用于获取当前是否自动下注
      */
     public static final String USER_BET_AUTO_PREFIX = "user:bet:auto";
+    /**
+     * 网络异常跳过下注前缀 - 用于获取当前平台用户是否存在网络异常跳过下注的数据
+     */
+    public static final String USER_BET_SKIP_PREFIX = "user:bet:skip";
+    /**
+     * 最新期数前缀 - 用于获取当前游戏最新期数
+     */
+    public static final String PERIOD_PREFIX = "period";
 }

@@ -177,8 +177,8 @@ public class BasicController extends BaseController {
 
     @Operation(summary = "获取后台用户列表")
     @GetMapping("/admin/user")
-    public Result adminUser() {
-        return Result.success(configService.getUsers());
+    public Result adminUser(@RequestParam(value = "group", required = false) String group) {
+        return Result.success(configService.getUsers(group));
     }
 
     @Operation(summary = "获取后台用户小组列表")
@@ -296,7 +296,7 @@ public class BasicController extends BaseController {
     @GetMapping("/auto/bet")
     @ResponseBody
     public Result autoBet() {
-        api.autoBet();
+        api.autoBetCompletableFuture();
         return Result.success();
     }
 
@@ -340,4 +340,10 @@ public class BasicController extends BaseController {
         return Result.success();
     }
 
+    @Operation(summary = "获取当日投注异常通知")
+    @GetMapping("/bet/skip/notices")
+    public Result notices() {
+        AdminLoginDTO admin = getUser();
+        return Result.success(configService.notices(admin.getUsername()));
+    }
 }
