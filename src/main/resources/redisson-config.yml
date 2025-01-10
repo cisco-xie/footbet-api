@@ -21,6 +21,5 @@ nettyThreads: 32   # 设置为与 CPU 核心数相等
 
 codec:
   class: "org.redisson.codec.JsonJacksonCodec"
-#  class: "org.redisson.codec.FstCodec"
-#transportMode: "NIO"
-transportMode: "EPOLL"
+transportMode: "NIO"
+#transportMode: "EPOLL"

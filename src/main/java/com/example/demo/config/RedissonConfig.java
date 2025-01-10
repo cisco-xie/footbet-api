@@ -32,8 +32,9 @@ public class RedissonConfig {
     @Value("${spring.data.redis.database}")
     public Integer database;
 
-    @Value("${redis.database.businessUser}")
-    public Integer businessUser;
+    @Value("${redis.database.platform}")
+    public Integer businessPlatform;
+
     /**
      * 创建默认的 Redisson 实例
      */
@@ -48,8 +49,8 @@ public class RedissonConfig {
      * 创建业务A的 Redisson 实例，连接数据库 1
      */
     @Bean
-    public RedissonClient businessUserRedissonClient() throws IOException {
-        Config config = createRedissonConfig(businessUser);  // 业务A数据库 1
+    public RedissonClient businessPlatformRedissonClient() throws IOException {
+        Config config = createRedissonConfig(businessPlatform);  // 业务A数据库 1
         return Redisson.create(config);
     }
 

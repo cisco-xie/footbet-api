@@ -3,10 +3,10 @@
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.example</groupId>
-    <artifactId>falali-api</artifactId>
+    <artifactId>football-api</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>falali-api</name>
-    <description>法拉利项目api - 简易项目，如何简单如何来，不需要太过规范</description>
+    <name>football-api</name>
+    <description>足球项目api - 简易项目，如何简单如何来，不需要太过规范</description>
     <properties>
         <java.version>17</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -139,7 +139,7 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring-boot.version}</version>
                 <configuration>
-                    <mainClass>com.example.demo.FalaliApplication</mainClass>
+                    <mainClass>com.example.demo.FootballApplication</mainClass>
 <!--                    <skip>true</skip>-->
                 </configuration>
                 <executions>

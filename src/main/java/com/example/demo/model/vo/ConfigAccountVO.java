@@ -1,5 +1,6 @@
 package com.example.demo.model.vo;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -7,22 +8,29 @@ import lombok.Data;
 import java.math.BigDecimal;
 
 @Data
-public class ConfigUserVO {
+public class ConfigAccountVO {
     private String id;
+    @Schema(description = "所属网站id")
+    private String websiteId;
     // 投注类型 add/update
     @NotBlank(message = "操作类型必选")
     private String operationType;
-    @NotBlank(message = "盘口地址不能为空")
-    private String baseUrl;
+    @Schema(description = "是否启用（0否1是）")
+    private Integer enable = 0;
+    @Schema(description = "自动登录（0否1是）")
+    private Integer autoLogin = 1;
+    @Schema(description = "用途(0通用 1刷水 2投注)")
+    private Integer useType = 0;
     @NotBlank(message = "盘口账号不能为空")
     private String account;
     @NotBlank(message = "盘口密码不能为空")
     private String password;
-    // 距离封盘时间内下注 默认20s
-    private Integer closeTime = 0;
-    // 投注类型 1正投 2反投
-    @NotNull(message = "投注类型必选")
-    private Integer betType;
+    @Schema(description = "安全码")
+    private String safetyCode;
+    @Schema(description = "指定网址")
+    private String specifyWebsite;
+    @Schema(description = "限注 0=不限制")
+    private Integer limitBet = 0;
     // 代理类型 1HTTP 2SOCKS
     private Integer proxyType;
     // 代理IP
@@ -33,10 +41,6 @@ public class ConfigUserVO {
     private String proxyUsername;
     // 认证密码
     private String proxyPassword;
-
-    public void setBaseUrl(String baseUrl) {
-        this.baseUrl = baseUrl == null ? null : baseUrl.trim();
-    }
 
     public void setAccount(String account) {
         this.account = account == null ? null : account.trim();

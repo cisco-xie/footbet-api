@@ -18,6 +18,8 @@ public class AdminLoginDTO {
     private String accessToken;
     private String refreshToken;
     private String expires;
-    private Integer autoBet = 0;
+    private Integer status = 0;
+    private Integer stopBet = 0;
+    private Integer simulateBet = 0;
     private String group;
 }
