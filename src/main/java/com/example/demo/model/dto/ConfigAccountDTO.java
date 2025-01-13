@@ -1,5 +1,6 @@
 package com.example.demo.model.dto;
 
+import cn.hutool.json.JSONObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
@@ -35,5 +36,7 @@ public class ConfigAccountDTO {
     private String proxyUsername;
     // 认证密码
     private String proxyPassword;
+    // 盘口token json
+    private JSONObject token;
 
 }

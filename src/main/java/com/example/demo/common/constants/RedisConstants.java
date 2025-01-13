@@ -9,7 +9,7 @@ public class RedisConstants {
     /**
      * 网站列表前缀
      */
-    public static final String PLATFORM_WEBSITE_PREFIX = "platform:website";
+    public static final String PLATFORM_WEBSITE_ALL_PREFIX = "platform:website:all";
 
     /**
      * 账号列表前缀

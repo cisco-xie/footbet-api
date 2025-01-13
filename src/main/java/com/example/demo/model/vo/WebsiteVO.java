@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Set;
 
 @Data
 public class WebsiteVO {
@@ -13,8 +15,8 @@ public class WebsiteVO {
     @NotBlank(message = "网站名称不能为空")
     @Schema(description = "网站名称")
     private String name;
-    @Schema(description = "网站地址")
-    private String baseUrl;
+    @Schema(description = "网站地址列表")
+    private List<String> baseUrls;
     @Schema(description = "是否启用（0否1是）")
     private Integer enable = 0;
     @Schema(description = "是否单式（0否1是）")

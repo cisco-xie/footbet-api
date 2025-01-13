@@ -13,11 +13,14 @@ import com.example.demo.model.vo.AdminUserBetVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.redisson.api.RKeys;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -76,6 +79,29 @@ public class AdminService {
         } else {
             throw new BusinessException(SystemError.USER_1004);
         }
+    }
+
+    /**
+     * 获取已开启用户
+     * @return
+     */
+    public List<AdminLoginDTO> getEnableUsers() {
+        // 匹配所有平台用户的 Redis Key
+        String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_USER_PREFIX, "*");
+        // 使用 Redisson 执行扫描所有平台用户操作
+        RKeys keys = businessPlatformRedissonClient.getKeys();
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
+        List<String> keysList = new ArrayList<>();
+        while (iterableKeys.hasNext()) {
+            keysList.add(iterableKeys.next());
+        }
+        return keysList.stream()
+                .map(key -> {
+                    String json = (String) businessPlatformRedissonClient.getBucket(key).get();
+                    return JSONUtil.toBean(json, AdminLoginDTO.class);
+                })
+                .filter(user -> user.getStatus() == 1) // 筛选出开启状态的用户
+                .collect(Collectors.toList());
     }
 
 }

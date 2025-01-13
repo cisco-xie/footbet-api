@@ -32,7 +32,7 @@ public class WebsiteService {
      */
     public List<WebsiteVO> getWebsite(String username) {
 
-        String key = KeyUtil.genKey(RedisConstants.PLATFORM_WEBSITE_PREFIX, username);
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_WEBSITE_ALL_PREFIX, username);
 
         // 从 Redis 中获取 List 数据
         List<String> jsonList = businessPlatformRedissonClient.getList(key);
@@ -55,7 +55,7 @@ public class WebsiteService {
     public void saveWebsite(String username, WebsiteVO websiteVO) {
 
         // 生成 Redis 中的 key
-        String key = KeyUtil.genKey(RedisConstants.PLATFORM_WEBSITE_PREFIX, username);
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_WEBSITE_ALL_PREFIX, username);
 
         // 为新网站生成唯一 ID
         if (StringUtils.isBlank(websiteVO.getId())) {
@@ -93,7 +93,7 @@ public class WebsiteService {
      * @param websiteId 要删除的网站ID
      */
     public void deleteWebsite(String username, String websiteId) {
-        String key = KeyUtil.genKey(RedisConstants.PLATFORM_WEBSITE_PREFIX, username);
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_WEBSITE_ALL_PREFIX, username);
 
         // 获取所有网站信息
         List<String> jsonList = businessPlatformRedissonClient.getList(key);

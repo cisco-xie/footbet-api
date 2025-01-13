@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 public class WebSiteDTO {
@@ -16,7 +17,7 @@ public class WebSiteDTO {
     @Schema(description = "是否启用（0否1是）")
     private Integer enable;
     @Schema(description = "网站地址")
-    private String baseUrl;
+    private List<String> baseUrls;
     @Schema(description = "是否单式（0否1是）")
     private Integer simplex;
     @Schema(description = "是否滚球（0否1是）")
