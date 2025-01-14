@@ -7,8 +7,10 @@ import com.example.demo.common.enmu.SystemError;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.model.dto.settings.ContrastDTO;
+import com.example.demo.model.dto.settings.OddsScanDTO;
 import com.example.demo.model.vo.WebsiteVO;
 import com.example.demo.model.vo.settings.ContrastVO;
+import com.example.demo.model.vo.settings.OddsScanVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -126,4 +128,33 @@ public class SettingsService {
                 .ifPresent(json -> businessPlatformRedissonClient.getList(key).remove(json));
     }
 
+    /**
+     * 获取常规设置-对比分析
+     * @param username
+     * @return
+     */
+    public OddsScanDTO getOddsScan(String username) {
+
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_ODDSSCAN_PREFIX, username);
+
+        // 从 Redis 中获取 List 数据
+        String json = (String) businessPlatformRedissonClient.getBucket(key).get();
+
+        if (StringUtils.isBlank(json)) {
+            return null;
+        }
+        return JSONUtil.toBean(json, OddsScanDTO.class);
+    }
+
+    /**
+     * 修改常规设置-对比分析
+     * @param username
+     * @return
+     */
+    public void saveOddsScan(String username, OddsScanVO oddsScanVO) {
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_ODDSSCAN_PREFIX, username);
+        // 从 Redis 中获取数据
+        businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(oddsScanVO));
+
+    }
 }
