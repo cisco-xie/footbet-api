@@ -8,9 +8,11 @@ import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.model.dto.settings.ContrastDTO;
 import com.example.demo.model.dto.settings.OddsScanDTO;
+import com.example.demo.model.dto.settings.ProfitDTO;
 import com.example.demo.model.vo.WebsiteVO;
 import com.example.demo.model.vo.settings.ContrastVO;
 import com.example.demo.model.vo.settings.OddsScanVO;
+import com.example.demo.model.vo.settings.ProfitVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -155,6 +157,36 @@ public class SettingsService {
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_ODDSSCAN_PREFIX, username);
         // 从 Redis 中获取数据
         businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(oddsScanVO));
+
+    }
+
+    /**
+     * 获取常规设置-利润设置
+     * @param username
+     * @return
+     */
+    public ProfitDTO getProfit(String username) {
+
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_PROFIT_PREFIX, username);
+
+        // 从 Redis 中获取 List 数据
+        String json = (String) businessPlatformRedissonClient.getBucket(key).get();
+
+        if (StringUtils.isBlank(json)) {
+            return null;
+        }
+        return JSONUtil.toBean(json, ProfitDTO.class);
+    }
+
+    /**
+     * 修改常规设置-利润设置
+     * @param username
+     * @return
+     */
+    public void saveProfit(String username, ProfitVO profitVO) {
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_PROFIT_PREFIX, username);
+        // 从 Redis 中获取数据
+        businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(profitVO));
 
     }
 }
