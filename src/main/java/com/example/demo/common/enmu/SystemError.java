@@ -54,6 +54,8 @@ public enum SystemError implements ErrCode {
      */
     ORDER_1100(1100, "下注失败，请去[异常投注]页面查看详情"),
 
+    CONTRAST_1200(1200, "对比网站不能相同"),
+    CONTRAST_1201(1201, "对比组合已存在"),
     ;
 
     private final Integer code;
