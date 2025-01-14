@@ -36,7 +36,7 @@ import java.util.List;
 
 
 @Slf4j
-@Tag(name = "足球项目")
+@Tag(name = "账号管理")
 @RequestMapping("/api")
 @RestController
 public class AccountController extends BaseController {

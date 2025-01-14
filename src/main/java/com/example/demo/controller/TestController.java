@@ -27,7 +27,7 @@ import org.springframework.web.bind.annotation.*;
 
 
 @Slf4j
-@Tag(name = "足球项目")
+@Tag(name = "测试")
 @RequestMapping("/api")
 @RestController
 public class TestController extends BaseController {
@@ -35,7 +35,7 @@ public class TestController extends BaseController {
     @Resource
     private HandicapApi api;
 
-    @Operation(summary = "新增账号")
+    @Operation(summary = "登录所有盘口账号")
     @GetMapping("/login")
     public Result add() {
         api.login();

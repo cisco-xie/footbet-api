@@ -38,7 +38,7 @@ import java.util.List;
 
 
 @Slf4j
-@Tag(name = "足球项目")
+@Tag(name = "软件设置-常规设置")
 @RequestMapping("/api/settings/general")
 @RestController
 public class SettingsGeneralController extends BaseController {

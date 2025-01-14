@@ -29,7 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 @Slf4j
-@Tag(name = "足球项目")
+@Tag(name = "系统用户相关")
 @RequestMapping("/api")
 @RestController
 public class AdminController extends BaseController {

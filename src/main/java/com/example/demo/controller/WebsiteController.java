@@ -33,7 +33,7 @@ import java.util.List;
 
 
 @Slf4j
-@Tag(name = "足球项目")
+@Tag(name = "网站管理")
 @RequestMapping("/api")
 @RestController
 public class WebsiteController extends BaseController {
