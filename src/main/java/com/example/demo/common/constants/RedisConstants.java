@@ -50,7 +50,11 @@ public class RedisConstants {
     public static final String PLATFORM_SETTINGS_BET_OPTIMIZING_PREFIX = "platform:settings:bet:optimizing";
 
     /**
-     * 网站设置-过滤设置 前缀
+     * 网站设置-过滤设置-赔率范围 前缀
      */
-    public static final String PLATFORM_SETTINGS_FILTER_PREFIX = "platform:settings:filter";
+    public static final String PLATFORM_SETTINGS_FILTER_ODDSRANGE_PREFIX = "platform:settings:filter:oddsrange";
+    /**
+     * 网站设置-过滤设置-时间范围 前缀
+     */
+    public static final String PLATFORM_SETTINGS_FILTER_TIMEFRAME_PREFIX = "platform:settings:filter:timeframe";
 }

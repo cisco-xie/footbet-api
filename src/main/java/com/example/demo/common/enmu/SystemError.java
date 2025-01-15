@@ -56,6 +56,10 @@ public enum SystemError implements ErrCode {
 
     CONTRAST_1200(1200, "对比网站不能相同"),
     CONTRAST_1201(1201, "对比组合已存在"),
+
+    ODDSRANGE_1300(1300, "当前网站已设定"),
+    ODDSRANGE_1301(1301, "赔率区间设置错误"),
+    TIMEFRAME_1310(1311, "时间范围区间设置错误"),
     ;
 
     private final Integer code;
