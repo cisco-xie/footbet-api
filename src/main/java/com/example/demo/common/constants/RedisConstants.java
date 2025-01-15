@@ -17,6 +17,11 @@ public class RedisConstants {
     public static final String PLATFORM_ACCOUNT_PREFIX = "platform:account";
 
     /**
+     * 盘口api前缀
+     */
+    public static final String PLATFORM_WEBSITE_API_PREFIX = "platform:website:api";
+
+    /**
      * 网站设置-常规设置-对比分析 前缀
      */
     public static final String PLATFORM_SETTINGS_GENERAL_CONTRAST_PREFIX = "platform:settings:general:contrast";

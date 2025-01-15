@@ -10,13 +10,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.*;
 import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
-@Component
+@Service
 public class WebsiteService {
 
     @Resource(name = "defaultRedissonClient")
@@ -47,6 +48,16 @@ public class WebsiteService {
                 .filter(websiteVO -> websiteVO.getId().equals(websiteId))
                 .findFirst() // 找到第一个匹配的对象
                 .orElse(null); // 如果没有匹配对象，返回 null
+    }
+
+    /**
+     * 获取网站使用的地址
+     * @param username
+     * @return
+     */
+    public String getWebsiteBaseUrl(String username, String websiteId) {
+        WebsiteVO website = getWebsite(username, websiteId);
+        return website.getBaseUrls().get(0);
     }
 
     /**

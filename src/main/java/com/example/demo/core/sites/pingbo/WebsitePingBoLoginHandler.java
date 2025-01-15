@@ -1,6 +1,5 @@
-package com.example.demo.core.sites.zhibo;
+package com.example.demo.core.sites.pingbo;
 
-import cn.hutool.core.util.XmlUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONObject;
@@ -8,17 +7,16 @@ import com.example.demo.core.factory.ApiHandler;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
-import org.w3c.dom.Document;
 
-import javax.xml.xpath.XPathConstants;
 import java.util.Map;
 
 /**
  * 智博网站 - 登录 API具体实现
  */
 @Component
-public class WebsiteXinBaoLoginHandler implements ApiHandler {
-    private static final String LOGIN_URL = "https://m061.mos077.com/transform.php?ver=2024-12-24-197_65";
+public class WebsitePingBoLoginHandler implements ApiHandler {
+
+    private static final String LOGIN_URL = "https://www.ps3838.com/member-service/v2/authenticate?locale=zh_CN&_=" + System.currentTimeMillis() + "&withCredentials=true";
 
     /**
      * 构建请求体
@@ -26,16 +24,16 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
      * @return HttpEntity 请求体
      */
     @Override
-    public HttpEntity<String> buildRequest(Map<String, Object> params) {
+    public HttpEntity<String> buildRequest(JSONObject params) {
         // 构造请求头
         HttpHeaders headers = new HttpHeaders();
         headers.add("accept", "*/*");
         headers.add("content-type", "application/x-www-form-urlencoded");
 
         // 构造请求体
-        String requestBody = String.format("p=chk_login&langx=zh-cn&ver=2024-12-24-197_65&username=%s&password=%s&app=N&auto=CDDFZD&blackbox=",
-                params.get("username"),
-                params.get("password")
+        String requestBody = String.format("loginId=%s&password=%s&captcha=&captchaToken=",
+                params.getStr("loginId"),
+                params.getStr("password")
         );
 
         return new HttpEntity<>(requestBody, headers);
@@ -43,15 +41,23 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
 
     /**
      * 解析响应体
-     * @param responseBody 响应内容
+     * @param response 响应内容
      * @return 解析后的数据
      */
     @Override
-    public JSONObject parseResponse(String responseBody) {
+    public JSONObject parseResponse(HttpResponse response) {
+
+        // 检查响应状态
+        if (response.getStatus() != 200) {
+            throw new RuntimeException("Login failed with status code: " + response.getStatus());
+        }
         // 解析响应
-        Document docResult = XmlUtil.readXML(responseBody);
-        JSONObject responseJson = new JSONObject(responseBody);
-        responseJson.putOpt("token", XmlUtil.getByXPath("//serverresponse/uid", docResult, XPathConstants.STRING));
+        JSONObject responseJson = new JSONObject(response.body());
+
+        // 如果响应中包含错误信息，抛出异常或者其他处理
+        if (responseJson.getInt("code") != 1) {
+            throw new RuntimeException("Login failed: " + responseJson.getStr("message"));
+        }
         return responseJson;
     }
 
@@ -61,7 +67,7 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
      * @return 登录结果
      */
     @Override
-    public JSONObject handleLogin(Map<String, Object> params) {
+    public JSONObject execute(JSONObject params) {
         // 构建请求
         HttpEntity<String> request = buildRequest(params);
 
@@ -71,12 +77,7 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
                 .body(request.getBody())
                 .execute();
 
-        // 检查响应状态
-        if (response.getStatus() != 200) {
-            throw new RuntimeException("Login failed with status code: " + response.getStatus());
-        }
-
         // 解析响应并返回
-        return parseResponse(response.body());
+        return parseResponse(response);
     }
 }

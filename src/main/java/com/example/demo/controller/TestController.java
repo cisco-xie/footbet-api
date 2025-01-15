@@ -42,4 +42,10 @@ public class TestController extends BaseController {
         return Result.success();
     }
 
+    @Operation(summary = "所有所有盘口账号额度")
+    @GetMapping("/info")
+    public Result info() {
+        api.info();
+        return Result.success();
+    }
 }

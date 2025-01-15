@@ -18,6 +18,8 @@ public class ConfigAccountVO {
     // 投注类型 add/update
     @NotBlank(message = "操作类型必选")
     private String operationType;
+    @Schema(description = "可用投注额")
+    private BigDecimal betCredit;
     @Schema(description = "是否启用（0否1是）")
     private Integer enable = 0;
     @Schema(description = "自动登录（0否1是）")
@@ -46,6 +48,8 @@ public class ConfigAccountVO {
     private String proxyPassword;
     // 盘口token json
     private JSONObject token;
+    @Schema(description = "执行信息")
+    private String executeMsg;
 
     public void setAccount(String account) {
         this.account = account == null ? null : account.trim();
