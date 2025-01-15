@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * 智博网站 - 获取账号信息 API具体实现
+ * 智博网站 - 账户额度 API具体实现
  */
 @Component
 public class WebsiteZhiBoInfoHandler implements ApiHandler {
@@ -63,15 +63,15 @@ public class WebsiteZhiBoInfoHandler implements ApiHandler {
     }
 
     /**
-     * 发送登录请求
+     * 发送账户额度请求
      * @param params 请求参数
-     * @return 登录结果
+     * @return 结果
      */
     @Override
     public JSONObject execute(JSONObject params) {
 
         // 获取 完整API 路径
-        String username = params.getStr("username");
+        String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
         String apiUrl = apiUrlService.getApiUrl(siteId, "info");

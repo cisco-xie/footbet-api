@@ -18,7 +18,10 @@ import java.util.Map;
  */
 @Component
 public class WebsiteXinBaoLoginHandler implements ApiHandler {
-    private static final String LOGIN_URL = "https://m061.mos077.com/transform.php?ver=2024-12-24-197_65";
+
+    private static final String VER = "2025-01-03-removeBanner_69";
+
+    private static final String LOGIN_URL = "https://m061.mos077.com/transform.php?ver=" + VER;
 
     /**
      * 构建请求体
