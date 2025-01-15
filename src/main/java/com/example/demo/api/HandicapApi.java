@@ -115,13 +115,13 @@ public class HandicapApi {
                         break;
                     }
                     JSONObject params = new JSONObject();
+                    params.putOpt("username", user.getUsername());
+                    params.putOpt("websiteId", website.getId());
                     // 根据不同站点传入不同的参数
                     if ("1874805533324103680".equals(website.getId())) {
-                        params.putOpt("token", "Bearer "+account.getToken().getStr("token"));
+                        params.putAll(account.getToken().getJSONObject("tokens"));
                     } else if ("1874804932787851264".equals(website.getId()) || "1877702689064243200".equals(website.getId())) {
-                        params.putOpt("username", user.getUsername());
-                        params.putOpt("websiteId", website.getId());
-                        params.putOpt("token", "Bearer "+account.getToken().getStr("token"));
+                        params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
                     }
                     JSONObject result = apiHandler.execute(params);
                     account.setBetCredit(result.getBigDecimal("betCredit"));

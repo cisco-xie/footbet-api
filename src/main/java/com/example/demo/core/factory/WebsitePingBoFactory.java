@@ -2,6 +2,7 @@ package com.example.demo.core.factory;
 
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.core.sites.pingbo.WebsitePingBoInfoHandler;
 import com.example.demo.core.sites.pingbo.WebsitePingBoLoginHandler;
 import com.example.demo.core.sites.zhibo.WebsiteZhiBoInfoHandler;
 import jakarta.annotation.Resource;
@@ -31,6 +32,6 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler getInfoHandler() {
-        return new WebsiteZhiBoInfoHandler(websiteService, apiUrlService); // 返回具体的详情处理类
+        return new WebsitePingBoInfoHandler(websiteService, apiUrlService); // 返回具体的详情处理类
     }
 }
