@@ -13,6 +13,8 @@ public class ConfigAccountVO {
     private String id;
     @Schema(description = "所属网站id")
     private String websiteId;
+    @Schema(description = "所属网站地址")
+    private String websiteUrl;
     // 投注类型 add/update
     @NotBlank(message = "操作类型必选")
     private String operationType;

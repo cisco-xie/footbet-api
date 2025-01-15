@@ -26,12 +26,17 @@ public class ConfigAccountService {
     @Resource(name = "businessPlatformRedissonClient")
     private RedissonClient businessPlatformRedissonClient;
 
+    @Resource
+    private WebsiteService websiteService;
+
     /**
      * 获取网站列表
      * @param username
      * @return
      */
     public List<ConfigAccountVO> getAccount(String username, String websiteId) {
+
+        WebsiteVO website = websiteService.getWebsite(username, websiteId);
 
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
 
@@ -43,9 +48,16 @@ public class ConfigAccountService {
         }
 
         // 将 List 中的 JSON 字符串反序列化为 WebSiteVO 列表
-        return jsonList.stream()
+        List<ConfigAccountVO> accountList = jsonList.stream()
                 .map(json -> JSONUtil.toBean(json, ConfigAccountVO.class))
                 .collect(Collectors.toList());
+
+        // 如果 website 不为空，将 baseUrls 的第一个值赋给每个 ConfigAccountVO 的 url
+        if (website != null && website.getBaseUrls() != null && !website.getBaseUrls().isEmpty()) {
+            String baseUrl = website.getBaseUrls().get(0); // 获取第一个 baseUrl
+            accountList.forEach(account -> account.setWebsiteUrl(baseUrl)); // 设置 url
+        }
+        return accountList;
     }
 
     /**

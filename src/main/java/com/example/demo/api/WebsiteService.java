@@ -30,7 +30,31 @@ public class WebsiteService {
      * @param username
      * @return
      */
-    public List<WebsiteVO> getWebsite(String username) {
+    public WebsiteVO getWebsite(String username, String websiteId) {
+
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_WEBSITE_ALL_PREFIX, username);
+
+        // 从 Redis 中获取 List 数据
+        List<String> jsonList = businessPlatformRedissonClient.getList(key);
+
+        if (jsonList == null || jsonList.isEmpty()) {
+            return null;  // 如果 Redis 中没有数据，返回一个空列表
+        }
+
+        // 将 List 中的 JSON 字符串反序列化为 WebSiteVO 列表
+        return jsonList.stream()
+                .map(json -> JSONUtil.toBean(json, WebsiteVO.class))
+                .filter(websiteVO -> websiteVO.getId().equals(websiteId))
+                .findFirst() // 找到第一个匹配的对象
+                .orElse(null); // 如果没有匹配对象，返回 null
+    }
+
+    /**
+     * 获取网站列表
+     * @param username
+     * @return
+     */
+    public List<WebsiteVO> getWebsites(String username) {
 
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_WEBSITE_ALL_PREFIX, username);
 

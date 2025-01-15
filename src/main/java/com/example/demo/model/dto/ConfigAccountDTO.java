@@ -10,6 +10,8 @@ public class ConfigAccountDTO {
     private String id;
     @Schema(description = "所属网站id")
     private String websiteId;
+    @Schema(description = "所属网站地址")
+    private String websiteUrl;
     @Schema(description = "是否启用（0否1是）")
     private Integer enable = 0;
     @Schema(description = "自动登录（0否1是）")

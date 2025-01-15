@@ -64,7 +64,7 @@ public class WebsiteController extends BaseController {
     public Result<List<WebSiteDTO>> getWebsites() {
         AdminLoginDTO admin = getUser();
         // 调用服务层方法获取网站列表
-        List<WebsiteVO> websites = websiteService.getWebsite(admin.getUsername());
+        List<WebsiteVO> websites = websiteService.getWebsites(admin.getUsername());
         return Result.success(BeanUtil.copyToList(websites, WebSiteDTO.class));
     }
 
