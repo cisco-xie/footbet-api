@@ -27,7 +27,7 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler getLoginHandler() {
-        return new WebsitePingBoLoginHandler(); // 返回具体的登录处理类
+        return new WebsitePingBoLoginHandler(websiteService, apiUrlService); // 返回具体的登录处理类
     }
 
     @Override

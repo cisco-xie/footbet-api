@@ -3,7 +3,10 @@ package com.example.demo.core.sites.pingbo;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONObject;
+import com.example.demo.api.ApiUrlService;
+import com.example.demo.api.WebsiteService;
 import com.example.demo.core.factory.ApiHandler;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
@@ -16,7 +19,14 @@ import java.util.Map;
 @Component
 public class WebsitePingBoLoginHandler implements ApiHandler {
 
-    private static final String LOGIN_URL = "https://www.ps3838.com/member-service/v2/authenticate?locale=zh_CN&_=" + System.currentTimeMillis() + "&withCredentials=true";
+    private final WebsiteService websiteService;
+    private final ApiUrlService apiUrlService;
+
+    @Autowired
+    public WebsitePingBoLoginHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
+        this.websiteService = websiteService;
+        this.apiUrlService = apiUrlService;
+    }
 
     /**
      * 构建请求体
@@ -68,11 +78,24 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
      */
     @Override
     public JSONObject execute(JSONObject params) {
+        // 获取 完整API 路径
+        String username = params.getStr("adminUsername");
+        String siteId = params.getStr("websiteId");
+        String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
+        String apiUrl = apiUrlService.getApiUrl(siteId, "login");
         // 构建请求
         HttpEntity<String> request = buildRequest(params);
 
+        // 构造请求体
+        String queryParams = String.format("locale=zh_CN&_=%s&withCredentials=true",
+                System.currentTimeMillis()
+        );
+
+        // 拼接完整的 URL
+        String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, queryParams);
+
         // 发送请求
-        HttpResponse response = HttpRequest.post(LOGIN_URL)
+        HttpResponse response = HttpRequest.post(fullUrl)
                 .addHeaders(request.getHeaders().toSingleValueMap())
                 .body(request.getBody())
                 .execute();

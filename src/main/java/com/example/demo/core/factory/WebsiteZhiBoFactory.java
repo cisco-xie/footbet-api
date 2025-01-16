@@ -25,7 +25,7 @@ public class WebsiteZhiBoFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler getLoginHandler() {
-        return new WebsiteZhiBoLoginHandler(); // 返回具体的登录处理类
+        return new WebsiteZhiBoLoginHandler(websiteService, apiUrlService); // 返回具体的登录处理类
     }
 
     @Override
