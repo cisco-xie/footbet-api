@@ -16,8 +16,8 @@ singleServerConfig:
   connectionPoolSize: 512           # 增大连接池以支持更多并发连接
   dnsMonitoringInterval: 5000
 
-threads: 64        # 设置为 2 倍于 CPU 核心数，以支持高并发任务
-nettyThreads: 32   # 设置为与 CPU 核心数相等
+threads: 12        # 设置为 2 倍于 CPU 核心数，以支持高并发任务
+nettyThreads: 12   # 设置为与 CPU 核心数相等
 
 codec:
   class: "org.redisson.codec.JsonJacksonCodec"
