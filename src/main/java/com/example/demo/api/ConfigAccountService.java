@@ -128,11 +128,12 @@ public class ConfigAccountService {
         // 获取 Redis 中的列表
         List<String> accountList = businessPlatformRedissonClient.getList(key);
 
-        // 如果账号已存在，替换旧数据
+        // 将所有账户token置空
         accountList.replaceAll(json -> {
             ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
+            account.setIsTokenValid(0);
             account.setToken(new JSONObject());
-            return json;
+            return JSONUtil.parse(account).toString();
         });
     }
 }

@@ -64,6 +64,7 @@ public class WebsiteZhiBoLoginHandler implements ApiHandler {
             responseJson.putOpt("msg", "账户登录失败");
             return responseJson;
         }
+        responseJson.putOpt("success", true);
         responseJson.putOpt("msg", "账户登录成功");
         return responseJson;
     }

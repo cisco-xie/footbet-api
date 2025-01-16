@@ -42,6 +42,8 @@ public class ConfigAccountDTO {
     private String proxyUsername;
     // 认证密码
     private String proxyPassword;
+    // 是否登录
+    private Integer isTokenValid;
     // 盘口token json
     private JSONObject token;
     @Schema(description = "执行信息")

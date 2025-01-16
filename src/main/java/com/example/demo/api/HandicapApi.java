@@ -121,6 +121,7 @@ public class HandicapApi {
                 params.putOpt("password", account.getPassword());
             }
             JSONObject result = apiHandler.execute(params);
+            account.setIsTokenValid(result.getBool("success") ? 1 : 0);
             account.setToken(result);
             account.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
             accountService.saveAccount(username, websiteId, account);
