@@ -6,14 +6,10 @@ import cn.hutool.json.JSONObject;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.core.factory.ApiHandler;
-import com.example.demo.core.factory.ApiTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
-
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * 智博网站 - 登录 API具体实现
@@ -49,10 +45,24 @@ public class WebsiteZhiBoLoginHandler implements ApiHandler {
     public JSONObject parseResponse(HttpResponse response) {
         // 检查响应状态
         if (response.getStatus() != 200) {
+            JSONObject res = new JSONObject();
+            if (response.getStatus() == 403) {
+                res.putOpt("code", 403);
+                res.putOpt("success", false);
+                res.putOpt("msg", "账户登录失效");
+                return res;
+            }
+            res.putOpt("success", false);
+            res.putOpt("msg", "账户登录失效");
+            return res;
         }
         // 解析响应
         JSONObject responseJson = new JSONObject(response.body());
         if (!responseJson.getBool("success", false)) {
+            responseJson.putOpt("code", response.getStatus());
+            responseJson.putOpt("success", false);
+            responseJson.putOpt("msg", "账户登录失败");
+            return responseJson;
         }
         responseJson.putOpt("msg", "账户登录成功");
         return responseJson;
@@ -69,7 +79,7 @@ public class WebsiteZhiBoLoginHandler implements ApiHandler {
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
-        String apiUrl = apiUrlService.getApiUrl(siteId, "info");
+        String apiUrl = apiUrlService.getApiUrl(siteId, "login");
 
         // 构建请求
         HttpEntity<String> request = buildRequest(params);

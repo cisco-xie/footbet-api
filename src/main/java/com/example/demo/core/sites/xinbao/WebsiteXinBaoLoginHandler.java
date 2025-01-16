@@ -1,5 +1,6 @@
 package com.example.demo.core.sites.xinbao;
 
+import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.core.util.XmlUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
@@ -7,6 +8,7 @@ import cn.hutool.json.JSONObject;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.core.factory.ApiHandler;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -15,6 +17,7 @@ import org.w3c.dom.Document;
 
 import javax.xml.xpath.XPathConstants;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 智博网站 - 登录 API具体实现
@@ -63,13 +66,29 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
     public JSONObject parseResponse(HttpResponse response) {
         // 检查响应状态
         if (response.getStatus() != 200) {
-            throw new RuntimeException("Login failed with status code: " + response.getStatus());
+            JSONObject res = new JSONObject();
+            if (response.getStatus() == 403) {
+                res.putOpt("code", 403);
+                res.putOpt("success", false);
+                res.putOpt("msg", "账户登录失败");
+                return res;
+            }
+            res.putOpt("code", 403);
+            res.putOpt("success", false);
+            res.putOpt("msg", "账户登录失败");
+            return res;
         }
 
         // 解析响应
         Document docResult = XmlUtil.readXML(response.body());
         JSONObject responseJson = new JSONObject(response.body());
-        responseJson.putOpt("token", XmlUtil.getByXPath("//serverresponse/uid", docResult, XPathConstants.STRING));
+        Object token = XmlUtil.getByXPath("//serverresponse/uid", docResult, XPathConstants.STRING);
+        if (ObjectUtil.isEmpty(token)) {
+            responseJson.putOpt("msg", "账户登录失败");
+            return responseJson;
+        }
+        responseJson.putOpt("token", token);
+        responseJson.putOpt("msg", "账户登录成功");
         return responseJson;
     }
 

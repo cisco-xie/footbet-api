@@ -44,11 +44,13 @@ public class AccountController extends BaseController {
     @Resource
     private ConfigAccountService accountService;
 
+    @Resource
+    private HandicapApi handicapApi;
+
     @Operation(summary = "新增账号")
     @PostMapping("/accounts")
     public Result add(@RequestParam String websiteId, @RequestBody ConfigAccountVO configAccountVO) {
         AdminLoginDTO admin = getUser();
-        // 调用服务层方法新增账号
         accountService.saveAccount(admin.getUsername(), websiteId, configAccountVO);
         return Result.success();
     }
@@ -57,7 +59,6 @@ public class AccountController extends BaseController {
     @DeleteMapping("/accounts/{websiteId}/{id}")
     public Result delete(@PathVariable String websiteId, @PathVariable String id) {
         AdminLoginDTO admin = getUser();
-        // 调用服务层方法删除账号
         accountService.deleteAccount(admin.getUsername(), websiteId, id);
         return Result.success();
     }
@@ -66,9 +67,24 @@ public class AccountController extends BaseController {
     @GetMapping("/accounts/{websiteId}")
     public Result<List<ConfigAccountDTO>> getWebsites(@PathVariable String websiteId) {
         AdminLoginDTO admin = getUser();
-        // 调用服务层方法获取账号列表
         List<ConfigAccountVO> websites = accountService.getAccount(admin.getUsername(), websiteId);
         return Result.success(BeanUtil.copyToList(websites, ConfigAccountDTO.class));
+    }
+
+    @Operation(summary = "一键登录指定网站的账号列表")
+    @GetMapping("/login/{websiteId}")
+    public Result loginByWebsite(@PathVariable String websiteId) {
+        AdminLoginDTO admin = getUser();
+        handicapApi.loginByWebsite(admin.getUsername(), websiteId);
+        return Result.success();
+    }
+
+    @Operation(summary = "一键下线指定网站的账号列表")
+    @GetMapping("/logout/{websiteId}")
+    public Result logoutByWebsite(@PathVariable String websiteId) {
+        AdminLoginDTO admin = getUser();
+        accountService.logoutByWebsite(admin.getUsername(), websiteId);
+        return Result.success();
     }
 
 }

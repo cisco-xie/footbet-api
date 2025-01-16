@@ -42,7 +42,7 @@ public class HandicapApi {
     private ConfigAccountService accountService;
 
     /**
-     * 盘口账号自动登录
+     * 所有盘口账号自动登录
      */
     public void login() {
         List<AdminLoginDTO> users = adminService.getEnableUsers();
@@ -71,6 +71,8 @@ public class HandicapApi {
                         break;
                     }
                     JSONObject params = new JSONObject();
+                    params.putOpt("adminUsername", user.getUsername());
+                    params.putOpt("websiteId", website.getId());
                     // 根据不同站点传入不同的参数
                     if ("1874805533324103680".equals(website.getId())) {
                         params.putOpt("loginId", account.getAccount());
@@ -86,6 +88,43 @@ public class HandicapApi {
                 }
             }
         };
+    }
+
+    /**
+     * 根据平台用户和指定网站登录
+     * 不限制网站或者账户状态是否开启
+     * @param username
+     * @param websiteId
+     */
+    public void loginByWebsite(String username, String websiteId) {
+        List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
+        if (accounts.isEmpty()) {
+            return;
+        }
+        for (ConfigAccountVO account : accounts) {
+            TimeInterval timer = DateUtil.timer();
+            WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+
+            ApiHandler apiHandler = factory.getLoginHandler();
+            if (apiHandler == null) {
+                break;
+            }
+            JSONObject params = new JSONObject();
+            params.putOpt("adminUsername", username);
+            params.putOpt("websiteId", websiteId);
+            // 根据不同站点传入不同的参数
+            if ("1874805533324103680".equals(websiteId)) {
+                params.putOpt("loginId", account.getAccount());
+                params.putOpt("password", account.getPassword());
+            } else if ("1874804932787851264".equals(websiteId) || "1877702689064243200".equals(websiteId)) {
+                params.putOpt("username", account.getAccount());
+                params.putOpt("password", account.getPassword());
+            }
+            JSONObject result = apiHandler.execute(params);
+            account.setToken(result);
+            account.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
+            accountService.saveAccount(username, websiteId, account);
+        }
     }
 
     public void info() {

@@ -59,15 +59,29 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
 
         // 检查响应状态
         if (response.getStatus() != 200) {
-            throw new RuntimeException("Login failed with status code: " + response.getStatus());
+            JSONObject res = new JSONObject();
+            if (response.getStatus() == 403) {
+                res.putOpt("code", 403);
+                res.putOpt("success", false);
+                res.putOpt("msg", "账户登录失败");
+                return res;
+            }
+            res.putOpt("code", response.getStatus());
+            res.putOpt("success", false);
+            res.putOpt("msg", "账户登录失败");
+            return res;
         }
         // 解析响应
         JSONObject responseJson = new JSONObject(response.body());
 
         // 如果响应中包含错误信息，抛出异常或者其他处理
         if (responseJson.getInt("code") != 1) {
-            throw new RuntimeException("Login failed: " + responseJson.getStr("message"));
+            responseJson.putOpt("code", response.getStatus());
+            responseJson.putOpt("success", false);
+            responseJson.putOpt("msg", "账户登录失败");
+            return responseJson;
         }
+        responseJson.putOpt("msg", "账户登录成功");
         return responseJson;
     }
 

@@ -1,6 +1,7 @@
 package com.example.demo.api;
 
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.utils.KeyUtil;
@@ -119,4 +120,19 @@ public class ConfigAccountService {
                 .ifPresent(json -> businessPlatformRedissonClient.getList(key).remove(json));
     }
 
+    public void logoutByWebsite(String username, String websiteId) {
+
+        // 生成 Redis 中的 key
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
+
+        // 获取 Redis 中的列表
+        List<String> accountList = businessPlatformRedissonClient.getList(key);
+
+        // 如果账号已存在，替换旧数据
+        accountList.replaceAll(json -> {
+            ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
+            account.setToken(new JSONObject());
+            return json;
+        });
+    }
 }
