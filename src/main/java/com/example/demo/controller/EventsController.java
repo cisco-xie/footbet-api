@@ -43,11 +43,11 @@ public class EventsController extends BaseController {
     private HandicapApi handicapApi;
 
     @Operation(summary = "获取用户网站列表")
-    @GetMapping("/events/{id}")
-    public Result getWebsites(@PathVariable String id) {
+    @GetMapping("/events/{websiteId}")
+    public Result getWebsites(@PathVariable String websiteId) {
         AdminLoginDTO admin = getUser();
         // 调用服务层方法获取网站列表
-        return Result.success(handicapApi.events(admin.getUsername(), id));
+        return Result.success(handicapApi.events(admin.getUsername(), websiteId));
     }
 
 }

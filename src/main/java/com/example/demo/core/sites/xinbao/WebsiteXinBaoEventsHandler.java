@@ -116,8 +116,10 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
             JSONArray events = leagueJson.getJSONArray("events");
             events.put(eventCJson);
             events.put(eventHJson);
-            result.put(leagueJson);
         });
+        // 将所有合并后的联赛放入 result 数组中
+        result.addAll(leagueMap.values());
+
         responseJson.putOpt("success", true);
         responseJson.putOpt("leagues", result);
         responseJson.putOpt("msg", "获取账户赛事成功");
