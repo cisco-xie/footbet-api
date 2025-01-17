@@ -57,7 +57,11 @@ public class WebsiteZhiBoInfoHandler implements ApiHandler {
         // 解析响应
         JSONObject responseJson = new JSONObject(response.body());
         if (!responseJson.getBool("success", false)) {
+            responseJson.putOpt("success", false);
+            responseJson.putOpt("msg", "获取账户额度失败");
+            return responseJson;
         }
+        responseJson.putOpt("success", true);
         responseJson.putOpt("msg", "获取账户额度成功");
         return responseJson;
     }
@@ -79,8 +83,16 @@ public class WebsiteZhiBoInfoHandler implements ApiHandler {
         // 构建请求
         HttpEntity<String> request = buildRequest(params);
 
+        // 构造请求体
+        String queryParams = String.format("_=%s",
+                System.currentTimeMillis()
+        );
+
+        // 拼接完整的 URL
+        String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, queryParams);
+
         // 发送请求
-        HttpResponse response = HttpRequest.get(baseUrl+apiUrl+"?_=" + System.currentTimeMillis())
+        HttpResponse response = HttpRequest.get(fullUrl)
                 .addHeaders(request.getHeaders().toSingleValueMap())
                 .execute();
 

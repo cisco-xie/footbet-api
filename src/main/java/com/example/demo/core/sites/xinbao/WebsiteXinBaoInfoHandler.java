@@ -63,6 +63,7 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         // 检查响应状态
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();
+            res.putOpt("success", false);
             res.putOpt("msg", "账户登录失效");
             return res;
         }

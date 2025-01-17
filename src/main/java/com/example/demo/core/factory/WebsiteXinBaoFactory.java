@@ -2,7 +2,9 @@ package com.example.demo.core.factory;
 
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.core.sites.pingbo.WebsitePingBoEventsHandler;
 import com.example.demo.core.sites.pingbo.WebsitePingBoInfoHandler;
+import com.example.demo.core.sites.xinbao.WebsiteXinBaoEventsHandler;
 import com.example.demo.core.sites.xinbao.WebsiteXinBaoInfoHandler;
 import com.example.demo.core.sites.xinbao.WebsiteXinBaoLoginHandler;
 import com.example.demo.core.sites.zhibo.WebsiteZhiBoInfoHandler;
@@ -33,5 +35,10 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
     @Override
     public ApiHandler getInfoHandler() {
         return new WebsiteXinBaoInfoHandler(websiteService, apiUrlService); // 返回具体的详情处理类
+    }
+
+    @Override
+    public ApiHandler getEventsHandler() {
+        return new WebsiteXinBaoEventsHandler(websiteService, apiUrlService); // 返回具体的赛事列表处理类
     }
 }
