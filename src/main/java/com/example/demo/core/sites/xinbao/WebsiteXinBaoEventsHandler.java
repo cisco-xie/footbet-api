@@ -50,10 +50,17 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
         headers.add("accept", "*/*");
         headers.add("content-type", "application/x-www-form-urlencoded");
 
+        String showType = "live";  // 滚球赛事
+//        String showType = "today";  // 今日赛事
+
+        String rType = "rb";  // 滚球赛事
+//        String rType = "r";  // 今日赛事
         // 构造请求体
-        String requestBody = String.format("p=get_game_list&uid=%s&ver=%s&langx=zh-cn&gtype=ft&showtype=live&rtype=rb&ltype=3&cupFantasy=N&sorttype=L&isFantasy=N&ts=%s",
+        String requestBody = String.format("p=get_game_list&uid=%s&ver=%s&langx=zh-cn&gtype=ft&showtype=%s&rtype=%s&ltype=3&cupFantasy=N&sorttype=L&isFantasy=N&ts=%s",
                 params.getStr("uid"),
                 VER,
+                showType,
+                rType,
                 System.currentTimeMillis()
         );
         return new HttpEntity<>(requestBody, headers);
@@ -80,7 +87,7 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
         Object original = XmlUtil.getByXPath("//serverresponse/original", docResult, XPathConstants.STRING);
         if (ObjectUtil.isEmpty(original)) {
             responseJson.putOpt("success", false);
-            responseJson.putOpt("msg", "获取账户额度失败");
+            responseJson.putOpt("msg", "获取账户赛事失败");
             return responseJson;
         }
         // 结果存储，用于合并相同的 lid

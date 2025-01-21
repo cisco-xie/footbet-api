@@ -7,7 +7,6 @@ import com.example.demo.common.enmu.SystemError;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.model.dto.settings.*;
-import com.example.demo.model.vo.WebsiteVO;
 import com.example.demo.model.vo.settings.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -119,7 +118,7 @@ public class SettingsFilterService {
      */
     public void saveTimeFrames(String username, TimeFrameVO timeFrameVO) {
         if (timeFrameVO.getTimeFormSec() > timeFrameVO.getTimeToSec()) {
-            throw new BusinessException(SystemError.TIMEFRAME_1310);
+            throw new BusinessException(SystemError.TIMEFRAME_1311);
         }
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_FILTER_TIMEFRAME_PREFIX, username);
         // 获取 Redis 中的列表
