@@ -280,7 +280,6 @@ public class HandicapApi {
      * @return
      */
     public Object events(String username, String websiteId) {
-        TimeInterval timer = DateUtil.timer();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
@@ -305,6 +304,39 @@ public class HandicapApi {
             if (result.getBool("success")) {
                 return result.get("leagues");
             }
+        }
+        return null;
+    }
+
+    /**
+     * 指定网站和账户获取账户账目
+     * @param username
+     * @param websiteId
+     * @return
+     */
+    public Object statement(String username, String websiteId, String accountId) {
+        ConfigAccountVO account = accountService.getAccountById(username, websiteId, accountId);
+        WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+
+        ApiHandler apiHandler = factory.getStatementsHandler();
+        if (apiHandler == null) {
+            return null;
+        }
+        JSONObject params = new JSONObject();
+        params.putOpt("adminUsername", username);
+        params.putOpt("websiteId", websiteId);
+        // 根据不同站点传入不同的参数
+        if ("1874805533324103680".equals(websiteId)) {
+            params.putAll(account.getToken().getJSONObject("tokens"));
+        } else if ("1874804932787851264".equals(websiteId)) {
+            params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+        } else if ("1877702689064243200".equals(websiteId)) {
+            params.putAll(account.getToken().getJSONObject("serverresponse"));
+        }
+        JSONObject result = apiHandler.execute(params);
+
+        if (result.getBool("success")) {
+            return result.get("data");
         }
         return null;
     }

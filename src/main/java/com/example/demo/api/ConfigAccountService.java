@@ -62,6 +62,43 @@ public class ConfigAccountService {
     }
 
     /**
+     * 获取网站账户信息
+     * @param username
+     * @return
+     */
+    public ConfigAccountVO getAccountById(String username, String websiteId, String accountId) {
+
+        WebsiteVO website = websiteService.getWebsite(username, websiteId);
+
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
+
+        // 从 Redis 中获取 List 数据
+        List<String> jsonList = businessPlatformRedissonClient.getList(key);
+
+        if (jsonList == null || jsonList.isEmpty()) {
+            return null;
+        }
+
+        // 将 List 中的 JSON 字符串反序列化为 ConfigAccountVO
+        ConfigAccountVO accountVO = jsonList.stream()
+                .map(json -> JSONUtil.toBean(json, ConfigAccountVO.class))
+                .filter(account -> account.getId().equals(accountId))
+                .findFirst() // 找到第一个匹配的对象
+                .orElse(null); // 如果没有匹配对象，返回 null;
+
+        if (accountVO == null) {
+            return null;
+        }
+
+        // 如果 website 不为空，将 baseUrls 的第一个值赋给每个 ConfigAccountVO 的 url
+        if (website != null && website.getBaseUrls() != null && !website.getBaseUrls().isEmpty()) {
+            String baseUrl = website.getBaseUrls().get(0); // 获取第一个 baseUrl
+            accountVO.setWebsiteUrl(baseUrl); // 设置 url
+        }
+        return accountVO;
+    }
+
+    /**
      * 新增或修改网站
      * @param username 用户名
      * @param configAccountVO 网站信息

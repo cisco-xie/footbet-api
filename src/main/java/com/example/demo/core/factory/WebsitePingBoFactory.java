@@ -5,7 +5,9 @@ import com.example.demo.api.WebsiteService;
 import com.example.demo.core.sites.pingbo.WebsitePingBoEventsHandler;
 import com.example.demo.core.sites.pingbo.WebsitePingBoInfoHandler;
 import com.example.demo.core.sites.pingbo.WebsitePingBoLoginHandler;
+import com.example.demo.core.sites.pingbo.WebsitePingBoStatementHandler;
 import com.example.demo.core.sites.zhibo.WebsiteZhiBoInfoHandler;
+import com.example.demo.core.sites.zhibo.WebsiteZhiBoStatementHandler;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
@@ -39,5 +41,10 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
     @Override
     public ApiHandler getEventsHandler() {
         return new WebsitePingBoEventsHandler(websiteService, apiUrlService); // 返回具体的赛事列表处理类
+    }
+
+    @Override
+    public ApiHandler getStatementsHandler() {
+        return new WebsitePingBoStatementHandler(websiteService, apiUrlService); // 返回具体的账目列表处理类
     }
 }

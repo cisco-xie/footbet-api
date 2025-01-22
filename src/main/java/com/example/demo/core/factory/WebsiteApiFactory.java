@@ -8,6 +8,7 @@ public interface WebsiteApiFactory {
     ApiHandler getLoginHandler();       // 登录
     ApiHandler getInfoHandler();       // 账号详情
     ApiHandler getEventsHandler();       // 赛事列表
+    ApiHandler getStatementsHandler();       // 账目列表
 //    ApiHandler getMatchListHandler();  // 获取比赛列表
 //    ApiHandler getOddsHandler();       // 获取赔率
 //    ApiHandler getBetHandler();        // 下注
