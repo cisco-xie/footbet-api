@@ -42,9 +42,22 @@ public class StatementController extends BaseController {
     @Operation(summary = "获取账目列表")
     @GetMapping("/statements/{websiteId}/{accountId}")
     public Result statement(@PathVariable String websiteId, @PathVariable String accountId) {
+        if ("undefined".equals(websiteId) || "undefined".equals(accountId)) {
+            return Result.success("网站ID或账户ID不能为空");
+        }
         AdminLoginDTO admin = getUser();
         // 调用服务层方法获取网站列表
         return Result.success(handicapApi.statement(admin.getUsername(), websiteId, accountId));
     }
 
+    @Operation(summary = "获取账目列表")
+    @GetMapping("/bet/unsettled/{websiteId}/{accountId}")
+    public Result unsettled(@PathVariable String websiteId, @PathVariable String accountId) {
+        if ("undefined".equals(websiteId) || "undefined".equals(accountId)) {
+            return Result.success("网站ID或账户ID不能为空");
+        }
+        AdminLoginDTO admin = getUser();
+        // 调用服务层方法获取网站列表
+        return Result.success(handicapApi.unsettled(admin.getUsername(), websiteId, accountId));
+    }
 }

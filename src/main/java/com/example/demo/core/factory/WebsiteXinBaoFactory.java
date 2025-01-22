@@ -2,12 +2,10 @@ package com.example.demo.core.factory;
 
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.core.sites.pingbo.WebsitePingBoBetUnsettledHandler;
 import com.example.demo.core.sites.pingbo.WebsitePingBoEventsHandler;
 import com.example.demo.core.sites.pingbo.WebsitePingBoInfoHandler;
-import com.example.demo.core.sites.xinbao.WebsiteXinBaoEventsHandler;
-import com.example.demo.core.sites.xinbao.WebsiteXinBaoInfoHandler;
-import com.example.demo.core.sites.xinbao.WebsiteXinBaoLoginHandler;
-import com.example.demo.core.sites.xinbao.WebsiteXinBaoStatementHandler;
+import com.example.demo.core.sites.xinbao.*;
 import com.example.demo.core.sites.zhibo.WebsiteZhiBoInfoHandler;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
@@ -46,5 +44,10 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
     @Override
     public ApiHandler getStatementsHandler() {
         return new WebsiteXinBaoStatementHandler(websiteService, apiUrlService); // 返回具体的账目列表处理类
+    }
+
+    @Override
+    public ApiHandler getBetUnsettledHandler() {
+        return new WebsiteXinBaoBetUnsettledHandler(websiteService, apiUrlService); // 返回具体的未结算投注列表处理类
     }
 }

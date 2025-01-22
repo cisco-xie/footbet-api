@@ -2,10 +2,7 @@ package com.example.demo.core.factory;
 
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
-import com.example.demo.core.sites.pingbo.WebsitePingBoEventsHandler;
-import com.example.demo.core.sites.pingbo.WebsitePingBoInfoHandler;
-import com.example.demo.core.sites.pingbo.WebsitePingBoLoginHandler;
-import com.example.demo.core.sites.pingbo.WebsitePingBoStatementHandler;
+import com.example.demo.core.sites.pingbo.*;
 import com.example.demo.core.sites.zhibo.WebsiteZhiBoInfoHandler;
 import com.example.demo.core.sites.zhibo.WebsiteZhiBoStatementHandler;
 import jakarta.annotation.Resource;
@@ -46,5 +43,10 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
     @Override
     public ApiHandler getStatementsHandler() {
         return new WebsitePingBoStatementHandler(websiteService, apiUrlService); // 返回具体的账目列表处理类
+    }
+
+    @Override
+    public ApiHandler getBetUnsettledHandler() {
+        return new WebsitePingBoBetUnsettledHandler(websiteService, apiUrlService); // 返回具体的未结算投注列表处理类
     }
 }

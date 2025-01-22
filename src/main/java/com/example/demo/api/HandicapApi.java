@@ -341,4 +341,36 @@ public class HandicapApi {
         return null;
     }
 
+    /**
+     * 指定网站和账户获取账户未结算投注
+     * @param username
+     * @param websiteId
+     * @return
+     */
+    public Object unsettled(String username, String websiteId, String accountId) {
+        ConfigAccountVO account = accountService.getAccountById(username, websiteId, accountId);
+        WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+
+        ApiHandler apiHandler = factory.getBetUnsettledHandler();
+        if (apiHandler == null) {
+            return null;
+        }
+        JSONObject params = new JSONObject();
+        params.putOpt("adminUsername", username);
+        params.putOpt("websiteId", websiteId);
+        // 根据不同站点传入不同的参数
+        if ("1874805533324103680".equals(websiteId)) {
+            params.putAll(account.getToken().getJSONObject("tokens"));
+        } else if ("1874804932787851264".equals(websiteId)) {
+            params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+        } else if ("1877702689064243200".equals(websiteId)) {
+            params.putAll(account.getToken().getJSONObject("serverresponse"));
+        }
+        JSONObject result = apiHandler.execute(params);
+
+        if (result.getBool("success")) {
+            return result.get("data");
+        }
+        return null;
+    }
 }
