@@ -77,8 +77,8 @@ public class WebsiteXinBaoStatementHandler implements ApiHandler {
         JSONObject responseJson = new JSONObject(response.body());
         Object history = XmlUtil.getByXPath("//serverresponse/history", docResult, XPathConstants.STRING);
         if (ObjectUtil.isEmpty(history)) {
-            responseJson.putOpt("success", false);
-            responseJson.putOpt("msg", "获取账户账目失败");
+            responseJson.putOpt("success", true);
+            responseJson.putOpt("msg", "获取账户账目成功");
             return responseJson;
         }
         responseJson.putOpt("success", true);

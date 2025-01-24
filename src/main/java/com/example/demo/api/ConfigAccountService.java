@@ -31,7 +31,7 @@ public class ConfigAccountService {
     private WebsiteService websiteService;
 
     /**
-     * 获取网站列表
+     * 获取网站账户列表
      * @param username
      * @return
      */
@@ -99,7 +99,7 @@ public class ConfigAccountService {
     }
 
     /**
-     * 新增或修改网站
+     * 新增或修改账户
      * @param username 用户名
      * @param configAccountVO 网站信息
      */
@@ -140,14 +140,14 @@ public class ConfigAccountService {
     }
 
     /**
-     * 删除网站
+     * 删除账户
      * @param username 用户名
      * @param websiteId 要删除的网站ID
      */
     public void deleteAccount(String username, String websiteId, String accountId) {
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
 
-        // 获取所有网站信息
+        // 获取所有账户信息
         List<String> jsonList = businessPlatformRedissonClient.getList(key);
 
         // 找到对应的 website 并删除
@@ -157,6 +157,11 @@ public class ConfigAccountService {
                 .ifPresent(json -> businessPlatformRedissonClient.getList(key).remove(json));
     }
 
+    /**
+     * 退出所有账户-即清空所有token
+     * @param username
+     * @param websiteId
+     */
     public void logoutByWebsite(String username, String websiteId) {
 
         // 生成 Redis 中的 key

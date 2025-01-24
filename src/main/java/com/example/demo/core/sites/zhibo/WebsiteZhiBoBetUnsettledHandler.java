@@ -55,7 +55,7 @@ public class WebsiteZhiBoBetUnsettledHandler implements ApiHandler {
                 res.putOpt("msg", "账户登录失效");
                 return res;
             }
-            res.putOpt("msg", "获取账目失败");
+            res.putOpt("msg", "获取投注历史失败");
             return res;
         }
         // 解析响应
@@ -63,7 +63,7 @@ public class WebsiteZhiBoBetUnsettledHandler implements ApiHandler {
         JSONArray responseJson = new JSONArray(response.body());
         result.putOpt("success", true);
         result.putOpt("data", responseJson);
-        result.putOpt("msg", "获取账目成功");
+        result.putOpt("msg", "获取投注历史成功");
         return result;
     }
 

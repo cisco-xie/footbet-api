@@ -43,7 +43,7 @@ public class StatementController extends BaseController {
     @GetMapping("/statements/{websiteId}/{accountId}")
     public Result statement(@PathVariable String websiteId, @PathVariable String accountId) {
         if ("undefined".equals(websiteId) || "undefined".equals(accountId)) {
-            return Result.success("网站ID或账户ID不能为空");
+            return Result.success();
         }
         AdminLoginDTO admin = getUser();
         // 调用服务层方法获取网站列表
@@ -54,7 +54,7 @@ public class StatementController extends BaseController {
     @GetMapping("/bet/unsettled/{websiteId}/{accountId}")
     public Result unsettled(@PathVariable String websiteId, @PathVariable String accountId) {
         if ("undefined".equals(websiteId) || "undefined".equals(accountId)) {
-            return Result.success("网站ID或账户ID不能为空");
+            return Result.success();
         }
         AdminLoginDTO admin = getUser();
         // 调用服务层方法获取网站列表

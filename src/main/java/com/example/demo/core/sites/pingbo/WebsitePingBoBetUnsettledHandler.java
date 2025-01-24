@@ -15,6 +15,8 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.text.DecimalFormat;
 import java.time.LocalDateTime;
 
 /**
@@ -51,10 +53,17 @@ public class WebsitePingBoBetUnsettledHandler implements ApiHandler {
         headers.add("x-custid", custid);
         headers.add("cookie", cookie);
 
+        String type = "EVENT";  // 未结算
+//        String type = "WAGER";  // 已结算
+
+        String s = "OPEN";  // 未结算
+//        String s = "SETTLED";  // 已结算
         // 构造请求体
-        String requestBody = String.format("s=OPEN&f=%s&t=%s&d=-1&type=EVENT",
+        String requestBody = String.format("f=%s&t=%s&d=-1&s=%s&sd=false&type=%s&product=SB&timezone=GMT-4&sportId=&leagueId=",
                 LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN + " 00:00:00"),
-                LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN + " 00:00:00")
+                LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN + " 00:00:00"),
+                s,
+                type
         );
 
         return new HttpEntity<>(requestBody, headers);
@@ -75,16 +84,30 @@ public class WebsitePingBoBetUnsettledHandler implements ApiHandler {
                 res.putOpt("msg", "账户登录失效");
                 return res;
             }
-            res.putOpt("msg", "获取赛事失败");
+            res.putOpt("msg", "获取投注历史失败");
             return res;
         }
         // 解析响应
-        JSONArray result = new JSONArray();
-        JSONObject responseJson = new JSONObject(response.body());
-        responseJson.putOpt("success", true);
-        responseJson.putOpt("data", result);
-        responseJson.putOpt("msg", "获取账户额度成功");
-        return responseJson;
+        JSONObject result = new JSONObject();
+        JSONArray responseJsonList = new JSONArray();
+        JSONArray responseJson = new JSONArray(response.body());
+        DecimalFormat df = new DecimalFormat("###.00");
+        responseJson.forEach(json -> {
+            JSONArray jsonArray = (JSONArray) json;
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.putOpt("product", "体育博彩");
+            jsonObject.putOpt("detail", jsonArray.getStr(4)+" 足球 "+jsonArray.getStr(8));
+            jsonObject.putOpt("team", jsonArray.getStr(22)+jsonArray.getStr(6)+jsonArray.getStr(22));
+            jsonObject.putOpt("odds", jsonArray.getStr(10));
+            jsonObject.putOpt("amount", df.format(jsonArray.getBigDecimal(36)));
+            jsonObject.putOpt("win", df.format(jsonArray.getBigDecimal(35)));
+            jsonObject.putOpt("status", "OPEN".equals(jsonArray.getStr(12)) ? "进行中" : "已结算");
+            responseJsonList.add(jsonObject);
+        });
+        result.putOpt("success", true);
+        result.putOpt("data", responseJsonList);
+        result.putOpt("msg", "获取账户投注历史成功");
+        return result;
     }
 
     /**
@@ -109,7 +132,7 @@ public class WebsitePingBoBetUnsettledHandler implements ApiHandler {
         String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, queryParams);
 
         // 发送请求
-        HttpResponse response = HttpRequest.get(fullUrl)
+        HttpResponse response = HttpRequest.post(fullUrl)
                 .addHeaders(request.getHeaders().toSingleValueMap())
                 .body(request.getBody())
                 .execute();
@@ -117,4 +140,5 @@ public class WebsitePingBoBetUnsettledHandler implements ApiHandler {
         // 解析响应并返回
         return parseResponse(response);
     }
+
 }
