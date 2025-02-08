@@ -3,6 +3,8 @@ package com.example.demo.controller;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import com.example.demo.api.ConfigAccountService;
+import com.example.demo.common.enmu.SystemError;
+import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
@@ -33,6 +35,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.StringTokenizer;
 import java.util.concurrent.TimeUnit;
@@ -47,6 +50,11 @@ public class ProxyController extends BaseController {
     @Resource
     private ConfigAccountService accountService;
 
+    /**
+     * 构建 Cookie 参数
+     * @param account
+     * @return
+     */
     private String buildCookie(ConfigAccountVO account) {
         String custid = account.getToken().getJSONObject("tokens").getStr("X-Custid");
         String browser = account.getToken().getJSONObject("tokens").getStr("X-Browser-Session-Id");
@@ -55,6 +63,11 @@ public class ProxyController extends BaseController {
         return "pctag=48737fbc-cfb0-4199-b54b-32a6a57fc64e; dgRH0=6Zn5gZ2NOAamUly; skin=ps3838; b-user-id=cea40892-825f-666a-cf0e-a8fe24c39a01; _gid=GA1.2.1677352228.1736944373; _ga=GA1.2.1445030965.1736944373; PCTR=1896783056883; u=" + lcu + "; lcu=" + lcu + "; custid=" + custid + "; BrowserSessionId=" + browser + "; _og=QQ==; _ulp=KzhkT2JESFJ1US9xbC9rZkxDaHJZb3V2YVZlTCtKN2ViYnBYdGNCY0U2SzB4bnZpTVZaQWVwamhPQW5FSkNqS3xiOGZmZmEzZGNlM2Y0MGJiMmRlNDE2ZTEwYTMzMWM3Mg==; uoc=be97830afef253f33d2a502d243b8c37; _userDefaultView=COMPACT; SLID=" + slid + "; auth=true; _sig=Icy1OV014TnpZeVl6RTROek0wTXpjNE5nOm5xd2hWTTZTdmJIVmluQ0k1TndvaWxMS2g6MTcxMzE1ODI0NDo3Mzc2OTk5MTY6bm9uZTo5Q0NFQTlvSVhE; _apt=9CCEA9oIXD; _ga_DXNRHBHDY9=GS1.1.1736944373.1.1.1736944383.50.0.1813848857; _ga_1YEJQEHQ55=GS1.1.1739016699.1.0.1739016745.14.0.0; _vid=3cdc158d8a079b8caa05594a23644c6d; __prefs=W251bGwsNCwxLDAsMSxudWxsLGZhbHNlLDAuMDAwMCx0cnVlLHRydWUsIl8zTElORVMiLDAsbnVsbCx0cnVlLHRydWUsZmFsc2UsZmFsc2UsbnVsbCxudWxsLHRydWVd; lang=zh_CN; _lastView=eyJoNjEwMDAwMDAxIjoiQ09NUEFDVCJ9";
     }
 
+    /**
+     * 设置 Cookies 方法
+     * @param driver
+     * @param cookie
+     */
     private void setCookies(WebDriver driver, String cookie) {
         StringTokenizer st = new StringTokenizer(cookie, ";");
         driver.get("https://www.ps3838.com");
@@ -74,6 +87,45 @@ public class ProxyController extends BaseController {
             }
         }
     }
+
+    /**
+     * 等待页面加载完成
+     * @param driver
+     */
+    private void waitForPageToLoad(WebDriver driver) {
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        wait.until(d -> {
+            // 检查是否存在登录弹窗（class="ui-dialog" 的 <div> 元素）
+            List<WebElement> dialogElements = d.findElements(By.className("ui-dialog"));
+            if (!dialogElements.isEmpty()) {
+                // 如果找到了 ui-dialog，则说明需要重新登录
+                System.out.println("检测到登录弹窗，触发重新登录");
+                // 处理重新登录的逻辑，抛出异常或其他处理
+                throw new BusinessException(SystemError.USER_1006);
+            }
+
+            // 检查页面中是否已经加载了表格的第一个 <tr> 元素
+            return ExpectedConditions.presenceOfElementLocated(By.tagName("tr")).apply(d) != null;
+        });
+//        wait.until(d -> {
+//            try {
+//                // 重新获取 table，防止 StaleElementReferenceException
+//                WebElement table = d.findElement(By.className("info-div-table"));
+//
+//                // 使用 JS 获取表格内容
+//                String tableContent = (String) ((JavascriptExecutor) d).executeScript("return arguments[0].innerHTML;", table);
+//
+//                System.out.println("当前表格内容：" + tableContent.trim());
+//
+//                // 确保表格有内容，并且内容至少包含一个 <tr> 元素
+//                return tableContent.trim().length() > 10;
+//            } catch (NoSuchElementException | StaleElementReferenceException e) {
+//                return false; // 继续等待
+//            }
+//        });
+    }
+
+
 
     @GetMapping("/selenium")
     public String proxyselenium(@RequestParam String url, @RequestParam String websiteId, @RequestParam String accountId) throws Exception {
@@ -106,14 +158,12 @@ public class ProxyController extends BaseController {
             }
             // 获取页面源代码
             String pageSource = driver.getPageSource();
-
             // 解析 HTML
             Document document = Jsoup.parse(pageSource);
 
             String baseUrl = "https://www.ps3838.com";
             // 在 <head> 中插入 <base> 标签
             // document.head().prepend("<base href=\""+baseUrl+"\">");
-
             // 选择所有 class 为 "form-inline" 的 form 元素(这个是查询表单块)，并删除
             document.select("form.form-inline").remove();
             // 删除所有 class 为 "truncated-currencies" 的 <div> 元素
@@ -129,14 +179,8 @@ public class ProxyController extends BaseController {
              return document.html();
         } finally {
             // 关闭WebDriver
-            // driver.quit();
+             // driver.quit();
         }
-    }
-
-    private void waitForPageToLoad(WebDriver driver) {
-        // 使用一个显式等待条件，直到出现 tbody 标签 为止
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-        wait.until(ExpectedConditions.presenceOfElementLocated(By.tagName("tbody")));
     }
 
 }
