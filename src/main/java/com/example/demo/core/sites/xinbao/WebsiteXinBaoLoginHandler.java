@@ -81,6 +81,11 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
         // 解析响应
         Document docResult = XmlUtil.readXML(response.body());
         JSONObject responseJson = new JSONObject(response.body());
+        if (responseJson.getJSONObject("serverresponse").getInt("msg") != 100) {
+            responseJson.putOpt("success", false);
+            responseJson.putOpt("msg", responseJson.getJSONObject("serverresponse").getStr("code_message"));
+            return responseJson;
+        }
         Object token = XmlUtil.getByXPath("//serverresponse/uid", docResult, XPathConstants.STRING);
         if (ObjectUtil.isEmpty(token)) {
             responseJson.putOpt("success", false);
