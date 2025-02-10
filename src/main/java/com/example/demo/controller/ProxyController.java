@@ -1,44 +1,30 @@
 package com.example.demo.controller;
 
-import cn.hutool.http.HttpRequest;
-import cn.hutool.http.HttpResponse;
+import cn.hutool.json.JSONObject;
 import com.example.demo.api.ConfigAccountService;
+import com.example.demo.api.WebsiteService;
 import com.example.demo.common.enmu.SystemError;
 import com.example.demo.core.exception.BusinessException;
-import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.ConfigAccountVO;
-import io.github.bonigarcia.wdm.WebDriverManager;
-import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
-import org.htmlunit.BrowserVersion;
-import org.htmlunit.WebClient;
-import org.htmlunit.html.HtmlPage;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.openqa.selenium.*;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chrome.ChromeOptions;
-import org.openqa.selenium.support.ui.ExpectedCondition;
 import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.FluentWait;
 import org.openqa.selenium.support.ui.WebDriverWait;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Duration;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.StringTokenizer;
-import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/proxy")
@@ -49,6 +35,9 @@ public class ProxyController extends BaseController {
 
     @Resource
     private ConfigAccountService accountService;
+
+    @Resource
+    private WebsiteService websiteService;
 
     /**
      * 构建 Cookie 参数
@@ -64,27 +53,58 @@ public class ProxyController extends BaseController {
     }
 
     /**
+     * 构建 新宝网站 Cookie 参数
+     * @param account
+     * @return
+     */
+    private String buildCookieXinBao(ConfigAccountVO account) {
+        return "accept=48737fbc-cfb0-4199-b54b-32a6a57fc64e;";
+    }
+
+    /**
      * 设置 Cookies 方法
      * @param driver
      * @param cookie
      */
-    private void setCookies(WebDriver driver, String cookie) {
+    private void setCookies(WebDriver driver, String cookie, String siteUrl) {
         StringTokenizer st = new StringTokenizer(cookie, ";");
-        driver.get("https://www.ps3838.com");
+        driver.get(siteUrl);
         while (st.hasMoreTokens()) {
             String token = st.nextToken().trim();
             int idx = token.indexOf("=");
             if (idx > 0) {
                 String name = token.substring(0, idx);
                 String value = token.substring(idx + 1);
+                // 提取根域名，确保跨子域有效
+                String domain = extractDomainFromUrl(siteUrl);
+
                 Cookie seleniumCookie = new Cookie.Builder(name, value)
-                        .domain(".ps3838.com")
-                        .path("/")
-                        .isSecure(true)  // 设置为 Secure，确保 HTTPS 环境下有效
-                        .sameSite("None")  // 允许跨域 Cookie
+                        .domain(domain)     // 使用从 URL 提取的域名
+                        .path("/")          // 确保 Cookie 在根路径下有效
+                        .isSecure(true)     // 设置为 Secure，确保 HTTPS 环境下有效
+                        .sameSite("None")   // 允许跨域 Cookie
                         .build();
                 driver.manage().addCookie(seleniumCookie);
             }
+        }
+    }
+
+    /**
+     * 从 URL 中提取域名（去除子域部分）
+     * 例如：从 https://www.ps3838.com 提取 ps3838.com
+     */
+    private String extractDomainFromUrl(String siteUrl) {
+        try {
+            URI uri = new URI(siteUrl);
+            String host = uri.getHost();
+            // 提取主域名，去掉 www 等子域部分
+            String[] domainParts = host.split("\\.");
+            if (domainParts.length > 2) {
+                return domainParts[domainParts.length - 2] + "." + domainParts[domainParts.length - 1];
+            }
+            return host;  // 如果域名没有子域，则直接返回主域名
+        } catch (URISyntaxException e) {
+            throw new RuntimeException("Invalid URL syntax", e);
         }
     }
 
@@ -126,26 +146,37 @@ public class ProxyController extends BaseController {
     }
 
 
-
     @GetMapping("/selenium")
-    public String proxyselenium(@RequestParam String url, @RequestParam String websiteId, @RequestParam String accountId) throws Exception {
+    public String proxySeleniumUnsettled(@RequestParam String websiteId, @RequestParam String accountId) throws Exception {
+        AdminLoginDTO admin = getUser();
+        String baseUrl = websiteService.getWebsiteBaseUrl(admin.getUsername(), websiteId);
         WebDriver driver = webDriver; // 从配置中获取共享实例
 
+        // 根据 websiteId 判断执行不同的方法
+        if ("1874805533324103680".equals(websiteId)) {
+            return proxySeleniumForWebsitePingBo(admin, websiteId, accountId, baseUrl, driver);
+        } else if ("1877702689064243200".equals(websiteId)) {
+            return proxySeleniumForWebsiteXinBao(admin, websiteId, accountId, baseUrl, driver);
+        } else {
+            throw new RuntimeException("未知的 websiteId");
+        }
+    }
+
+    private String proxySeleniumForWebsitePingBo(AdminLoginDTO admin, String websiteId, String accountId, String baseUrl, WebDriver driver) throws Exception {
         try {
-            AdminLoginDTO admin = getUser();
             ConfigAccountVO account = accountService.getAccountById(admin.getUsername(), websiteId, accountId);
 
             // 构建完整的cookie字符串
             String cookie = buildCookie(account);
 
             // 设置 Cookie
-            setCookies(driver, cookie);
+            setCookies(driver, cookie, baseUrl);
 
             // 导航到目标页面并等待加载完成
             int retries = 3;
             while (retries > 0) {
                 try {
-                    driver.get(url);
+                    driver.get(baseUrl + "/zh-cn/account/my-bets-full");
                     waitForPageToLoad(driver);
                     break; // 成功则退出循环
                 } catch (TimeoutException e) {
@@ -156,17 +187,14 @@ public class ProxyController extends BaseController {
                     System.out.println("页面加载超时，剩余重试次数: " + retries);
                 }
             }
+
             // 获取页面源代码
             String pageSource = driver.getPageSource();
             // 解析 HTML
             Document document = Jsoup.parse(pageSource);
 
-            String baseUrl = "https://www.ps3838.com";
-            // 在 <head> 中插入 <base> 标签
-            // document.head().prepend("<base href=\""+baseUrl+"\">");
-            // 选择所有 class 为 "form-inline" 的 form 元素(这个是查询表单块)，并删除
+            // 删除不需要的元素
             document.select("form.form-inline").remove();
-            // 删除所有 class 为 "truncated-currencies" 的 <div> 元素
             document.select("div.truncated-currencies").remove();
 
             // 修正资源路径
@@ -175,11 +203,79 @@ public class ProxyController extends BaseController {
                     element.attr("href", baseUrl + element.attr("href"));
                 }
             });
+
             // 获取页面源代码
-             return document.html();
+            return document.html();
         } finally {
-            // 关闭WebDriver
-             // driver.quit();
+            // 关闭 WebDriver（根据需要可选择注释掉）
+            // driver.quit();
+        }
+    }
+
+    private String proxySeleniumForWebsiteXinBao(AdminLoginDTO admin, String websiteId, String accountId, String baseUrl, WebDriver driver) throws Exception {
+        try {
+            ConfigAccountVO account = accountService.getAccountById(admin.getUsername(), websiteId, accountId);
+
+            // 获取 serverresponse 对象，避免多次重复访问
+            JSONObject serverResponse = account.getToken().getJSONObject("serverresponse");
+
+            // 使用 String.format 进行格式化拼接 URL
+            String url = String.format("%s/?cu=N&cuipv6=N&ipv6=N&uid=%s&pay_type=%s&username=%s&passwd_safe=%s&mid=%s&ltype=%s&currency=%s&odd_f=%s&domain=%s&blackBoxStatus=%s&odd_f_type=H&timetype=sysTime&four_pwd=new&abox4pwd_notshow=N&msg=&langx=zh-cn&iovationCnt=1",
+                    baseUrl,
+                    serverResponse.getStr("uid"),
+                    serverResponse.getStr("pay_type"),
+                    serverResponse.getStr("username"),
+                    serverResponse.getStr("passwd_safe"),
+                    serverResponse.getStr("mid"),
+                    serverResponse.getStr("ltype"),
+                    serverResponse.getStr("currency"),
+                    serverResponse.getStr("odd_f"),
+                    serverResponse.getStr("domain"),
+                    serverResponse.getStr("blackBoxStatus")
+            );
+            // 导航到根域名页面
+            driver.get(url);
+
+            // 等待页面加载完成，直到 'box_header' 元素可见
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.className("box_header")));
+
+            // 找到“投注记录”按钮并点击
+            WebElement betRecordButton = driver.findElement(By.id("header_todaywagers"));
+            if (betRecordButton != null) {
+                betRecordButton.click();
+
+                // 等待目标页面加载完成，直到 'all_outside' 元素可见
+                wait.until(ExpectedConditions.visibilityOfElementLocated(By.className("all_outside")));
+
+                // 获取页面源代码
+                String pageSource = driver.getPageSource();
+                // 解析 HTML
+                Document document = Jsoup.parse(pageSource);
+
+                // 隐藏不需要的元素，删除会导致样式错乱
+                document.select("#header_show").attr("style", "display: none;");
+                document.select("ul.tool_category").attr("style", "display: none;");
+                // 删除不需要的元素
+                document.select("div.tool_selectbox").remove();
+                document.select("#right_show").remove();
+                document.select("#footer_relating_box").remove();
+                document.select("#bottom_show").remove();
+                document.select("div.content_footer").remove();
+                document.select("div.box_copyright").remove();
+
+                // 返回修改后的页面源代码
+                return document.html();
+            } else {
+                throw new RuntimeException("未找到 '投注记录' 按钮");
+            }
+        } catch (NoSuchElementException e) {
+            throw new RuntimeException("页面元素未找到", e);
+        } catch (TimeoutException e) {
+            throw new RuntimeException("页面加载超时", e);
+        } finally {
+            // 根据需要关闭 WebDriver，这里可以根据实际需求决定是否保留 WebDriver
+            // driver.quit();
         }
     }
 
