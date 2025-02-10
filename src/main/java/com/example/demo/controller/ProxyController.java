@@ -145,6 +145,22 @@ public class ProxyController extends BaseController {
 //        });
     }
 
+    private void waitForPageToLoadXinBao(WebDriver driver) {
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        wait.until(d -> {
+            // 检查是否存在登录弹窗（class="ui-dialog" 的 <div> 元素）
+            List<WebElement> dialogElements = d.findElements(By.id("alert_kick"));
+            if (!dialogElements.isEmpty()) {
+                // 如果找到了 alert_kick，则说明需要重新登录
+                System.out.println("检测到登录弹窗，触发重新登录");
+                // 处理重新登录的逻辑，抛出异常或其他处理
+                throw new BusinessException(SystemError.USER_1006);
+            }
+
+            // 检查页面中是否已经加载了 box_header 元素
+            return ExpectedConditions.presenceOfElementLocated(By.className("box_header"));
+        });
+    }
 
     @GetMapping("/selenium")
     public String proxySeleniumUnsettled(@RequestParam String websiteId, @RequestParam String accountId) throws Exception {
@@ -238,6 +254,18 @@ public class ProxyController extends BaseController {
 
             // 等待页面加载完成，直到 'box_header' 元素可见
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            wait.until(ExpectedConditions.jsReturnsValue("return document.readyState === 'complete'"));
+            // 检查是否有需要重新登录的提示
+            try {
+                WebElement alertKickElement = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("alert_kick")));
+                // 检查该元素的 class 是否包含 'on'，表示需要重新登录
+                if (alertKickElement != null && alertKickElement.getAttribute("class").contains("on")) {
+                    throw new BusinessException(SystemError.USER_1006);
+                }
+            } catch (TimeoutException e) {
+                // 如果超时，说明没有 alert_kick 元素，继续等待其他页面元素
+                System.out.println("没有检测到需要重新登录的提示");
+            }
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.className("box_header")));
 
             // 找到“投注记录”按钮并点击
@@ -245,6 +273,7 @@ public class ProxyController extends BaseController {
             if (betRecordButton != null) {
                 betRecordButton.click();
 
+                wait.until(ExpectedConditions.jsReturnsValue("return document.readyState === 'complete'"));
                 // 等待目标页面加载完成，直到 'all_outside' 元素可见
                 wait.until(ExpectedConditions.visibilityOfElementLocated(By.className("all_outside")));
 
