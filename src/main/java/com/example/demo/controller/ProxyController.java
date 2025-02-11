@@ -14,6 +14,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.openqa.selenium.*;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.devtools.DevTools;
+import org.openqa.selenium.devtools.v132.network.Network;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,9 +27,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
-import java.util.List;
+import java.util.*;
 import java.util.NoSuchElementException;
-import java.util.StringTokenizer;
 
 @Slf4j
 @RestController
@@ -176,8 +178,10 @@ public class ProxyController extends BaseController {
             return Result.success(proxySeleniumForWebsitePingBo(admin, websiteId, accountId, baseUrl, driver));
         } else if ("1877702689064243200".equals(websiteId)) {
             return Result.success(proxySeleniumForWebsiteXinBao(admin, websiteId, accountId, baseUrl, driver));
+        } else if ("1874804932787851264".equals(websiteId)) {
+            return Result.success(proxySeleniumForWebsiteZhiBo(admin, websiteId, accountId, baseUrl, driver));
         } else {
-            throw new RuntimeException("未知的 websiteId");
+            throw new RuntimeException("未知的网站");
         }
     }
 
@@ -313,5 +317,117 @@ public class ProxyController extends BaseController {
             // driver.quit();
         }
     }
+
+    private String proxySeleniumForWebsiteZhiBo(AdminLoginDTO admin, String websiteId, String accountId, String baseUrl, WebDriver driver) throws Exception {
+        try {
+            // 获取账号信息
+            ConfigAccountVO account = accountService.getAccountById(admin.getUsername(), websiteId, accountId);
+            String username = account.getAccount();  // 账号
+            String password = account.getPassword();  // 密码
+
+            // 构造目标 URL
+            String url = String.format("%s/membersite-api/#/betList", baseUrl);
+
+            // 初始化 WebDriverWait
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+
+            // 检查页面是否已经加载了 data-list 元素
+            if (isDataListLoaded(driver, wait)) {
+                // 检查是否有弹窗提示重新登录
+                WebElement modalContainer = null;
+                try {
+                    // 等待 modal 弹窗出现
+                    modalContainer = wait.until(ExpectedConditions.presenceOfElementLocated(By.className("modal-container")));
+                    WebElement alertText = modalContainer.findElement(By.cssSelector(".app-alert span"));
+                    if (alertText.getText().contains("请重新登录")) {
+                        // 弹窗存在并包含"请重新登录"信息，点击确认按钮
+                        WebElement confirmButton = modalContainer.findElement(By.cssSelector(".btn-cancel"));
+                        confirmButton.click();
+                        log.info("点击确认按钮，跳转到登录页面");
+                    }
+                } catch (TimeoutException modalException) {
+                    // 没有弹窗，继续执行后续操作
+                    log.info("没有检测到重新登录的弹窗");
+                    return getPageSourceAndCleanHtml(driver, baseUrl);
+                }
+            }
+
+            // 如果未找到 data-list 元素，执行登录流程
+            log.info("未找到 data-list 元素，开始执行登录流程");
+
+            // 导航到登录页面
+            driver.get(url);
+
+            // 等待并输入用户名和密码
+            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector("input[type='text']")));  // 等待用户名输入框加载
+            WebElement usernameField = driver.findElement(By.cssSelector("input[type='text']"));
+            WebElement passwordField = driver.findElement(By.id("pwd"));
+            usernameField.sendKeys(username);
+            passwordField.sendKeys(password);
+
+            // 点击登录按钮
+            WebElement loginButton = driver.findElement(By.cssSelector("button[type='button']"));
+            wait.until(ExpectedConditions.elementToBeClickable(loginButton));  // 等待登录按钮可点击
+            loginButton.click();
+
+            // 等待登录完成并检查 data-list 元素
+            wait.until(ExpectedConditions.presenceOfElementLocated(By.className("data-list")));
+
+            // 返回处理后的页面源码
+            return getPageSourceAndCleanHtml(driver, baseUrl);
+        } catch (NoSuchElementException e) {
+            log.warn("页面元素未找到", e);
+            throw new BusinessException(SystemError.UNSETTLE_1330);
+        } catch (TimeoutException e) {
+            log.warn("页面加载超时", e);
+            throw new BusinessException(SystemError.UNSETTLE_1330);
+        } catch (Exception e) {
+            log.error("登录或页面加载失败", e);
+            throw new BusinessException(SystemError.UNSETTLE_1330);
+        } finally {
+            // 根据需要关闭 WebDriver
+            // driver.quit();
+        }
+    }
+
+    /**
+     * 检查页面是否已经加载了 data-list 元素
+     */
+    private boolean isDataListLoaded(WebDriver driver, WebDriverWait wait) {
+        try {
+            wait.until(ExpectedConditions.presenceOfElementLocated(By.className("data-list")));
+            return true;
+        } catch (TimeoutException e) {
+            return false;
+        }
+    }
+
+    /**
+     * 获取页面源码并清理 HTML
+     */
+    private String getPageSourceAndCleanHtml(WebDriver driver, String baseUrl) {
+        // 获取页面源码
+        String pageSource = driver.getPageSource();
+
+        // 解析 HTML
+        Document document = Jsoup.parse(pageSource);
+
+        // 删除不需要的元素
+        document.select("#app_top, #app_left, #app_right, #app_footer, div.nav-other, div.ns-centered, #app_news").remove();
+
+        // 修正静态资源路径
+        document.select("link[href^='/'], script[src^='/'], img[src^='/']").forEach(element -> {
+            if (element.hasAttr("href")) {
+                element.attr("href", baseUrl + element.attr("href"));
+            }
+            if (element.hasAttr("src")) {
+                element.attr("src", baseUrl + element.attr("src"));
+            }
+        });
+
+        // 返回处理后的 HTML
+        return document.html();
+    }
+
 
 }

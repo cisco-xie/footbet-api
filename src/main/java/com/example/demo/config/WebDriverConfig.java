@@ -20,7 +20,7 @@ public class WebDriverConfig {
     public WebDriver webDriver() {
         // 检查当前线程是否已经有 WebDriver 实例
         if (driverThreadLocal.get() == null) {
-            System.setProperty("webdriver.chrome.driver", "D:\\developer\\chromedriver-v133\\chromedriver.exe");
+            System.setProperty("webdriver.chrome.driver", "D:\\developer\\chromedriver-v132\\chromedriver.exe");
             // 配置Chrome选项以启用无头模式
             ChromeOptions options = new ChromeOptions();
             options.addArguments("--headless");
@@ -30,6 +30,8 @@ public class WebDriverConfig {
             options.addArguments("--disable-dev-shm-usage");
             options.addArguments("--remote-allow-origins=*");
             options.addArguments("--blink-settings=imagesEnabled=false"); // 禁止加载图片
+            options.addArguments("--disable-software-rasterizer"); // 加速渲染，防止崩溃
+
             WebDriver driver = new ChromeDriver(options);
             // driver.manage().timeouts().implicitlyWait(10, TimeUnit.SECONDS);
             // 将 WebDriver 实例存储在 ThreadLocal 中
