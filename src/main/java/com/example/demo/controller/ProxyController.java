@@ -5,10 +5,12 @@ import com.example.demo.api.ConfigAccountService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.enmu.SystemError;
 import com.example.demo.core.exception.BusinessException;
+import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.ConfigAccountVO;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.openqa.selenium.*;
@@ -26,6 +28,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.StringTokenizer;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/proxy")
 public class ProxyController extends BaseController {
@@ -121,7 +124,7 @@ public class ProxyController extends BaseController {
                 // 如果找到了 ui-dialog，则说明需要重新登录
                 System.out.println("检测到登录弹窗，触发重新登录");
                 // 处理重新登录的逻辑，抛出异常或其他处理
-                throw new BusinessException(SystemError.USER_1006);
+                throw new BusinessException(SystemError.USER_1016);
             }
 
             // 检查页面中是否已经加载了表格的第一个 <tr> 元素
@@ -163,16 +166,16 @@ public class ProxyController extends BaseController {
     }
 
     @GetMapping("/selenium")
-    public String proxySeleniumUnsettled(@RequestParam String websiteId, @RequestParam String accountId) throws Exception {
+    public Result proxySeleniumUnsettled(@RequestParam String websiteId, @RequestParam String accountId) throws Exception {
         AdminLoginDTO admin = getUser();
         String baseUrl = websiteService.getWebsiteBaseUrl(admin.getUsername(), websiteId);
         WebDriver driver = webDriver; // 从配置中获取共享实例
 
         // 根据 websiteId 判断执行不同的方法
         if ("1874805533324103680".equals(websiteId)) {
-            return proxySeleniumForWebsitePingBo(admin, websiteId, accountId, baseUrl, driver);
+            return Result.success(proxySeleniumForWebsitePingBo(admin, websiteId, accountId, baseUrl, driver));
         } else if ("1877702689064243200".equals(websiteId)) {
-            return proxySeleniumForWebsiteXinBao(admin, websiteId, accountId, baseUrl, driver);
+            return Result.success(proxySeleniumForWebsiteXinBao(admin, websiteId, accountId, baseUrl, driver));
         } else {
             throw new RuntimeException("未知的 websiteId");
         }
@@ -198,9 +201,9 @@ public class ProxyController extends BaseController {
                 } catch (TimeoutException e) {
                     retries--;
                     if (retries == 0) {
-                        throw new RuntimeException("页面加载超时，重试次数用尽", e);
+                        throw new BusinessException(SystemError.UNSETTLE_1330);
                     }
-                    System.out.println("页面加载超时，剩余重试次数: " + retries);
+                    log.info("页面加载超时，剩余重试次数: " + retries);
                 }
             }
 
@@ -260,11 +263,11 @@ public class ProxyController extends BaseController {
                 WebElement alertKickElement = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("alert_kick")));
                 // 检查该元素的 class 是否包含 'on'，表示需要重新登录
                 if (alertKickElement != null && alertKickElement.getAttribute("class").contains("on")) {
-                    throw new BusinessException(SystemError.USER_1006);
+                    throw new BusinessException(SystemError.USER_1016);
                 }
             } catch (TimeoutException e) {
                 // 如果超时，说明没有 alert_kick 元素，继续等待其他页面元素
-                System.out.println("没有检测到需要重新登录的提示");
+                log.info("没有检测到需要重新登录的提示");
             }
             wait.until(ExpectedConditions.visibilityOfElementLocated(By.className("box_header")));
 
@@ -296,12 +299,15 @@ public class ProxyController extends BaseController {
                 // 返回修改后的页面源代码
                 return document.html();
             } else {
-                throw new RuntimeException("未找到 '投注记录' 按钮");
+                log.warn("未找到 '投注记录' 按钮");
+                throw new BusinessException(SystemError.UNSETTLE_1330);
             }
         } catch (NoSuchElementException e) {
-            throw new RuntimeException("页面元素未找到", e);
+            log.warn("页面元素未找到");
+            throw new BusinessException(SystemError.UNSETTLE_1330);
         } catch (TimeoutException e) {
-            throw new RuntimeException("页面加载超时", e);
+            log.warn("页面加载超时");
+            throw new BusinessException(SystemError.UNSETTLE_1330);
         } finally {
             // 根据需要关闭 WebDriver，这里可以根据实际需求决定是否保留 WebDriver
             // driver.quit();

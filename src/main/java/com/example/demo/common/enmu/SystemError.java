@@ -48,6 +48,7 @@ public enum SystemError implements ErrCode {
     USER_1013(1013, "方案投注最少需要选择一项号码"),
     USER_1014(1014, "账户被禁用"),
     USER_1015(1015, "操作设备不正确，请重新登入"),
+    USER_1016(1016, "网站账号登录失效，请重新登录"),
 
     /**
      * 下单相关异常--1100起
@@ -62,6 +63,8 @@ public enum SystemError implements ErrCode {
     TIMEFRAME_1311(1311, "时间范围区间设置错误"),
 
     BIND_1320(1320, "绑定球队不能为空"),
+
+    UNSETTLE_1330(1330, "页面加载失败,请稍后重试！"),
     ;
 
     private final Integer code;
