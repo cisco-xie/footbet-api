@@ -330,7 +330,8 @@ public class ProxyController extends BaseController {
 
             // 初始化 WebDriverWait
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-
+            // 清除 cookies，确保每次请求的浏览器都是干净的
+            driver.manage().deleteAllCookies();
             // 检查页面是否已经加载了 data-list 元素
             if (isDataListLoaded(driver, wait)) {
                 // 检查是否有弹窗提示重新登录
