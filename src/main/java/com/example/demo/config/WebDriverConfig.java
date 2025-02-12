@@ -8,7 +8,16 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * WebDriver 初始化 全局的单例模式
+ * WebDriver 配置类，用于创建和管理 WebDriver 实例。
+ * <p>
+ * 本类使用 {@link ThreadLocal} 确保每个线程有独立的 WebDriver 实例，
+ * 从而避免多线程环境下的会话冲突。通过这种方式，每个请求都可以拥有一个独立的 WebDriver 实例，适用于高并发场景，避免了全局共享实例带来的问题。
+ * </p>
+ *
+ * <p>
+ * WebDriver 实例配置为 ChromeDriver，并启用无头模式，适用于后台执行的自动化任务。
+ * 在应用程序关闭时，WebDriver 实例会自动释放资源，以避免内存泄漏。
+ * </p>
  */
 @Configuration
 public class WebDriverConfig {
