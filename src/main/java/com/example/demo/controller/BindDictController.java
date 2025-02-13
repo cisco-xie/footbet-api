@@ -57,7 +57,7 @@ public class BindDictController extends BaseController {
     public Result delete(@PathVariable String websiteIdA, @PathVariable String websiteIdB) {
         AdminLoginDTO admin = getUser();
         // 调用服务层方法删除网站
-        bindDictService.deleteBindDict(admin.getUsername(), websiteIdA, websiteIdB);
+        bindDictService.deleteBindDict(admin.getUsername());
         return Result.success();
     }
 
