@@ -119,11 +119,17 @@ public class WebsitePingBoEventsHandler implements ApiHandler {
         String siteId = params.getStr("websiteId");
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
         String apiUrl = apiUrlService.getApiUrl(siteId, "events");
+        // 默认me为0表示查询所有联赛
+        int me = 0;
+        if (params.containsKey("me")) {
+            me = params.getInt("me");
+        }
         // 构建请求
         HttpEntity<String> request = buildRequest(params);
 
         // 构造请求体
-        String queryParams = String.format("btg=1&c=&cl=3&d=&ec=&ev=&g=QQ==&hle=false&ic=false&inl=false&l=3&lang=&lg=&lv=&me=0&mk=1&more=false&o=1&ot=1&pa=0&pimo=0,1,8,39,2,3,6,7,4,5&pn=-1&pv=1&sp=29&tm=0&v=0&locale=zh_CN&_=%s&withCredentials=true",
+        String queryParams = String.format("btg=1&c=&cl=3&d=&ec=&ev=&g=QQ==&hle=false&ic=false&inl=false&l=3&lang=&lg=&lv=&me=%s&mk=1&more=false&o=1&ot=1&pa=0&pimo=0,1,8,39,2,3,6,7,4,5&pn=-1&pv=1&sp=29&tm=0&v=0&locale=zh_CN&_=%s&withCredentials=true",
+                me,
                 System.currentTimeMillis()
         );
 

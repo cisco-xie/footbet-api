@@ -21,23 +21,26 @@ public enum WebsiteType {
     private final String games;
     private final String description;
 
-    // 获取所有游戏类型的映射
-    public static Map<String, String> getAllGameRulesWithDescriptions() {
-        Map<String, String> params = new HashMap<>();
+    // 使用静态 Map 来缓存 lottery 和描述的映射关系，避免每次遍历枚举值
+    private static final Map<String, WebsiteType> LOTTERY_MAP = new HashMap<>();
+    private static final Map<String, String> DESCRIPTION_MAP = new HashMap<>();
+
+    // 静态代码块用于初始化映射
+    static {
         for (WebsiteType type : values()) {
-            params.put(type.getDescription(), type.getGames());
+            LOTTERY_MAP.put(type.getLottery(), type);
+            DESCRIPTION_MAP.put(type.getDescription(), type.getGames());
         }
-        return params;
     }
 
-    // 根据code获取枚举实例
+    // 获取所有游戏类型的映射
+    public static Map<String, String> getAllGameRulesWithDescriptions() {
+        return new HashMap<>(DESCRIPTION_MAP); // 返回副本，避免外部修改
+    }
+
+    // 根据lottery获取枚举实例
     public static WebsiteType getByLottery(String lottery) {
-        for (WebsiteType type : values()) {
-            if (type.getLottery().equals(lottery)) {
-                return type;
-            }
-        }
-        return null;
+        return LOTTERY_MAP.get(lottery); // 快速查找
     }
 }
 

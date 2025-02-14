@@ -6,6 +6,9 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.common.enmu.ZhiBoOddsFormatType;
+import com.example.demo.common.enmu.ZhiBoSchedulesType;
+import com.example.demo.common.enmu.ZhiBoSportsType;
 import com.example.demo.core.factory.ApiHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -88,6 +91,9 @@ public class WebsiteZhiBoEventsHandler implements ApiHandler {
 
     /**
      * 发送账户额度请求
+     * uri          /data/events/{sportId}/{scheduleId}/{leagueId}/{oddsFormatId}/{oddsGroupId}
+     * leagueId     要检索价格表的联赛Id，默认所有联赛为0
+     * oddsGroupId  赔率组Id。可使用/member/info接口响应中的值，先直接写死3
      * @param params 请求参数
      * @return 结果
      */
@@ -99,7 +105,12 @@ public class WebsiteZhiBoEventsHandler implements ApiHandler {
         String siteId = params.getStr("websiteId");
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
         String apiUrl = apiUrlService.getApiUrl(siteId, "events");
-
+        // 默认leagueId为0表示查询所有联赛
+        int leagueId = 0;
+        if (params.containsKey("leagueId")) {
+            leagueId = params.getInt("leagueId");
+        }
+        apiUrl = String.format(apiUrl, ZhiBoSportsType.SOCCER.getId(), ZhiBoSchedulesType.LIVESCHEDULE.getId(), leagueId, ZhiBoOddsFormatType.HKC.getId(), 3);
         // 构建请求
         HttpEntity<String> request = buildRequest(params);
 
