@@ -309,6 +309,77 @@ public class HandicapApi {
     }
 
     /**
+     * 根据用户和网站获取赛事列表数据-带赔率
+     * @param username
+     * @param websiteId
+     * @return
+     */
+    public Object eventsOdds(String username, String websiteId) {
+        List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
+        for (ConfigAccountVO account : accounts) {
+            WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+
+            ApiHandler apiHandler = factory.getEventsOddsHandler();
+            if (apiHandler == null) {
+                continue;
+            }
+            JSONObject params = new JSONObject();
+            params.putOpt("adminUsername", username);
+            params.putOpt("websiteId", websiteId);
+            // 根据不同站点传入不同的参数
+            if ("1874805533324103680".equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("tokens"));
+            } else if ("1874804932787851264".equals(websiteId)) {
+                params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+            } else if ("1877702689064243200".equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("serverresponse"));
+            }
+            JSONObject result = apiHandler.execute(params);
+
+            if (result.getBool("success")) {
+                return result.get("leagues");
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 根据用户和网站获取指定赛事详情
+     * @param username
+     * @param websiteId
+     * @return
+     */
+    public Object eventDetail(String username, String websiteId) {
+        List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
+        for (ConfigAccountVO account : accounts) {
+            WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+
+            ApiHandler apiHandler = factory.getEventsHandler();
+            if (apiHandler == null) {
+                continue;
+            }
+            JSONObject params = new JSONObject();
+            params.putOpt("adminUsername", username);
+            params.putOpt("websiteId", websiteId);
+            // 根据不同站点传入不同的参数
+            if ("1874805533324103680".equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("tokens"));
+                params.putOpt("me", "");
+            } else if ("1874804932787851264".equals(websiteId)) {
+                params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+            } else if ("1877702689064243200".equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("serverresponse"));
+            }
+            JSONObject result = apiHandler.execute(params);
+
+            if (result.getBool("success")) {
+                return result.get("leagues");
+            }
+        }
+        return null;
+    }
+
+    /**
      * 指定网站和账户获取账户账目
      * @param username
      * @param websiteId

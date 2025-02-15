@@ -19,6 +19,7 @@ package com.example.demo.controller;
 import com.example.demo.api.HandicapApi;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
+import com.example.demo.model.dto.AdminLoginDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
@@ -42,10 +43,17 @@ public class TestController extends BaseController {
         return Result.success();
     }
 
-    @Operation(summary = "所有所有盘口账号额度")
+    @Operation(summary = "获取所有盘口账号额度")
     @GetMapping("/info")
     public Result info() {
         api.info();
         return Result.success();
+    }
+
+    @Operation(summary = "获取网站联赛相关赔率")
+    @GetMapping("/odds")
+    public Result eventsOdds(@RequestParam String websiteId) {
+        AdminLoginDTO admin = getUser();
+        return Result.success(api.eventsOdds(admin.getUsername(), websiteId));
     }
 }

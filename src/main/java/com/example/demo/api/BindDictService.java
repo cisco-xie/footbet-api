@@ -17,10 +17,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -34,7 +31,34 @@ public class BindDictService {
     private RedissonClient businessPlatformRedissonClient;
 
     /**
-     * 获取已绑定的球队字典
+     * 获取所有已绑定的球队字典
+     * @param username
+     * @return
+     */
+    public List<List<BindLeagueVO>> getAllBindDict(String username) {
+        // 生成模糊查询的 key，使用通配符 * 来匹配所有 websiteIdA 和 websiteIdB
+        String patternKey = KeyUtil.genKey(RedisConstants.PLATFORM_BIND_DICT_TEAM_PREFIX, username, "*", "*");
+
+        // 使用 Redisson 的 scan 方法进行模糊查询
+        Iterable<String> keys = businessPlatformRedissonClient.getKeys().getKeysByPattern(patternKey);
+
+        List<List<BindLeagueVO>> result = new ArrayList<>();
+
+        // 遍历所有匹配的 key，获取对应的数据
+        for (String key : keys) {
+            String json = (String) businessPlatformRedissonClient.getBucket(key).get();
+            if (StringUtils.isNotBlank(json)) {
+                // 将每个 key 对应的 JSON 数据解析为 List<BindLeagueVO>，并添加到结果中
+                List<BindLeagueVO> bindLeagueList = JSONUtil.parseArray(json).toList(BindLeagueVO.class);
+                result.add(bindLeagueList);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * 获取指定网站已绑定的球队字典
      * @param username
      * @return
      */

@@ -4,6 +4,7 @@ import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.core.sites.pingbo.WebsitePingBoBetUnsettledHandler;
 import com.example.demo.core.sites.pingbo.WebsitePingBoEventsHandler;
+import com.example.demo.core.sites.pingbo.WebsitePingBoEventsOddsHandler;
 import com.example.demo.core.sites.pingbo.WebsitePingBoInfoHandler;
 import com.example.demo.core.sites.xinbao.*;
 import com.example.demo.core.sites.zhibo.WebsiteZhiBoInfoHandler;
@@ -39,6 +40,11 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
     @Override
     public ApiHandler getEventsHandler() {
         return new WebsiteXinBaoEventsHandler(websiteService, apiUrlService); // 返回具体的赛事列表处理类
+    }
+
+    @Override
+    public ApiHandler getEventsOddsHandler() {
+        return null; // 返回具体的赛事列表处理类
     }
 
     @Override
