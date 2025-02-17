@@ -314,7 +314,7 @@ public class HandicapApi {
      * @param websiteId
      * @return
      */
-    public Object eventsOdds(String username, String websiteId, Integer lid, Integer ecid) {
+    public Object eventsOdds(String username, String websiteId, String lid, String ecid) {
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);

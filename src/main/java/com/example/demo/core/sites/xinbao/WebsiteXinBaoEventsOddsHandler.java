@@ -94,15 +94,14 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
         }
         JSONArray games = JSONUtil.parseArray(responseJson.getJSONObject("serverresponse").getJSONArray("game"));
         // 结果存储，用于合并相同的 lid
-        Map<String, JSONObject> leagueMap = new HashMap<>();
-        String ecid = responseJson.getStr("ecid");        // 联赛ID
+        String lid = games.getJSONObject(0).getStr("lid");                          // 联赛ID
+        String ecid = responseJson.getJSONObject("serverresponse").getStr("ecid");  // 联赛ID
+        String league = games.getJSONObject(0).getStr("league");                    // 联赛名称
         JSONArray result = new JSONArray();
         JSONObject leagueJson = new JSONObject();
-        leagueJson.putOpt("id", ecid);
+        leagueJson.putOpt("id", lid);
         leagueJson.putOpt("ecid", ecid);
-        leagueJson.putOpt("name", ecid);
-        AtomicReference<String> lid = new AtomicReference<>("");
-        AtomicReference<String> league = new AtomicReference<>("");
+        leagueJson.putOpt("name", league);
         // 初始化比赛事件列表
         JSONArray events = new JSONArray();
 
@@ -137,13 +136,15 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
             JSONObject game = (JSONObject) gameObj;
 
             // 全场让球
-            homeLetBall.putOpt(game.getStr("ratio_re"), game.getStr("ior_REH"));
-            awayLetBall.putOpt(game.getStr("ratio_re"), game.getStr("ior_REC"));
+            if (0 != game.getInt("ior_REH")) {
+                homeLetBall.putOpt(getHandicapRange(game.getStr("ratio_re")), game.getStr("ior_REH"));
+                awayLetBall.putOpt(getHandicapRange(game.getStr("ratio_re")), game.getStr("ior_REC"));
+            }
 
             // 全场大小
             if (0 != game.getInt("ior_ROUC")) {
-                homeOverSize.putOpt(game.getStr("ratio_rouo"), game.getStr("ior_ROUC"));
-                awayOverSize.putOpt(game.getStr("ratio_rouu"), game.getStr("ior_ROUH"));
+                homeOverSize.putOpt(getHandicapRange(game.getStr("ratio_rouo")), game.getStr("ior_ROUC"));
+                awayOverSize.putOpt(getHandicapRange(game.getStr("ratio_rouu")), game.getStr("ior_ROUH"));
             }
 
             // 全场胜平负
@@ -156,16 +157,16 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
 
             // 半场让球
             if (0 != game.getInt("ior_HREH")) {
-                firstHalfHomeLetBall.putOpt(game.getStr("ratio_hre"), game.getStr("ior_HREH"));
-                firstHalfAwayLetBall.putOpt(game.getStr("ratio_hre"), game.getStr("ior_HREC"));
+                firstHalfHomeLetBall.putOpt(getHandicapRange(game.getStr("ratio_hre")), game.getStr("ior_HREH"));
+                firstHalfAwayLetBall.putOpt(getHandicapRange(game.getStr("ratio_hre")), game.getStr("ior_HREC"));
                 homeFirstHalf.putOpt("letBall", firstHalfHomeLetBall);
                 awayFirstHalf.putOpt("letBall", firstHalfAwayLetBall);
             }
 
             // 半场大小
             if (0 != game.getInt("ior_HROUC")) {
-                homeFirstHomeOverSize.putOpt(game.getStr("ratio_hrouo"), game.getStr("ior_HROUC"));
-                homeFirstAwayOverSize.putOpt(game.getStr("ratio_hrouu"), game.getStr("ior_HROUH"));
+                homeFirstHomeOverSize.putOpt(getHandicapRange(game.getStr("ratio_hrouo")), game.getStr("ior_HROUC"));
+                homeFirstAwayOverSize.putOpt(getHandicapRange(game.getStr("ratio_hrouu")), game.getStr("ior_HROUH"));
                 homeFirstHalf.putOpt("overSize", homeFirstHomeOverSize);
                 awayFirstHalf.putOpt("overSize", homeFirstAwayOverSize);
             }
@@ -195,9 +196,9 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
         // 添加到事件列表
         events.add(homeTeam);
         events.add(awayTeam);
-
+        leagueJson.putOpt("events", events);
         // 将事件列表添加到结果中
-        result.add(events);
+        result.add(leagueJson);
 
         responseJson.putOpt("success", true);
         responseJson.putOpt("leagues", result);
@@ -243,19 +244,8 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
      * @param handicap
      * @return
      */
-    public String getHandicapRange(double handicap) {
-        // 取 handicap 的绝对值，确保是正数
-        handicap = Math.abs(handicap);
-        // 判断 handicap 是否是 0.5 的倍数
-        if (handicap % 0.5 == 0) {
-            // 如果是 0.5 的倍数，直接返回原值
-            return String.valueOf(handicap);
-        } else {
-            // 如果不是 0.5 的倍数，返回一个范围
-            double lowerBound = handicap - 0.25;
-            double upperBound = handicap + 0.25;
-            return lowerBound + "-" + upperBound;
-        }
+    public String getHandicapRange(String handicap) {
+        return handicap.replaceAll(" / ", "-");
     }
 
     private void buildMarketData(JSONObject homeTeam, JSONObject awayTeam, JSONObject game) {
