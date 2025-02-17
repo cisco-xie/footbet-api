@@ -137,14 +137,14 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
 
             // 全场让球
             if (0 != game.getInt("ior_REH")) {
-                homeLetBall.putOpt(getHandicapRange(game.getStr("ratio_re")), game.getStr("ior_REH"));
-                awayLetBall.putOpt(getHandicapRange(game.getStr("ratio_re")), game.getStr("ior_REC"));
+                homeLetBall.putOpt(getHandicapRange(game.getStr("ratio_re")), calculateOddsValue(game.getDouble("ior_REH")));
+                awayLetBall.putOpt(getHandicapRange(game.getStr("ratio_re")), calculateOddsValue(game.getDouble("ior_REC")));
             }
 
             // 全场大小
-            if (0 != game.getInt("ior_ROUC")) {
-                homeOverSize.putOpt(getHandicapRange(game.getStr("ratio_rouo")), game.getStr("ior_ROUC"));
-                awayOverSize.putOpt(getHandicapRange(game.getStr("ratio_rouu")), game.getStr("ior_ROUH"));
+            if (0 != game.getInt("ior_ROUH")) {
+                homeOverSize.putOpt(getHandicapRange(game.getStr("ratio_rouo")), calculateOddsValue(game.getDouble("ior_ROUH")));
+                awayOverSize.putOpt(getHandicapRange(game.getStr("ratio_rouu")), calculateOddsValue(game.getDouble("ior_ROUC")));
             }
 
             // 全场胜平负
@@ -157,16 +157,16 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
 
             // 半场让球
             if (0 != game.getInt("ior_HREH")) {
-                firstHalfHomeLetBall.putOpt(getHandicapRange(game.getStr("ratio_hre")), game.getStr("ior_HREH"));
-                firstHalfAwayLetBall.putOpt(getHandicapRange(game.getStr("ratio_hre")), game.getStr("ior_HREC"));
+                firstHalfHomeLetBall.putOpt(getHandicapRange(game.getStr("ratio_hre")), calculateOddsValue(game.getDouble("ior_HREH")));
+                firstHalfAwayLetBall.putOpt(getHandicapRange(game.getStr("ratio_hre")), calculateOddsValue(game.getDouble("ior_HREC")));
                 homeFirstHalf.putOpt("letBall", firstHalfHomeLetBall);
                 awayFirstHalf.putOpt("letBall", firstHalfAwayLetBall);
             }
 
             // 半场大小
-            if (0 != game.getInt("ior_HROUC")) {
-                homeFirstHomeOverSize.putOpt(getHandicapRange(game.getStr("ratio_hrouo")), game.getStr("ior_HROUC"));
-                homeFirstAwayOverSize.putOpt(getHandicapRange(game.getStr("ratio_hrouu")), game.getStr("ior_HROUH"));
+            if (0 != game.getInt("ior_HROUH")) {
+                homeFirstHomeOverSize.putOpt(getHandicapRange(game.getStr("ratio_hrouo")), calculateOddsValue(game.getDouble("ior_HROUH")));
+                homeFirstAwayOverSize.putOpt(getHandicapRange(game.getStr("ratio_hrouu")), calculateOddsValue(game.getDouble("ior_HROUC")));
                 homeFirstHalf.putOpt("overSize", homeFirstHomeOverSize);
                 awayFirstHalf.putOpt("overSize", homeFirstAwayOverSize);
             }
@@ -246,6 +246,17 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
      */
     public String getHandicapRange(String handicap) {
         return handicap.replaceAll(" / ", "-");
+    }
+
+    /**
+     * 数值计算优化
+     * 新2网站的马来盘，返回的赔率需要处理一下，大于1的赔率需要减2才是正确的赔率
+     */
+
+    private String calculateOddsValue(double value) {
+        return value > 1.0 ?
+                String.format("%.3f", value - 2.0) :
+                String.format("%.3f", value);
     }
 
     private void buildMarketData(JSONObject homeTeam, JSONObject awayTeam, JSONObject game) {

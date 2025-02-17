@@ -186,7 +186,7 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
         if (params.containsKey("leagueId")) {
             leagueId = params.getInt("leagueId");
         }
-        apiUrl = String.format(apiUrl, ZhiBoSportsType.SOCCER.getId(), ZhiBoSchedulesType.LIVESCHEDULE.getId(), leagueId, ZhiBoOddsFormatType.HKC.getId(), 3);
+        apiUrl = String.format(apiUrl, ZhiBoSportsType.SOCCER.getId(), ZhiBoSchedulesType.LIVESCHEDULE.getId(), leagueId, ZhiBoOddsFormatType.RM.getId(), 3);
         // 构建请求
         HttpEntity<String> request = buildRequest(params);
 
