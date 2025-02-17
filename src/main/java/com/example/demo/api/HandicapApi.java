@@ -314,7 +314,7 @@ public class HandicapApi {
      * @param websiteId
      * @return
      */
-    public Object eventsOdds(String username, String websiteId) {
+    public Object eventsOdds(String username, String websiteId, Integer lid, Integer ecid) {
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
@@ -333,6 +333,8 @@ public class HandicapApi {
                 params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
             } else if ("1877702689064243200".equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
+                params.putOpt("lid", lid);
+                params.putOpt("ecid", ecid);
             }
             JSONObject result = apiHandler.execute(params);
 

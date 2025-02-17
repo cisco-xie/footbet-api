@@ -9,4 +9,5 @@ public class BindTeamVO {
     private String nameA;
     private String idB;
     private String nameB;
+    private String ecidB;
 }

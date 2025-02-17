@@ -97,7 +97,8 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
 
         originalJson.forEach(json -> {
             JSONObject gameJson = JSONUtil.parseObj(json.getValue());
-            String lid = gameJson.getStr("LID");        // 联赛ID
+            String lid = gameJson.getStr("LID");        // 联赛LID
+            String ecid = gameJson.getStr("ECID");      // 联赛ECID
             String league = gameJson.getStr("LEAGUE");  // 联赛名称
 
             // 查找是否已经存在相同的 lid（赛事）
@@ -114,10 +115,13 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
             // 处理队伍信息
             JSONObject eventCJson = new JSONObject();
             JSONObject eventHJson = new JSONObject();
-            eventCJson.putOpt("id", gameJson.getStr("TEAM_C_ID"));
-            eventCJson.putOpt("name", gameJson.getStr("TEAM_C"));
-            eventHJson.putOpt("id", gameJson.getStr("TEAM_H_ID"));
+            // H是主队C是客队
+            eventHJson.putOpt("id", gameJson.getStr("GNUM_H"));
             eventHJson.putOpt("name", gameJson.getStr("TEAM_H"));
+            eventHJson.putOpt("ecid", ecid);
+            eventCJson.putOpt("id", gameJson.getStr("GNUM_C"));
+            eventCJson.putOpt("name", gameJson.getStr("TEAM_C"));
+            eventCJson.putOpt("ecid", ecid);
 
             // 将队伍信息添加到当前联赛的 events 中
             JSONArray events = leagueJson.getJSONArray("events");
