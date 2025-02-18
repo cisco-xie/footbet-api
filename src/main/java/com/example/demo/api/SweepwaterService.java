@@ -131,12 +131,12 @@ public class SweepwaterService {
                 return events;
             }
         } else {
-            if (fetchedEcidSet.containsKey(ecid)) {
-                return fetchedEcidSet.get(ecid);
+            if (fetchedEcidSet.containsKey(websiteId)) {
+                return fetchedEcidSet.get(websiteId);
             } else {
                 // 获取默认的events数据
                 JSONArray events = (JSONArray) handicapApi.eventsOdds(username, websiteId, null, null);
-                fetchedEcidSet.put(ecid, events);
+                fetchedEcidSet.put(websiteId, events);
                 return events;
             }
         }
