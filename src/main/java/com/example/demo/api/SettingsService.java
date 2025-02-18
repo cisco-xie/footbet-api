@@ -133,7 +133,7 @@ public class SettingsService {
     }
 
     /**
-     * 获取常规设置-对比分析
+     * 获取常规设置-赔率扫描
      * @param username
      * @return
      */
@@ -151,7 +151,7 @@ public class SettingsService {
     }
 
     /**
-     * 修改常规设置-对比分析
+     * 修改常规设置-赔率扫描
      * @param username
      * @return
      */
@@ -159,7 +159,6 @@ public class SettingsService {
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_ODDSSCAN_PREFIX, username);
         // 从 Redis 中获取数据
         businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(oddsScanVO));
-
     }
 
     /**

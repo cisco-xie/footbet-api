@@ -15,7 +15,7 @@ import java.util.Map;
 public enum WebsiteType {
     ZHIBO("1874804932787851264", "", "智博"),
     PINGBO("1874805533324103680", "", "平博"),
-    XINBAO("1877702689064243200", "", "新宝");
+    XINBAO("1877702689064243200", "", "新2");
 
     private final String id;
     private final String games;
@@ -38,9 +38,9 @@ public enum WebsiteType {
         return new HashMap<>(DESCRIPTION_MAP); // 返回副本，避免外部修改
     }
 
-    // 根据lottery获取枚举实例
-    public static WebsiteType getByLottery(String lottery) {
-        return LOTTERY_MAP.get(lottery); // 快速查找
+    // 根据id获取枚举实例
+    public static WebsiteType getById(String id) {
+        return LOTTERY_MAP.get(id); // 快速查找
     }
 }
 

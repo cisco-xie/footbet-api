@@ -8,6 +8,9 @@ import com.example.demo.common.enmu.SystemError;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.core.exception.BusinessException;
+import com.example.demo.model.dto.settings.ContrastDTO;
+import com.example.demo.model.dto.settings.OddsScanDTO;
+import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
 import com.example.demo.model.vo.dict.BindLeagueVO;
 import com.example.demo.model.vo.dict.BindTeamVO;
 import jakarta.annotation.Resource;
@@ -37,6 +40,23 @@ public class SweepwaterService {
     @Resource
     private HandicapApi handicapApi;
 
+    @Resource
+    private SettingsService settingsService;
+
+    public List<SweepwaterDTO> getSweepwaters(String username) {
+        String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
+
+        List<String> jsonList = businessPlatformRedissonClient.getList(key);
+
+        if (jsonList == null || jsonList.isEmpty()) {
+            return null;
+        }
+
+        return jsonList.stream()
+                .map(json -> JSONUtil.toBean(json, SweepwaterDTO.class))
+                .toList();
+    }
+
     /**
      * 获取已绑定的球队字典进行扫水比对
      * @param username
@@ -44,6 +64,7 @@ public class SweepwaterService {
      */
     public void sweepwater(String username) {
         List<List<BindLeagueVO>> bindLeagueVOList = bindDictService.getAllBindDict(username);
+        OddsScanDTO oddsScanDTO = settingsService.getOddsScan(username);
 
         // 用来记录已经获取过的ecid，避免重复调用
         Map<String, JSONArray> fetchedEcidSetA = new HashMap<>();
@@ -85,8 +106,15 @@ public class SweepwaterService {
                     }
 
                     // 调用aggregateEventOdds进行合并
-                    JSONObject result = aggregateEventOdds(eventAJson, eventBJson, events.getNameA(), events.getNameB());
-                    System.out.println(result);
+                    List<SweepwaterDTO> results = aggregateEventOdds(oddsScanDTO, eventAJson, eventBJson, events.getNameA(), events.getNameB(), websiteIdA, websiteIdB, bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB());
+                    if (!results.isEmpty()) {
+                        // 将比对结果添加到redis中
+                        String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
+                        results.forEach(result -> {
+                            businessPlatformRedissonClient.getList(key).add(JSONUtil.toJsonStr(result));
+                        });
+                    }
+                    System.out.println(results);
                 }
             }
         }
@@ -125,22 +153,22 @@ public class SweepwaterService {
     }
 
 
-    public static JSONObject aggregateEventOdds(JSONObject eventAJson, JSONObject eventBJson, String teamNameA, String teamNameB) {
-        JSONObject result = new JSONObject();
-
-        Map<String, Map<String, String>> combinedOdds = new HashMap<>();
-
+    public static List<SweepwaterDTO> aggregateEventOdds(OddsScanDTO oddsScanDTO, JSONObject eventAJson, JSONObject eventBJson, String teamNameA, String teamNameB, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB) {
+        log.info("比对扫描中");
+        List<SweepwaterDTO> results = new ArrayList<>();
         // 遍历第一个 JSON 的事件列表
         for (Object eventA : eventAJson.getJSONArray("events")) {
             JSONObject aJson = (JSONObject) eventA;
             String nameA = aJson.getStr("name");
             JSONObject fullCourtA = aJson.getJSONObject("fullCourt");
+            JSONObject firstHalfA = aJson.getJSONObject("firstHalf");
 
             // 遍历第二个 JSON 的事件列表
             for (Object event2 : eventBJson.getJSONArray("events")) {
                 JSONObject bJson = (JSONObject) event2;
                 String nameB = bJson.getStr("name");
                 JSONObject fullCourtB = bJson.getJSONObject("fullCourt");
+                JSONObject firstHalfB = bJson.getJSONObject("firstHalf");
 
                 // 检查是否是相反的队伍
                 if (nameA.equals(teamNameA) && !nameB.equals(teamNameB) ||
@@ -148,44 +176,136 @@ public class SweepwaterService {
 
                     // 创建一个 Map 来存储相同的队伍的赔率
                     Map<String, String> eventOdds = new HashMap<>();
-
+                    SweepwaterDTO sweepwaterDTO = null;
                     // 动态遍历 fullCourt 中的每个键（如 letBall、overSize）
                     for (String key : fullCourtA.keySet()) {
                         if (fullCourtB.containsKey(key)) {
-                            if ("win".equals(key) || "draw".equals(key)) {
-                                double value1 = fullCourtA.getDouble(key);
-                                if (fullCourtB.containsKey(key) && fullCourtB.getDouble(key) != 0) {
-                                    double value2 = fullCourtB.getDouble(key);
-                                    eventOdds.put(key, String.format("%.3f", value1 + value2 + 2));
+                            if (("win".equals(key) || "draw".equals(key))) {
+                                if (!fullCourtA.isNull(key) && StringUtils.isNotBlank(fullCourtA.getStr(key))) {
+                                    double value1 = fullCourtA.getDouble(key);
+                                    if (fullCourtB.containsKey(key) && fullCourtB.getDouble(key) != 0) {
+                                        double value2 = fullCourtB.getDouble(key);
+                                        double value = value1 + value2 + 2;
+                                        if (oddsScanDTO.getWaterLevelFrom() <= value && value <= oddsScanDTO.getWaterLevelTo()) {
+                                            sweepwaterDTO = new SweepwaterDTO();
+                                            sweepwaterDTO.setType("fullCourt");
+                                            sweepwaterDTO.setHandicapType("draw");
+                                            sweepwaterDTO.setLeague(eventAJson.getStr("league"));
+                                            sweepwaterDTO.setProject(WebsiteType.getById(websiteIdA).getDescription() + " × " + WebsiteType.getById(websiteIdB).getDescription());
+                                            sweepwaterDTO.setTeam(nameA + " × " + nameB);
+                                            sweepwaterDTO.setOdds(value1 + " / " + value2);
+                                            sweepwaterDTO.setWater(String.format("%.3f", value));
+                                            sweepwaterDTO.setWebsiteIdA(websiteIdA);
+                                            sweepwaterDTO.setWebsiteIdB(websiteIdB);
+                                            sweepwaterDTO.setLeagueIdA(leagueIdA);
+                                            sweepwaterDTO.setLeagueIdB(leagueIdB);
+                                            results.add(sweepwaterDTO);
+                                            eventOdds.put(key, String.format("%.3f", value));
+                                        }
+                                        log.info("比对扫描中,队伍[{}]的平手盘[{}]赔率是[{}],对比队伍[{}]的平手盘[{}]赔率[{}],相加结果赔率是[{}],系统设置的区间是[{}]到[{}]", nameA, key, value1, nameB, key, value2, value, oddsScanDTO.getWaterLevelFrom(), oddsScanDTO.getWaterLevelTo());
+                                    }
                                 }
                             } else {
                                 // 获取该键的赔率值并相加
                                 JSONObject letBall1 = fullCourtA.getJSONObject(key);
                                 JSONObject letBall2 = fullCourtB.getJSONObject(key);
                                 for (String subKey : letBall1.keySet()) {
+                                    if (StringUtils.isBlank(subKey)) {
+                                        continue;
+                                    }
                                     double value1 = letBall1.getDouble(subKey);
                                     if (letBall2.containsKey(subKey)) {
                                         double value2 = letBall2.getDouble(subKey);
-                                        eventOdds.put(subKey, String.format("%.3f", value1 + value2 + 2));
+                                        double value = value1 + value2 + 2;
+                                        if (oddsScanDTO.getWaterLevelFrom() <= value && value <= oddsScanDTO.getWaterLevelTo()) {
+                                            sweepwaterDTO = new SweepwaterDTO();
+                                            sweepwaterDTO.setType("fullCourt");
+                                            sweepwaterDTO.setHandicapType(key);
+                                            sweepwaterDTO.setLeague(eventAJson.getStr("league"));
+                                            sweepwaterDTO.setProject(WebsiteType.getById(websiteIdA).getDescription() + " × " + WebsiteType.getById(websiteIdB).getDescription());
+                                            sweepwaterDTO.setTeam(nameA + " × " + nameB);
+                                            sweepwaterDTO.setOdds(value1 + " / " + value2);
+                                            sweepwaterDTO.setWater(String.format("%.3f", value));
+                                            sweepwaterDTO.setWebsiteIdA(websiteIdA);
+                                            sweepwaterDTO.setWebsiteIdB(websiteIdB);
+                                            sweepwaterDTO.setLeagueIdA(leagueIdA);
+                                            sweepwaterDTO.setLeagueIdB(leagueIdB);
+                                            results.add(sweepwaterDTO);
+                                            eventOdds.put(key, String.format("%.3f", value));
+                                        }
+                                        log.info("比对扫描中,队伍[{}]的让[{}]赔率是[{}],对比队伍[{}]的让[{}]赔率[{}],相加结果赔率是[{}],系统设置的区间是[{}]到[{}]", nameA, subKey, value1, nameB, subKey, value2, value, oddsScanDTO.getWaterLevelFrom(), oddsScanDTO.getWaterLevelTo());
                                     }
                                 }
                             }
                         }
                     }
 
-                    // 将结果存入 Map 中
-                    combinedOdds.put(nameA + " vs " + nameB, eventOdds);
+                    // 动态遍历 半场 中的每个键（如 letBall、overSize）
+                    for (String key : firstHalfA.keySet()) {
+                        if (firstHalfB.containsKey(key)) {
+                            if (("win".equals(key) || "draw".equals(key))) {
+                                if (!firstHalfA.isNull(key) && StringUtils.isNotBlank(firstHalfA.getStr(key))) {
+                                    double value1 = firstHalfA.getDouble(key);
+                                    if (firstHalfB.containsKey(key) && firstHalfB.getDouble(key) != 0) {
+                                        double value2 = firstHalfB.getDouble(key);
+                                        double value = value1 + value2 + 2;
+                                        if (oddsScanDTO.getWaterLevelFrom() <= value && value <= oddsScanDTO.getWaterLevelTo()) {
+                                            sweepwaterDTO = new SweepwaterDTO();
+                                            sweepwaterDTO.setType("fullCourt");
+                                            sweepwaterDTO.setHandicapType("draw");
+                                            sweepwaterDTO.setLeague(eventAJson.getStr("league"));
+                                            sweepwaterDTO.setProject(WebsiteType.getById(websiteIdA).getDescription() + " × " + WebsiteType.getById(websiteIdB).getDescription());
+                                            sweepwaterDTO.setTeam(nameA + " × " + nameB);
+                                            sweepwaterDTO.setOdds(value1 + " / " + value2);
+                                            sweepwaterDTO.setWater(String.format("%.3f", value));
+                                            sweepwaterDTO.setWebsiteIdA(websiteIdA);
+                                            sweepwaterDTO.setWebsiteIdB(websiteIdB);
+                                            sweepwaterDTO.setLeagueIdA(leagueIdA);
+                                            sweepwaterDTO.setLeagueIdB(leagueIdB);
+                                            results.add(sweepwaterDTO);
+                                            eventOdds.put(key, String.format("%.3f", value));
+                                        }
+                                        log.info("比对扫描中,队伍[{}]的平手盘[{}]赔率是[{}],对比队伍[{}]的平手盘[{}]赔率[{}],相加结果赔率是[{}],系统设置的区间是[{}]到[{}]", nameA, key, value1, nameB, key, value2, value, oddsScanDTO.getWaterLevelFrom(), oddsScanDTO.getWaterLevelTo());
+                                    }
+                                }
+                            } else {
+                                // 获取该键的赔率值并相加
+                                JSONObject letBallA = firstHalfA.getJSONObject(key);
+                                JSONObject letBallB = firstHalfB.getJSONObject(key);
+                                for (String subKey : letBallA.keySet()) {
+                                    if (StringUtils.isBlank(subKey)) {
+                                        continue;
+                                    }
+                                    double value1 = letBallA.getDouble(subKey);
+                                    if (letBallB.containsKey(subKey)) {
+                                        double value2 = letBallB.getDouble(subKey);
+                                        double value = value1 + value2 + 2;
+                                        if (oddsScanDTO.getWaterLevelFrom() <= value && value <= oddsScanDTO.getWaterLevelTo()) {
+                                            sweepwaterDTO = new SweepwaterDTO();
+                                            sweepwaterDTO.setType("fullCourt");
+                                            sweepwaterDTO.setHandicapType(key);
+                                            sweepwaterDTO.setLeague(eventAJson.getStr("league"));
+                                            sweepwaterDTO.setProject(WebsiteType.getById(websiteIdA).getDescription() + " × " + WebsiteType.getById(websiteIdB).getDescription());
+                                            sweepwaterDTO.setTeam(nameA + " × " + nameB);
+                                            sweepwaterDTO.setOdds(value1 + " / " + value2);
+                                            sweepwaterDTO.setWater(String.format("%.3f", value));
+                                            sweepwaterDTO.setWebsiteIdA(websiteIdA);
+                                            sweepwaterDTO.setWebsiteIdB(websiteIdB);
+                                            sweepwaterDTO.setLeagueIdA(leagueIdA);
+                                            sweepwaterDTO.setLeagueIdB(leagueIdB);
+                                            results.add(sweepwaterDTO);
+                                            eventOdds.put(key, String.format("%.3f", value));
+                                        }
+                                        log.info("比对扫描中,队伍[{}]的让[{}]赔率是[{}],对比队伍[{}]的让[{}]赔率[{}],相加结果赔率是[{}],系统设置的区间是[{}]到[{}]", nameA, subKey, value1, nameB, subKey, value2, value, oddsScanDTO.getWaterLevelFrom(), oddsScanDTO.getWaterLevelTo());
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
-
-        // 将结果返回给 JSONObject
-        for (Map.Entry<String, Map<String, String>> entry : combinedOdds.entrySet()) {
-            JSONObject odds = new JSONObject(entry.getValue());
-            result.putOpt(entry.getKey(), odds);
-        }
-
-        return result;
+        return results;
     }
 
 }
