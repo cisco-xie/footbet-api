@@ -17,7 +17,7 @@ public enum WebsiteType {
     PINGBO("1874805533324103680", "", "平博"),
     XINBAO("1877702689064243200", "", "新宝");
 
-    private final String lottery;
+    private final String id;
     private final String games;
     private final String description;
 
@@ -28,7 +28,7 @@ public enum WebsiteType {
     // 静态代码块用于初始化映射
     static {
         for (WebsiteType type : values()) {
-            LOTTERY_MAP.put(type.getLottery(), type);
+            LOTTERY_MAP.put(type.getId(), type);
             DESCRIPTION_MAP.put(type.getDescription(), type.getGames());
         }
     }

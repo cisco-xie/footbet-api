@@ -7,6 +7,7 @@ public class BindTeamVO {
     private String pid;
     private String idA;
     private String nameA;
+    private String ecidA;
     private String idB;
     private String nameB;
     private String ecidB;

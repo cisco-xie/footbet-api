@@ -17,6 +17,7 @@
 package com.example.demo.controller;
 
 import com.example.demo.api.HandicapApi;
+import com.example.demo.api.SweepwaterService;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
@@ -35,6 +36,8 @@ public class TestController extends BaseController {
 
     @Resource
     private HandicapApi api;
+    @Resource
+    private SweepwaterService sweepwaterService;
 
     @Operation(summary = "登录所有盘口账号")
     @GetMapping("/login")
@@ -54,6 +57,15 @@ public class TestController extends BaseController {
     @GetMapping("/odds")
     public Result eventsOdds(@RequestParam String websiteId) {
         AdminLoginDTO admin = getUser();
-        return Result.success(api.eventsOdds(admin.getUsername(), websiteId, 103598, 9143576));
+        return Result.success(api.eventsOdds(admin.getUsername(), websiteId, "108147", "9165924"));
     }
+
+    @Operation(summary = "扫水")
+    @GetMapping("/sweepwater")
+    public Result sweepwater() {
+        AdminLoginDTO admin = getUser();
+        sweepwaterService.sweepwater(admin.getUsername());
+        return Result.success();
+    }
+
 }

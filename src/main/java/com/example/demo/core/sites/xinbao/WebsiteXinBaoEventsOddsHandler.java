@@ -9,6 +9,7 @@ import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.core.factory.ApiHandler;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -87,12 +88,23 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
             res.putOpt("msg", "获取赔率详情失败");
             return res;
         }
-        if (ObjectUtil.isEmpty(responseJson.getJSONObject("serverresponse").getJSONArray("game"))) {
+        if (!responseJson.getJSONObject("serverresponse").containsKey("game")) {
             responseJson.putOpt("success", false);
             responseJson.putOpt("msg", "获取赔率详情为空");
             return responseJson;
         }
-        JSONArray games = JSONUtil.parseArray(responseJson.getJSONObject("serverresponse").getJSONArray("game"));
+        String gameObject = String.valueOf(responseJson.getJSONObject("serverresponse").get("game"));
+        if (StringUtils.isBlank(gameObject)) {
+            responseJson.putOpt("success", false);
+            responseJson.putOpt("msg", "获取赔率详情为空");
+            return responseJson;
+        }
+        JSONArray games = new JSONArray();
+        if (JSONUtil.isTypeJSONObject(gameObject)) {
+            games.add(JSONUtil.parseObj(gameObject));
+        } else if (JSONUtil.isTypeJSONArray(gameObject)) {
+            games = JSONUtil.parseArray(gameObject);
+        }
         // 结果存储，用于合并相同的 lid
         String lid = games.getJSONObject(0).getStr("lid");                          // 联赛ID
         String ecid = responseJson.getJSONObject("serverresponse").getStr("ecid");  // 联赛ID
@@ -136,19 +148,19 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
             JSONObject game = (JSONObject) gameObj;
 
             // 全场让球
-            if (0 != game.getInt("ior_REH")) {
+            if (game.containsKey("ior_REH") && 0 != game.getInt("ior_REH")) {
                 homeLetBall.putOpt(getHandicapRange(game.getStr("ratio_re")), calculateOddsValue(game.getDouble("ior_REH")));
                 awayLetBall.putOpt(getHandicapRange(game.getStr("ratio_re")), calculateOddsValue(game.getDouble("ior_REC")));
             }
 
             // 全场大小
-            if (0 != game.getInt("ior_ROUH")) {
+            if (game.containsKey("ior_ROUH") && 0 != game.getInt("ior_ROUH")) {
                 homeOverSize.putOpt(getHandicapRange(game.getStr("ratio_rouo")), calculateOddsValue(game.getDouble("ior_ROUH")));
                 awayOverSize.putOpt(getHandicapRange(game.getStr("ratio_rouu")), calculateOddsValue(game.getDouble("ior_ROUC")));
             }
 
             // 全场胜平负
-            if (0 != game.getInt("ior_RMH")) {
+            if (game.containsKey("ior_RMH") && 0 != game.getInt("ior_RMH")) {
                 homeFullCourt.putOpt("win", game.getStr("ior_RMH"));
                 homeFullCourt.putOpt("draw", game.getStr("ior_RMN"));
                 awayFullCourt.putOpt("win", game.getStr("ior_RMC"));
@@ -156,7 +168,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
             }
 
             // 半场让球
-            if (0 != game.getInt("ior_HREH")) {
+            if (game.containsKey("ior_HREH") && 0 != game.getInt("ior_HREH")) {
                 firstHalfHomeLetBall.putOpt(getHandicapRange(game.getStr("ratio_hre")), calculateOddsValue(game.getDouble("ior_HREH")));
                 firstHalfAwayLetBall.putOpt(getHandicapRange(game.getStr("ratio_hre")), calculateOddsValue(game.getDouble("ior_HREC")));
                 homeFirstHalf.putOpt("letBall", firstHalfHomeLetBall);
@@ -164,7 +176,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
             }
 
             // 半场大小
-            if (0 != game.getInt("ior_HROUH")) {
+            if (game.containsKey("ior_HROUH") && 0 != game.getInt("ior_HROUH")) {
                 homeFirstHomeOverSize.putOpt(getHandicapRange(game.getStr("ratio_hrouo")), calculateOddsValue(game.getDouble("ior_HROUH")));
                 homeFirstAwayOverSize.putOpt(getHandicapRange(game.getStr("ratio_hrouu")), calculateOddsValue(game.getDouble("ior_HROUC")));
                 homeFirstHalf.putOpt("overSize", homeFirstHomeOverSize);
@@ -172,7 +184,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
             }
 
             // 半场胜平负
-            if (0 != game.getInt("ior_HRMH")) {
+            if (game.containsKey("ior_HRMH") && 0 != game.getInt("ior_HRMH")) {
                 homeFirstHalf.putOpt("win", game.getStr("ior_HRMH"));
                 homeFirstHalf.putOpt("draw", game.getStr("ior_HRMN"));
                 awayFirstHalf.putOpt("win", game.getStr("ior_HRMC"));
