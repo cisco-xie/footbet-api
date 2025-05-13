@@ -1,32 +1,30 @@
 package com.example.demo.core.sites.zhibo;
 
-import cn.hutool.core.date.DatePattern;
-import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
-import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.common.enmu.ZhiBoOddsFormatType;
 import com.example.demo.core.factory.ApiHandler;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
-
 /**
- * 智博网站 - 账户投注单列表-未结算 API具体实现
+ * 智博网站 - 投注 API具体实现
  */
+@Slf4j
 @Component
-public class WebsiteZhiBoBetUnsettledHandler implements ApiHandler {
+public class WebsiteZhiBoBetHandler implements ApiHandler {
 
     private final WebsiteService websiteService;
     private final ApiUrlService apiUrlService;
 
     @Autowired
-    public WebsiteZhiBoBetUnsettledHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
+    public WebsiteZhiBoBetHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
         this.websiteService = websiteService;
         this.apiUrlService = apiUrlService;
     }
@@ -40,12 +38,23 @@ public class WebsiteZhiBoBetUnsettledHandler implements ApiHandler {
         headers.add("locale", "zh_CN");
         headers.add("authorization", params.getStr("token"));
 
-        return new HttpEntity<>(headers);
+        // 构造请求体
+        JSONObject body = new JSONObject();
+        body.putOpt("requestId", System.currentTimeMillis());
+        body.putOpt("marketSelectionId", params.getStr("marketSelectionId"));
+        body.putOpt("stake", params.getStr("stake"));
+        body.putOpt("oddsFormatId", ZhiBoOddsFormatType.RM.getId());
+        body.putOpt("odds", params.getStr("odds"));
+        body.putOpt("decimalOdds", params.getStr("decimalOdds"));
+        body.putOpt("handicap", params.getStr("handicap"));
+        body.putOpt("score", params.getStr("score"));
+        body.putOpt("eventPitcherId", 0);
+
+        return new HttpEntity<>(body.toString(), headers);
     }
 
     @Override
     public JSONObject parseResponse(HttpResponse response) {
-
         // 检查响应状态
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();
@@ -55,26 +64,22 @@ public class WebsiteZhiBoBetUnsettledHandler implements ApiHandler {
                 res.putOpt("msg", "账户登录失效");
                 return res;
             }
-            res.putOpt("msg", "获取投注历史失败");
+            res.putOpt("msg", "投注失败");
             return res;
         }
         // 解析响应
         JSONObject result = new JSONObject();
-        JSONArray responseArray = new JSONArray();
-        JSONArray responseJson = new JSONArray(response.body());
-        for (Object obj : responseJson) {
-            JSONObject jsonObject = (JSONObject) obj;
-            JSONObject betInfo = new JSONObject();
-            betInfo.putOpt("betId", jsonObject.getStr("betId"));
-            betInfo.putOpt("amount", jsonObject.getStr("stake"));
-            betInfo.putOpt("league", jsonObject.getJSONObject("selectionDetail").getStr("leagueName"));
-            betInfo.putOpt("team", jsonObject.getJSONObject("selectionDetail").getStr("eventName"));
-            betInfo.putOpt("odds", jsonObject.getJSONObject("selectionDetail").getStr("name") + " " + jsonObject.getJSONObject("selectionDetail").getStr("handicap") + " @ " + jsonObject.getJSONObject("selectionDetail").getStr("odds"));
-            responseArray.add(betInfo);
+        JSONObject responseJson = new JSONObject(response.body());
+        log.info("[智博][投注]{}", responseJson);
+        if (0 != responseJson.getInt("responseCode")) {
+            JSONObject res = new JSONObject();
+            res.putOpt("success", false);
+            res.putOpt("msg", "投注失败:"+responseJson.getStr("responseMessage"));
+            return res;
         }
         result.putOpt("success", true);
-        result.putOpt("data", responseArray);
-        result.putOpt("msg", "获取投注历史成功");
+        result.putOpt("data", responseJson);
+        result.putOpt("msg", "投注成功");
         return result;
     }
 
@@ -90,22 +95,17 @@ public class WebsiteZhiBoBetUnsettledHandler implements ApiHandler {
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
-        String apiUrl = apiUrlService.getApiUrl(siteId, "unsettled");
-        String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.SIMPLE_MONTH_PATTERN);
+        String apiUrl = apiUrlService.getApiUrl(siteId, "bet");
         // 构建请求
         HttpEntity<String> request = buildRequest(params);
 
-        // 构造请求体
-        String queryParams = String.format("_=%s",
-                System.currentTimeMillis()
-        );
-
         // 拼接完整的 URL
-        String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, date, queryParams);
+        String fullUrl = String.format("%s%s", baseUrl, apiUrl);
 
         // 发送请求
-        HttpResponse response = HttpRequest.get(fullUrl)
+        HttpResponse response = HttpRequest.post(fullUrl)
                 .addHeaders(request.getHeaders().toSingleValueMap())
+                .body(request.getBody())
                 .execute();
 
         // 解析响应

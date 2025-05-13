@@ -95,13 +95,14 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                     JSONObject underSizeJson = new JSONObject();
                     JSONObject firstHalfOverSizeJson = new JSONObject();
                     JSONObject firstHalfUnderSizeJson = new JSONObject();
-                    // 胜平负盘赔率（让手盘）
-                    AtomicReference<String> winHome = new AtomicReference<>("");            // 主胜 - 全场
-                    AtomicReference<String> draw = new AtomicReference<>("");               // 平 - 全场
-                    AtomicReference<String> winAway = new AtomicReference<>("");            // 客胜 - 全场
-                    AtomicReference<String> firstHalfWinHome = new AtomicReference<>("");   // 主胜 - 半场
-                    AtomicReference<String> firstHalfDraw = new AtomicReference<>("");      // 平 - 半场
-                    AtomicReference<String> firstHalfWinAway = new AtomicReference<>("");   // 客胜 - 半场
+
+                    // 让手盘赔率
+                    JSONObject winHomeJson = new JSONObject();              // 主胜 - 全场
+                    JSONObject winAwayJson = new JSONObject();              // 平 - 全场
+                    JSONObject drawAwayJson = new JSONObject();             // 客胜 - 全场
+                    JSONObject firstHalfWinHomeJson = new JSONObject();     // 主胜 - 半场
+                    JSONObject firstHalfWinAwayJson = new JSONObject();     // 平 - 半场
+                    JSONObject firstHalfDrawAwayJson = new JSONObject();    // 客胜 - 半场
 
                     markets.forEach(market -> {
                         JSONObject marketJson = (JSONObject) market;
@@ -119,37 +120,39 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                                     firstHalfOverSizeJson, firstHalfUnderSizeJson);
                         } else if (marketGroupId == 1) { // 胜平负盘
                             processWinDrawWinMarket(marketJson, isFirstHalf,
-                                    winHome, draw, winAway,
-                                    firstHalfWinHome, firstHalfDraw, firstHalfWinAway);
+                                    winHomeJson, drawAwayJson, winAwayJson,
+                                    firstHalfWinHomeJson, firstHalfDrawAwayJson, firstHalfWinAwayJson);
                         }
                     });
 
                     // 将处理后的数据放入结果对象
                     fullHomeCourt.putOpt("letBall", letHomeJson)
                             .putOpt("overSize", overSizeJson)
-                            .putOpt("win", winHome.get())
-                            .putOpt("draw", draw.get());
+                            .putOpt("win", winHomeJson)
+                            .putOpt("draw", drawAwayJson);
                     firstHalfHomeCourt.putOpt("letBall", firstHalfLetHomeJson)
                             .putOpt("overSize", firstHalfOverSizeJson)
-                            .putOpt("win", firstHalfWinHome.get())
-                            .putOpt("draw", firstHalfDraw.get());
+                            .putOpt("win", winAwayJson)
+                            .putOpt("draw", drawAwayJson);
                     // 同理处理客队和underSize...
                     fullAwayCourt.putOpt("letBall", letAwayJson)
                             .putOpt("overSize", underSizeJson)
-                            .putOpt("win", winAway.get())
-                            .putOpt("draw", draw.get());
+                            .putOpt("win", firstHalfWinHomeJson)
+                            .putOpt("draw", firstHalfDrawAwayJson);
                     firstHalfAwayCourt.putOpt("letBall", firstHalfLetAwayJson)
                             .putOpt("overSize", firstHalfUnderSizeJson)
-                            .putOpt("win", firstHalfWinAway.get())
-                            .putOpt("draw", firstHalfDraw.get());
+                            .putOpt("win", firstHalfWinAwayJson)
+                            .putOpt("draw", firstHalfDrawAwayJson);
 
                     homeTeam.putOpt("id", eventJsonOld.getStr("id"));
                     homeTeam.putOpt("name", homeTeamStr);
+                    homeTeam.putOpt("score", eventJsonOld.getStr("score"));
                     homeTeam.putOpt("fullCourt", fullHomeCourt);
                     homeTeam.putOpt("firstHalf", firstHalfHomeCourt);
 
                     awayTeam.putOpt("id", eventJsonOld.getStr("id"));
                     awayTeam.putOpt("name", awayTeamStr);
+                    awayTeam.putOpt("score", eventJsonOld.getStr("score"));
                     awayTeam.putOpt("fullCourt", fullAwayCourt);
                     awayTeam.putOpt("firstHalf", firstHalfAwayCourt);
                     leaguesArray.put(homeTeam);
@@ -245,10 +248,14 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                     double handicap = sel.getDouble("handicap");
                     String key = getHandicapRange(handicap);
                     String odds = sel.getStr("odds");
+                    JSONObject oddsJson = new JSONObject();
+                    oddsJson.putOpt("id", sel.getStr("id"));                    // 投注id
+                    oddsJson.putOpt("odds", odds);
+                    oddsJson.putOpt("decimalOdds", sel.getStr("decimalOdds"));
                     if (homeIndicator.equals(sel.getStr("indicator"))) {
-                        targetHome.putOpt(key, odds);
+                        targetHome.putOpt(key, oddsJson);
                     } else {
-                        targetAway.putOpt(key, odds);
+                        targetAway.putOpt(key, oddsJson);
                     }
                 }
             });
@@ -257,26 +264,52 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
 
     // 辅助方法：处理胜平负盘
     private void processWinDrawWinMarket(JSONObject marketJson, boolean isFirstHalf,
-                                         AtomicReference<String> fullHome, AtomicReference<String> fullDraw, AtomicReference<String> fullAway,
-                                         AtomicReference<String> halfHome, AtomicReference<String> halfDraw, AtomicReference<String> halfAway) {
+                                         JSONObject fullHome, JSONObject fullDraw, JSONObject fullAway,
+                                         JSONObject halfHome, JSONObject halfDraw, JSONObject halfAway) {
         JSONArray selections = marketJson.getJSONArray("selections");
         if (selections == null) return;
 
         selections.forEach(selection -> {
             JSONObject sel = (JSONObject) selection;
             String indicator = sel.getStr("indicator");
+            String id = sel.getStr("id");
             String odds = sel.getStr("odds");
+            String decimalOdds = sel.getStr("decimalOdds");
             if (isFirstHalf) {
                 switch (indicator) {
-                    case "Home": halfHome.set(odds); break;
-                    case "Draw": halfDraw.set(odds); break;
-                    case "Away": halfAway.set(odds); break;
+                    case "Home":
+                        fullHome.putOpt("id", id);                    // 投注id
+                        fullHome.putOpt("odds", odds);
+                        fullHome.putOpt("decimalOdds", decimalOdds);
+                        break;
+                    case "Draw":
+                        fullDraw.putOpt("id", id);                    // 投注id
+                        fullDraw.putOpt("odds", odds);
+                        fullDraw.putOpt("decimalOdds", decimalOdds);
+                        break;
+                    case "Away":
+                        fullAway.putOpt("id", id);                    // 投注id
+                        fullAway.putOpt("odds", odds);
+                        fullAway.putOpt("decimalOdds", decimalOdds);
+                        break;
                 }
             } else {
                 switch (indicator) {
-                    case "Home": fullHome.set(odds); break;
-                    case "Draw": fullDraw.set(odds); break;
-                    case "Away": fullAway.set(odds); break;
+                    case "Home":
+                        halfHome.putOpt("id", id);                    // 投注id
+                        halfHome.putOpt("odds", odds);
+                        halfHome.putOpt("decimalOdds", decimalOdds);
+                        break;
+                    case "Draw":
+                        halfDraw.putOpt("id", id);                    // 投注id
+                        halfDraw.putOpt("odds", odds);
+                        halfDraw.putOpt("decimalOdds", decimalOdds);
+                        break;
+                    case "Away":
+                        halfAway.putOpt("id", id);                    // 投注id
+                        halfAway.putOpt("odds", odds);
+                        halfAway.putOpt("decimalOdds", decimalOdds);
+                        break;
                 }
             }
         });

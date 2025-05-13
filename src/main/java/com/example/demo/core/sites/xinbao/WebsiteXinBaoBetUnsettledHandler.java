@@ -87,10 +87,14 @@ public class WebsiteXinBaoBetUnsettledHandler implements ApiHandler {
         wagers.forEach(json -> {
             JSONObject wager = new JSONObject();
             JSONObject wagerJson = (JSONObject) json;
+            wager.putOpt("betId", wagerJson.getStr("w_id"));
             wager.putOpt("product", wagerJson.getStr("gtype")+wagerJson.getStr("wtype")+"("+wagerJson.getStr("score")+")");
-            wager.putOpt("detail", wagerJson.getStr("league")+" - "+wagerJson.getStr("team_h_show")+" v "+wagerJson.getStr("team_c_show"));
+            wager.putOpt("league", wagerJson.getStr("league"));
+            wager.putOpt("team", wagerJson.getStr("team_h_show") + " -vs- "+wagerJson.getStr("team_c_show"));
+            wager.putOpt("odds", wagerJson.getStr("result") + " @ " + wagerJson.getStr("ioratio"));
+            wager.putOpt("detail", wagerJson.getStr("league") + " - " + wagerJson.getStr("team_h_show") + " v "+wagerJson.getStr("team_c_show"));
             wager.putOpt("result", wagerJson.getStr("result"));
-            wager.putOpt("odds", wagerJson.getStr("ioratio"));
+            // wager.putOpt("odds", wagerJson.getStr("ioratio"));
             wager.putOpt("amount", wagerJson.getStr("gold"));
             result.add(wager);
         });

@@ -47,4 +47,11 @@ public class SweepwaterController extends BaseController {
         return Result.success(sweepwaterService.getSweepwaters(admin.getUsername()));
     }
 
+    @Operation(summary = "清空扫水列表")
+    @DeleteMapping("/sweepwaters")
+    public Result delWebsites() {
+        AdminLoginDTO admin = getUser();
+        sweepwaterService.delSweepwaters(admin.getUsername());
+        return Result.success();
+    }
 }

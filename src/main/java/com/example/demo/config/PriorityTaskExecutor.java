@@ -1,7 +1,10 @@
 package com.example.demo.config;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.util.concurrent.*;
 
+@Slf4j
 public class PriorityTaskExecutor {
     // 定义优先级的任务
     public static class PriorityTask implements Runnable, Comparable<PriorityTask> {
@@ -48,6 +51,23 @@ public class PriorityTaskExecutor {
 
         public CompletableFuture<T> getCompletableFuture() {
             return completableFuture;
+        }
+    }
+
+    /**
+     * 优化线程池关闭逻辑
+     * @param executorService
+     */
+    public static void shutdownExecutor(ExecutorService executorService) {
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
+                log.error("任务超时，强制关闭线程池");
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 

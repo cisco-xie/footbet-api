@@ -38,6 +38,29 @@ public class AdminService {
         return JSONUtil.toBean(JSONUtil.parseObj(businessPlatformRedissonClient.getBucket(redisKey).get()), AdminLoginDTO.class);
     }
 
+    /**
+     * 获取所有平台用户
+     * @return
+     */
+    public List<AdminLoginDTO> getUsers(String group) {
+        // 匹配所有平台用户的 Redis Key
+        String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_USER_PREFIX, "*");
+        // 使用 Redisson 执行扫描所有平台用户操作
+        RKeys keys = businessPlatformRedissonClient.getKeys();
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
+        List<String> keysList = new ArrayList<>();
+        while (iterableKeys.hasNext()) {
+            keysList.add(iterableKeys.next());
+        }
+        return keysList.stream()
+                .map(key -> {
+                    String json = (String) businessPlatformRedissonClient.getBucket(key).get();
+                    return JSONUtil.toBean(json, AdminLoginDTO.class);
+                })
+                .filter(user -> StringUtils.isBlank(group) || group.equals(user.getGroup())) // 如果 group 为空，跳过过滤
+                .collect(Collectors.toList());
+    }
+
     public AdminLoginDTO adminLogin(AdminLoginVO login) {
 
         // Redis 键值

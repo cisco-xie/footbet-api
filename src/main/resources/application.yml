@@ -1,6 +1,6 @@
 # 应用服务 WEB 访问端口
 server:
-  port: 8890
+  port: 8891
 spring:
   # redis配置
   data:
@@ -10,7 +10,7 @@ spring:
       timeout: 5s
       database: 2
       # redis1121
-#      password: dajusheng@20241201.
+#      password: 20241201
       password:
     # 连接超时时间
 

@@ -18,6 +18,7 @@ package com.example.demo.controller;
 
 import cn.hutool.core.bean.BeanUtil;
 import com.example.demo.api.BindDictService;
+import com.example.demo.api.SweepwaterService;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
@@ -43,6 +44,9 @@ public class BindDictController extends BaseController {
     @Resource
     private BindDictService bindDictService;
 
+    @Resource
+    private SweepwaterService sweepwaterService;
+
     @Operation(summary = "绑定字典")
     @PostMapping("/bind")
     public Result add(@RequestBody List<BindLeagueVO> bindLeagueVOS) {
@@ -53,11 +57,13 @@ public class BindDictController extends BaseController {
     }
 
     @Operation(summary = "删除绑定")
-    @DeleteMapping("/bind/{websiteIdA}/{websiteIdB}")
-    public Result delete(@PathVariable String websiteIdA, @PathVariable String websiteIdB) {
+    @DeleteMapping("/bind")
+    public Result delete() {
         AdminLoginDTO admin = getUser();
         // 调用服务层方法删除网站
         bindDictService.deleteBindDict(admin.getUsername());
+        // 删除扫水记录
+        sweepwaterService.delSweepwaters(admin.getUsername());
         return Result.success();
     }
 

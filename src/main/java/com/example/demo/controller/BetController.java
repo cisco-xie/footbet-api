@@ -17,66 +17,35 @@
 package com.example.demo.controller;
 
 import com.example.demo.api.BetService;
-import com.example.demo.api.HandicapApi;
 import com.example.demo.api.SweepwaterService;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
+import com.example.demo.model.dto.bet.SweepwaterBetDTO;
+import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 
 @Slf4j
-@Tag(name = "测试")
+@Tag(name = "扫水列表")
 @RequestMapping("/api")
 @RestController
-public class TestController extends BaseController {
+public class BetController extends BaseController {
 
-    @Resource
-    private HandicapApi api;
-    @Resource
-    private SweepwaterService sweepwaterService;
     @Resource
     private BetService betService;
 
-    @Operation(summary = "登录所有盘口账号")
-    @GetMapping("/login")
-    public Result add() {
-        api.login();
-        return Result.success();
-    }
-
-    @Operation(summary = "获取所有盘口账号额度")
-    @GetMapping("/info")
-    public Result info() {
-        api.info();
-        return Result.success();
-    }
-
-    @Operation(summary = "获取网站联赛相关赔率")
-    @GetMapping("/odds")
-    public Result eventsOdds(@RequestParam String websiteId) {
+    @Operation(summary = "获取扫水列表")
+    @GetMapping("/bets")
+    public Result<List<SweepwaterBetDTO>> getBets(@RequestParam(value = "teamName", required = false)  String teamName, @RequestParam(value = "startDate", required = false) String startDate) {
         AdminLoginDTO admin = getUser();
-        return Result.success(api.eventsOdds(admin.getUsername(), websiteId, "100822", "9112583"));
-    }
-
-    @Operation(summary = "扫水")
-    @GetMapping("/sweepwater")
-    public Result sweepwater() {
-        AdminLoginDTO admin = getUser();
-        sweepwaterService.sweepwater(admin.getUsername());
-        return Result.success();
-    }
-
-    @Operation(summary = "扫水")
-    @GetMapping("/bet")
-    public Result bet() {
-        AdminLoginDTO admin = getUser();
-        //betService.bet(admin.getUsername());
-        return Result.success();
+        return Result.success(betService.getBets(admin.getUsername(), teamName, startDate));
     }
 
 }

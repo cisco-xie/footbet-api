@@ -6,6 +6,8 @@ import cn.hutool.core.date.TimeInterval;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
+import com.example.demo.common.enmu.WebsiteType;
+import com.example.demo.common.enmu.ZhiBoOddsFormatType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.core.factory.WebsiteApiFactory;
@@ -147,10 +149,10 @@ public class HandicapApi {
         params.putOpt("adminUsername", username);
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
-        if ("1874805533324103680".equals(websiteId)) {
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
             params.putOpt("loginId", account.getAccount());
             params.putOpt("password", account.getPassword());
-        } else if ("1874804932787851264".equals(websiteId) || "1877702689064243200".equals(websiteId)) {
+        } else if (WebsiteType.ZHIBO.getId().equals(websiteId) || WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putOpt("username", account.getAccount());
             params.putOpt("password", account.getPassword());
         }
@@ -215,6 +217,10 @@ public class HandicapApi {
                     break;
                 }
                 for (ConfigAccountVO account : accounts) {
+                    if (account.getIsTokenValid() == 0) {
+                        // 未登录直接跳过
+                        continue;
+                    }
                     TimeInterval timer = DateUtil.timer();
                     WebsiteApiFactory factory = factoryManager.getFactory(website.getId());
 
@@ -226,11 +232,11 @@ public class HandicapApi {
                     params.putOpt("adminUsername", user.getUsername());
                     params.putOpt("websiteId", website.getId());
                     // 根据不同站点传入不同的参数
-                    if ("1874805533324103680".equals(website.getId())) {
+                    if (WebsiteType.PINGBO.getId().equals(website.getId())) {
                         params.putAll(account.getToken().getJSONObject("tokens"));
-                    } else if ("1874804932787851264".equals(website.getId())) {
+                    } else if (WebsiteType.ZHIBO.getId().equals(website.getId())) {
                         params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
-                    } else if ("1877702689064243200".equals(website.getId())) {
+                    } else if (WebsiteType.XINBAO.getId().equals(website.getId())) {
                         params.putAll(account.getToken().getJSONObject("serverresponse"));
                     }
                     JSONObject result = apiHandler.execute(params);
@@ -249,6 +255,10 @@ public class HandicapApi {
      * @param account
      */
     public void balanceByAccount(String username, String websiteId, ConfigAccountVO account) {
+        if (account.getIsTokenValid() == 0) {
+            // 未登录直接跳过
+            return;
+        }
         TimeInterval timer = DateUtil.timer();
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
 
@@ -260,11 +270,11 @@ public class HandicapApi {
         params.putOpt("adminUsername", username);
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
-        if ("1874805533324103680".equals(websiteId)) {
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
             params.putAll(account.getToken().getJSONObject("tokens"));
-        } else if ("1874804932787851264".equals(websiteId)) {
+        } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
-        } else if ("1877702689064243200".equals(websiteId)) {
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putAll(account.getToken().getJSONObject("serverresponse"));
         }
         JSONObject result = apiHandler.execute(params);
@@ -282,6 +292,10 @@ public class HandicapApi {
     public Object events(String username, String websiteId) {
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
+            if (account.getIsTokenValid() == 0) {
+                // 未登录直接跳过
+                continue;
+            }
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
 
             ApiHandler apiHandler = factory.getEventsHandler();
@@ -292,11 +306,11 @@ public class HandicapApi {
             params.putOpt("adminUsername", username);
             params.putOpt("websiteId", websiteId);
             // 根据不同站点传入不同的参数
-            if ("1874805533324103680".equals(websiteId)) {
+            if (WebsiteType.PINGBO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("tokens"));
-            } else if ("1874804932787851264".equals(websiteId)) {
+            } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                 params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
-            } else if ("1877702689064243200".equals(websiteId)) {
+            } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
             }
             JSONObject result = apiHandler.execute(params);
@@ -317,6 +331,10 @@ public class HandicapApi {
     public Object eventsOdds(String username, String websiteId, String lid, String ecid) {
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
+            if (account.getIsTokenValid() == 0) {
+                // 未登录直接跳过
+                continue;
+            }
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
 
             ApiHandler apiHandler = factory.getEventsOddsHandler();
@@ -327,11 +345,11 @@ public class HandicapApi {
             params.putOpt("adminUsername", username);
             params.putOpt("websiteId", websiteId);
             // 根据不同站点传入不同的参数
-            if ("1874805533324103680".equals(websiteId)) {
+            if (WebsiteType.PINGBO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("tokens"));
-            } else if ("1874804932787851264".equals(websiteId)) {
+            } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                 params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
-            } else if ("1877702689064243200".equals(websiteId)) {
+            } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
                 params.putOpt("lid", lid);
                 params.putOpt("ecid", ecid);
@@ -354,6 +372,10 @@ public class HandicapApi {
     public Object eventDetail(String username, String websiteId) {
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
+            if (account.getIsTokenValid() == 0) {
+                // 未登录直接跳过
+                continue;
+            }
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
 
             ApiHandler apiHandler = factory.getEventsHandler();
@@ -364,12 +386,12 @@ public class HandicapApi {
             params.putOpt("adminUsername", username);
             params.putOpt("websiteId", websiteId);
             // 根据不同站点传入不同的参数
-            if ("1874805533324103680".equals(websiteId)) {
+            if (WebsiteType.PINGBO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("tokens"));
                 params.putOpt("me", "");
-            } else if ("1874804932787851264".equals(websiteId)) {
+            } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                 params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
-            } else if ("1877702689064243200".equals(websiteId)) {
+            } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
             }
             JSONObject result = apiHandler.execute(params);
@@ -389,6 +411,10 @@ public class HandicapApi {
      */
     public Object statement(String username, String websiteId, String accountId) {
         ConfigAccountVO account = accountService.getAccountById(username, websiteId, accountId);
+        if (account.getIsTokenValid() == 0) {
+            // 未登录直接跳过
+            return null;
+        }
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
 
         ApiHandler apiHandler = factory.getStatementsHandler();
@@ -399,11 +425,11 @@ public class HandicapApi {
         params.putOpt("adminUsername", username);
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
-        if ("1874805533324103680".equals(websiteId)) {
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
             params.putAll(account.getToken().getJSONObject("tokens"));
-        } else if ("1874804932787851264".equals(websiteId)) {
+        } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
-        } else if ("1877702689064243200".equals(websiteId)) {
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putAll(account.getToken().getJSONObject("serverresponse"));
         }
         JSONObject result = apiHandler.execute(params);
@@ -422,6 +448,10 @@ public class HandicapApi {
      */
     public Object unsettled(String username, String websiteId, String accountId) {
         ConfigAccountVO account = accountService.getAccountById(username, websiteId, accountId);
+        if (account.getIsTokenValid() == 0) {
+            // 未登录直接跳过
+            return null;
+        }
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
 
         ApiHandler apiHandler = factory.getBetUnsettledHandler();
@@ -432,11 +462,11 @@ public class HandicapApi {
         params.putOpt("adminUsername", username);
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
-        if ("1874805533324103680".equals(websiteId)) {
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
             params.putAll(account.getToken().getJSONObject("tokens"));
-        } else if ("1874804932787851264".equals(websiteId)) {
+        } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
-        } else if ("1877702689064243200".equals(websiteId)) {
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putAll(account.getToken().getJSONObject("serverresponse"));
         }
         JSONObject result = apiHandler.execute(params);
@@ -446,4 +476,70 @@ public class HandicapApi {
         }
         return null;
     }
+
+    /**
+     * 投注
+     * @param username
+     * @param websiteId
+     * @return
+     */
+    public Object bet(String username, String websiteId, JSONObject odds) {
+        List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
+        for (ConfigAccountVO account : accounts) {
+            if (account.getIsTokenValid() == 0) {
+                // 未登录直接跳过
+                continue;
+            }
+            WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+
+            ApiHandler apiHandler = factory.bet();
+            if (apiHandler == null) {
+                continue;
+            }
+            JSONObject params = new JSONObject();
+            params.putOpt("adminUsername", username);
+            params.putOpt("websiteId", websiteId);
+            // 根据不同站点传入不同的参数
+            if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("tokens"));
+                params.putOpt("stake", odds.getStr("stake"));
+                params.putOpt("odds", odds.getStr("odds"));
+                params.putOpt("oddsId", odds.getStr("oddsId"));
+                params.putOpt("selectionId", odds.getStr("selectionId"));
+            } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+                params.putOpt("marketSelectionId", odds.getStr("marketSelectionId"));
+                params.putOpt("stake", odds.getStr("stake"));
+                params.putOpt("odds", odds.getStr("odds"));
+                params.putOpt("decimalOdds", odds.getStr("decimalOdds"));
+                params.putOpt("handicap", odds.getStr("handicap"));
+                params.putOpt("score", odds.getStr("score"));
+                params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+            } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("serverresponse"));
+
+                params.putOpt("gid", odds.getStr("gid"));
+                params.putOpt("golds", odds.getStr("golds"));
+                params.putOpt("oddFType", odds.getStr("oddFType"));
+                params.putOpt("gtype", odds.getStr("gtype"));
+                params.putOpt("wtype", odds.getStr("wtype"));
+                params.putOpt("rtype", odds.getStr("rtype"));
+                params.putOpt("choseTeam", odds.getStr("choseTeam"));
+                params.putOpt("ioratio", odds.getStr("ioratio"));
+                params.putOpt("con", odds.getStr("con"));
+                params.putOpt("ratio", odds.getStr("ratio"));
+                params.putOpt("autoOdd", odds.getStr("autoOdd"));
+
+            }
+            JSONObject result = apiHandler.execute(params);
+
+            if (result.getBool("success")) {
+                // 保存记录投注账号id
+                result.putOpt("account", account.getAccount());
+                result.putOpt("accountId", account.getId());
+                return result;
+            }
+        }
+        return null;
+    }
+
 }

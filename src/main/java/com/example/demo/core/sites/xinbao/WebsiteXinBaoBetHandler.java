@@ -1,40 +1,37 @@
 package com.example.demo.core.sites.xinbao;
 
-import cn.hutool.core.util.ObjectUtil;
-import cn.hutool.core.util.XmlUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
+import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.core.factory.ApiHandler;
-import org.apache.commons.lang3.StringUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
-import org.w3c.dom.Document;
-
-import javax.xml.xpath.XPathConstants;
-import java.util.Map;
-import java.util.Objects;
 
 /**
- * 智博网站 - 登录 API具体实现
+ * 智博网站 - 投注 API具体实现
+ * 请求参数f大概率代表投注来源,1M：大概率表示手机网页下注  1R：大概率表示新版自适应网页下注。
  */
+@Slf4j
 @Component
-public class WebsiteXinBaoLoginHandler implements ApiHandler {
+public class WebsiteXinBaoBetHandler implements ApiHandler {
 
     private final WebsiteService websiteService;
     private final ApiUrlService apiUrlService;
 
     @Autowired
-    public WebsiteXinBaoLoginHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
+    public WebsiteXinBaoBetHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
         this.websiteService = websiteService;
         this.apiUrlService = apiUrlService;
     }
 
-    private static final String VER = "2025-01-03-removeBanner_69";
+    // 版本
+    private static final String VER = "2025-04-17-c1bug147_86";
 
     /**
      * 构建请求体
@@ -48,12 +45,35 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
         headers.add("accept", "*/*");
         headers.add("content-type", "application/x-www-form-urlencoded");
 
+        String oddFType = params.getStr("oddFType");
+        String golds = params.getStr("golds");
+        String gid = params.getStr("gid");
+        String gtype = params.getStr("gtype");
+        String wtype = params.getStr("wtype");
+        String rtype = params.getStr("rtype");
+        String choseTeam = params.getStr("choseTeam");
+        String ioratio = params.getStr("ioratio");
+        String con = params.getStr("con");
+        String ratio = params.getStr("ratio");
+        String autoOdd = params.getStr("autoOdd");
         // 构造请求体
-        String requestBody = String.format("p=chk_login&langx=zh-cn&ver=2024-12-24-197_65&username=%s&password=%s&app=N&auto=CDDFZD&blackbox=",
-                params.getStr("username"),
-                params.getStr("password")
+        String requestBody = String.format("p=FT_bet&uid=%s&ver=%s&langx=zh-cn&odd_f_type=%s&golds=%s&gid=%s&gtype=%s&wtype=%s&rtype=%s&chose_team=%s&ioratio=%s&con=%s&ratio=%s&autoOdd=%s" +
+                        "&timestamp=%s&timestamp2=&isRB=Y&imp=N&ptype=&isYesterday=N&f=1R",
+                params.getStr("uid"),
+                VER,
+                oddFType,
+                golds,
+                gid,
+                gtype,
+                wtype,
+                rtype,
+                choseTeam,
+                ioratio,
+                con,
+                ratio,
+                autoOdd,
+                System.currentTimeMillis()
         );
-
         return new HttpEntity<>(requestBody, headers);
     }
 
@@ -68,44 +88,29 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();
             res.putOpt("success", false);
-            if (response.getStatus() == 403) {
-                res.putOpt("code", 403);
-                res.putOpt("msg", "账户登录失败");
-                return res;
-            }
-            res.putOpt("code", 403);
-            res.putOpt("msg", "账户登录失败");
+            res.putOpt("msg", "账户登录失效");
             return res;
         }
 
         // 解析响应
-        Document docResult = XmlUtil.readXML(response.body());
         JSONObject responseJson = new JSONObject(response.body());
-        if (responseJson.getJSONObject("serverresponse").getInt("msg") != 100) {
+        log.info("[新2][投注]{}", responseJson);
+        JSONObject serverresponse = responseJson.getJSONObject("serverresponse");
+        if (!"560".equals(serverresponse.getStr("code"))) {
             responseJson.putOpt("success", false);
-            responseJson.putOpt("msg", responseJson.getJSONObject("serverresponse").getStr("code_message"));
-            if (responseJson.getJSONObject("serverresponse").getInt("msg") == 109) {
-                responseJson.putOpt("success", false);
-                responseJson.putOpt("msg", "需要去盘口重新设置登录账号");
-            }
-            return responseJson;
-        }
-        Object token = XmlUtil.getByXPath("//serverresponse/uid", docResult, XPathConstants.STRING);
-        if (ObjectUtil.isEmpty(token)) {
-            responseJson.putOpt("success", false);
-            responseJson.putOpt("msg", "账户登录失败");
+            responseJson.putOpt("msg", "投注失败:"+serverresponse.getStr("msg"));
             return responseJson;
         }
         responseJson.putOpt("success", true);
-        responseJson.putOpt("token", token);
-        responseJson.putOpt("msg", "账户登录成功");
+        responseJson.putOpt("data", responseJson);
+        responseJson.putOpt("msg", "投注成功");
         return responseJson;
     }
 
     /**
-     * 发送登录请求并返回结果
+     * 发送投注请求并返回结果
      * @param params 请求参数
-     * @return 登录结果
+     * @return 结果
      */
     @Override
     public JSONObject execute(JSONObject params) {
@@ -113,7 +118,7 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
-        String apiUrl = apiUrlService.getApiUrl(siteId, "login");
+        String apiUrl = apiUrlService.getApiUrl(siteId, "unsettled");
         // 构建请求
         HttpEntity<String> request = buildRequest(params);
 

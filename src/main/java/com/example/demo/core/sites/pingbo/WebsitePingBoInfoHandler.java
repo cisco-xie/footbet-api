@@ -43,6 +43,9 @@ public class WebsitePingBoInfoHandler implements ApiHandler {
         headers.add("accept", "*/*");
         headers.add("content-type", "application/x-www-form-urlencoded");
         headers.add("x-custid", custid);
+        headers.add("x-lcu", lcu);
+        headers.add("x-slid", slid);
+        headers.add("x-u", params.getStr("X-U"));
         headers.add("cookie", cookie);
 
         // 构造请求体

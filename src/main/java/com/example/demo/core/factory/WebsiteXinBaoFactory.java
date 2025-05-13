@@ -56,4 +56,9 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
     public ApiHandler getBetUnsettledHandler() {
         return new WebsiteXinBaoBetUnsettledHandler(websiteService, apiUrlService); // 返回具体的未结算投注列表处理类
     }
+
+    @Override
+    public ApiHandler bet() {
+        return new WebsiteXinBaoBetHandler(websiteService, apiUrlService); // 返回具体的投注处理类
+    }
 }

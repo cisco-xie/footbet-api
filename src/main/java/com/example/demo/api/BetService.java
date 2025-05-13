@@ -1,0 +1,516 @@
+package com.example.demo.api;
+
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.date.DatePattern;
+import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.date.LocalDateTimeUtil;
+import cn.hutool.core.date.TimeInterval;
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
+import com.example.demo.common.constants.RedisConstants;
+import com.example.demo.common.enmu.WebsiteType;
+import com.example.demo.common.utils.KeyUtil;
+import com.example.demo.config.PriorityTaskExecutor;
+import com.example.demo.model.dto.bet.SweepwaterBetDTO;
+import com.example.demo.model.dto.settings.LimitDTO;
+import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.redisson.api.*;
+import org.springframework.stereotype.Component;
+
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.stream.Collectors;
+
+@Slf4j
+@Component
+public class BetService {
+
+    @Resource(name = "defaultRedissonClient")
+    private RedissonClient redisson;
+
+    @Resource(name = "businessPlatformRedissonClient")
+    private RedissonClient businessPlatformRedissonClient;
+
+    @Resource
+    private HandicapApi handicapApi;
+    @Resource
+    private SweepwaterService sweepwaterService;
+    @Resource
+    private SettingsBetService settingsBetService;
+
+    /**
+     * 获取投注记录
+     * @param username
+     * @param date
+     * @return
+     */
+    public List<SweepwaterBetDTO> getBets(String username, String teamName, String date) {
+        if (StringUtils.isBlank(date)) {
+            date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
+        }
+        String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, date, "*");
+
+        Iterable<String> keys = businessPlatformRedissonClient.getKeys().getKeysByPattern(pattern);
+        if (!keys.iterator().hasNext()) {
+            return Collections.emptyList();
+        }
+
+        RBatch batch = businessPlatformRedissonClient.createBatch();
+        List<RFuture<String>> futures = new ArrayList<>();
+        for (String key : keys) {
+            RBucketAsync<String> bucket = batch.getBucket(key);
+            futures.add(bucket.getAsync());
+        }
+
+        batch.execute();
+
+        List<SweepwaterBetDTO> result = new ArrayList<>();
+        for (RFuture<String> future : futures) {
+            try {
+                String json = future.toCompletableFuture().join();
+                if (json != null) {
+                    result.add(JSONUtil.toBean(json, SweepwaterBetDTO.class));
+                }
+            } catch (Exception e) {
+                log.warn("读取投注单缓存失败", e);
+            }
+        }
+
+        // ✅ 筛选 队伍 数据
+        return result.stream()
+                .filter(dto -> {
+                    if (StringUtils.isBlank(teamName)) {
+                        return true; // teamName 为空，直接不过滤
+                    }
+                    String team = dto.getTeam();
+                    return (team != null && team.contains(teamName));
+                })
+                .collect(Collectors.toList());
+    }
+
+
+    /**
+     *
+     * @param username
+     * @return
+     */
+    public void betOld(String username) {
+        TimeInterval timerTotal = DateUtil.timer();
+        List<SweepwaterDTO> sweepwaters = sweepwaterService.getSweepwaters(username);
+        if (sweepwaters == null) {
+            return;
+        }
+        for (SweepwaterDTO sweepwaterDTO : sweepwaters) {
+            if (sweepwaterDTO.getIsBet() == 1) {
+                continue;
+            }
+            boolean betSuc = false;
+            JSONObject paramsA = new JSONObject();
+            if (WebsiteType.ZHIBO.getId().equals(sweepwaterDTO.getWebsiteIdA())) {
+                paramsA.putOpt("marketSelectionId", sweepwaterDTO.getOddsIdA());
+                paramsA.putOpt("stake", 110); // todo 临时写死投注110元
+                paramsA.putOpt("odds", sweepwaterDTO.getOddsA());
+                paramsA.putOpt("decimalOdds", sweepwaterDTO.getDecimalOddsA());
+                paramsA.putOpt("handicap", sweepwaterDTO.getHandicapA());
+                paramsA.putOpt("score", sweepwaterDTO.getScoreA());
+            } else if (WebsiteType.PINGBO.getId().equals(sweepwaterDTO.getWebsiteIdA())) {
+                paramsA.putOpt("stake", 150); // todo 临时写死投注150元
+                paramsA.putOpt("odds", sweepwaterDTO.getOddsA());
+                paramsA.putOpt("oddsId", sweepwaterDTO.getOddsIdA());
+                paramsA.putOpt("selectionId", sweepwaterDTO.getSelectionIdA());
+            } else {
+                paramsA.putOpt("gid", sweepwaterDTO.getOddsIdA());
+                paramsA.putOpt("golds", 50); // todo 临时写死投注50元
+                paramsA.putOpt("oddFType", sweepwaterDTO.getStrongA());
+                paramsA.putOpt("gtype", sweepwaterDTO.getGTypeA());
+                paramsA.putOpt("wtype", sweepwaterDTO.getWTypeA());
+                paramsA.putOpt("rtype", sweepwaterDTO.getRTypeA());
+                paramsA.putOpt("choseTeam", sweepwaterDTO.getChoseTeamA());
+                paramsA.putOpt("ioratio", sweepwaterDTO.getOddsA());
+                paramsA.putOpt("con", sweepwaterDTO.getConA());
+                paramsA.putOpt("ratio", sweepwaterDTO.getRatioA());
+                paramsA.putOpt("autoOdd", "Y");
+            }
+            Object betResultA = handicapApi.bet(username, sweepwaterDTO.getWebsiteIdA(), paramsA);
+            if (betResultA != null) {
+                JSONObject betResultJson = JSONUtil.parseObj(betResultA);
+                if (betResultJson.getBool("success")) {
+                    String betId = null;
+                    // 投注成功
+                    if (WebsiteType.ZHIBO.getId().equals(sweepwaterDTO.getWebsiteIdA())) {
+                        betId = betResultJson.getJSONObject("data").getJSONObject("betInfo").getStr("betId");
+                    } else if (WebsiteType.PINGBO.getId().equals(sweepwaterDTO.getWebsiteIdA())) {
+                        betId = betResultJson.getJSONObject("data").getStr("wagerId");
+                    } else {
+                        betId = betResultJson.getJSONObject("data").getJSONObject("serverresponse").getStr("ticket_id");
+                    }
+                    betSuc = true;
+                    sweepwaterDTO.setBetIdA(betId);
+                }
+            }
+
+            JSONObject paramsB = new JSONObject();
+            if (WebsiteType.ZHIBO.getId().equals(sweepwaterDTO.getWebsiteIdB())) {
+                paramsB.putOpt("marketSelectionId", sweepwaterDTO.getOddsIdB());
+                paramsB.putOpt("stake", 110); // todo 临时写死投注110元
+                paramsB.putOpt("odds", sweepwaterDTO.getOddsB());
+                paramsB.putOpt("decimalOdds", sweepwaterDTO.getDecimalOddsB());
+                paramsB.putOpt("handicap", sweepwaterDTO.getHandicapB());
+                paramsB.putOpt("score", sweepwaterDTO.getScoreB());
+            } else if (WebsiteType.PINGBO.getId().equals(sweepwaterDTO.getWebsiteIdB())) {
+                paramsB.putOpt("stake", 150); // todo 临时写死投注150元
+                paramsB.putOpt("odds", sweepwaterDTO.getOddsB());
+                paramsB.putOpt("oddsId", sweepwaterDTO.getOddsIdB());
+                paramsB.putOpt("selectionId", sweepwaterDTO.getSelectionIdB());
+            } else {
+                paramsB.putOpt("gid", sweepwaterDTO.getOddsIdB());
+                paramsB.putOpt("golds", 50); // todo 临时写死投注50元
+                paramsB.putOpt("oddFType", sweepwaterDTO.getStrongB());
+                paramsB.putOpt("gtype", sweepwaterDTO.getGTypeB());
+                paramsB.putOpt("wtype", sweepwaterDTO.getWTypeB());
+                paramsB.putOpt("rtype", sweepwaterDTO.getRTypeB());
+                paramsB.putOpt("choseTeam", sweepwaterDTO.getChoseTeamB());
+                paramsB.putOpt("ioratio", sweepwaterDTO.getOddsB());
+                paramsB.putOpt("con", sweepwaterDTO.getConB());
+                paramsB.putOpt("ratio", sweepwaterDTO.getRatioB());
+                paramsB.putOpt("autoOdd", "Y");
+            }
+            Object betResultB = handicapApi.bet(username, sweepwaterDTO.getWebsiteIdB(), paramsB);
+            if (betResultB != null) {
+                JSONObject betResultJson = JSONUtil.parseObj(betResultB);
+                if (betResultJson.getBool("success")) {
+                    String betId = null;
+                    // 投注成功
+                    if (WebsiteType.ZHIBO.getId().equals(sweepwaterDTO.getWebsiteIdA())) {
+                        betId = betResultJson.getJSONObject("data").getJSONObject("betInfo").getStr("betId");
+                    } else if (WebsiteType.PINGBO.getId().equals(sweepwaterDTO.getWebsiteIdA())) {
+                        betId = betResultJson.getJSONObject("data").getStr("wagerId");
+                    } else {
+                        betId = betResultJson.getJSONObject("data").getJSONObject("serverresponse").getStr("ticket_id");
+                    }
+                    betSuc = true;
+                    sweepwaterDTO.setBetIdB(betId);
+                }
+            }
+            // 标记为已投注
+            sweepwaterService.setIsBet(username, sweepwaterDTO.getId());
+            if (betSuc) {
+                // 投注成功记录盘口返回的投注id
+                String key = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN), sweepwaterDTO.getId());
+                businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(sweepwaterDTO));
+            }
+        }
+        log.info("投注结束,总花费:{}毫秒", timerTotal.interval());
+    }
+
+    /**
+     * 投注
+     * @param username
+     */
+    public void bet(String username) {
+        TimeInterval timerTotal = DateUtil.timer();
+        List<SweepwaterDTO> sweepwaters = sweepwaterService.getSweepwaters(username);
+        if (CollUtil.isEmpty(sweepwaters)) {
+            return;
+        }
+        LimitDTO limitDTO = settingsBetService.getLimit(username);
+        // CPU核数*4或者最大100线程
+        int cpuCoreCount = Math.min(Runtime.getRuntime().availableProcessors() * 4, 100);
+        // 核心线程数就是内部BindLeagueVO数量，最大线程数取个合理值
+        int corePoolSize = Math.min(sweepwaters.size(), cpuCoreCount);
+        int maxPoolSize = Math.max(sweepwaters.size(), cpuCoreCount);
+
+        // 合理限制并发线程数，比如最多10个并发
+        ExecutorService betExecutor = new ThreadPoolExecutor(
+                corePoolSize,
+                maxPoolSize,
+                60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(1000),
+                new ThreadFactoryBuilder().setNameFormat("bet-task-%d").build(),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+        for (SweepwaterDTO sweepwaterDTO : sweepwaters) {
+            // 过滤已经投注过的
+            if (sweepwaterDTO.getIsBet() == 1) {
+                continue;
+            }
+            SweepwaterBetDTO sweepwaterBetDTO = BeanUtil.copyProperties(sweepwaterDTO, SweepwaterBetDTO.class);
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                try {
+                    boolean betSuc = false;
+
+                    String limitKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, sweepwaterBetDTO.getEventIdA());
+                    RAtomicLong counterA = businessPlatformRedissonClient.getAtomicLong(limitKeyA);
+                    // 设置初始值 + 过期时间（只在第一次）
+                    if (!counterA.isExists()) {
+                        counterA.set(0);
+                        counterA.expire(Duration.ofHours(24));
+                    }
+
+                    if (counterA.get() >= limitDTO.getBetLimitGame()) {
+                        log.info("用户 {} 的投注已达上限，当前次数={}", username,  counterA.get());
+                    } else {
+                        // 投A
+                        JSONObject paramsA = buildBetParams(sweepwaterBetDTO, true);
+                        Object betResultA = handicapApi.bet(username, sweepwaterBetDTO.getWebsiteIdA(), paramsA);
+                        if (betResultA != null && parseBetSuccess(betResultA, sweepwaterBetDTO, true)) {
+                            counterA.incrementAndGet(); // 每次 +1
+                            betSuc = true;
+                            sweepwaterBetDTO.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN));
+                        }
+                    }
+
+                    String limitKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, sweepwaterBetDTO.getEventIdB());
+                    RAtomicLong counterB = businessPlatformRedissonClient.getAtomicLong(limitKeyB);
+                    // 设置初始值 + 过期时间（只在第一次）
+                    if (!counterB.isExists()) {
+                        counterB.set(0);
+                        counterB.expire(Duration.ofHours(24));
+                    }
+
+                    if (counterB.get() >= limitDTO.getBetLimitGame()) {
+                        log.info("用户 {} 的投注已达上限，当前次数={}", username,  counterA.get());
+                    } else {
+                        // 投B
+                        JSONObject paramsB = buildBetParams(sweepwaterBetDTO, false);
+                        Object betResultB = handicapApi.bet(username, sweepwaterBetDTO.getWebsiteIdB(), paramsB);
+                        if (betResultB != null && parseBetSuccess(betResultB, sweepwaterBetDTO, false)) {
+                            counterB.incrementAndGet(); // 每次 +1
+                            betSuc = true;
+                            sweepwaterBetDTO.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN));
+                        }
+                    }
+
+                    // 更新投注状态
+                    sweepwaterService.setIsBet(username, sweepwaterBetDTO.getId());
+
+                    // 投注成功后存Redis
+                    if (betSuc) {
+                        String key = KeyUtil.genKey(
+                                RedisConstants.PLATFORM_BET_PREFIX,
+                                username,
+                                LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
+                                sweepwaterBetDTO.getId()
+                        );
+                        businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(sweepwaterBetDTO));
+                    }
+
+                } catch (Exception e) {
+                    log.error("投注异常：SweepwaterDTO={}，异常信息={}", JSONUtil.toJsonStr(sweepwaterBetDTO), e.getMessage(), e);
+                }
+            }, betExecutor);
+
+            futures.add(future);
+        }
+
+        // 等待所有投注完成
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        // **确保 executorAdminUserService 正确关闭**
+        PriorityTaskExecutor.shutdownExecutor(betExecutor);
+
+        log.info("投注结束，总花费:{}毫秒", timerTotal.interval());
+    }
+
+    /**
+     * 构建投注参数
+     */
+    private JSONObject buildBetParams(SweepwaterBetDTO sweepwaterDTO, boolean isA) {
+        JSONObject params = new JSONObject();
+        String websiteId = isA ? sweepwaterDTO.getWebsiteIdA() : sweepwaterDTO.getWebsiteIdB();
+
+        if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+            params.putOpt("marketSelectionId", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
+            params.putOpt("stake", 110);
+            params.putOpt("odds", isA ? sweepwaterDTO.getOddsA() : sweepwaterDTO.getOddsB());
+            params.putOpt("decimalOdds", isA ? sweepwaterDTO.getDecimalOddsA() : sweepwaterDTO.getDecimalOddsB());
+            params.putOpt("handicap", isA ? sweepwaterDTO.getHandicapA() : sweepwaterDTO.getHandicapB());
+            params.putOpt("score", isA ? sweepwaterDTO.getScoreA() : sweepwaterDTO.getScoreB());
+        } else if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            params.putOpt("stake", 150);
+            params.putOpt("odds", isA ? sweepwaterDTO.getOddsA() : sweepwaterDTO.getOddsB());
+            params.putOpt("oddsId", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
+            params.putOpt("selectionId", isA ? sweepwaterDTO.getSelectionIdA() : sweepwaterDTO.getSelectionIdB());
+        } else {
+            params.putOpt("gid", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
+            params.putOpt("golds", 50);
+            params.putOpt("oddFType", isA ? sweepwaterDTO.getStrongA() : sweepwaterDTO.getStrongB());
+            params.putOpt("gtype", isA ? sweepwaterDTO.getGTypeA() : sweepwaterDTO.getGTypeB());
+            params.putOpt("wtype", isA ? sweepwaterDTO.getWTypeA() : sweepwaterDTO.getWTypeB());
+            params.putOpt("rtype", isA ? sweepwaterDTO.getRTypeA() : sweepwaterDTO.getRTypeB());
+            params.putOpt("choseTeam", isA ? sweepwaterDTO.getChoseTeamA() : sweepwaterDTO.getChoseTeamB());
+            params.putOpt("ioratio", isA ? sweepwaterDTO.getOddsA() : sweepwaterDTO.getOddsB());
+            params.putOpt("con", isA ? sweepwaterDTO.getConA() : sweepwaterDTO.getConB());
+            params.putOpt("ratio", isA ? sweepwaterDTO.getRatioA() : sweepwaterDTO.getRatioB());
+            params.putOpt("autoOdd", "Y");
+        }
+        return params;
+    }
+
+    /**
+     * 解析投注返回
+     */
+    private boolean parseBetSuccess(Object betResult, SweepwaterBetDTO sweepwaterDTO, boolean isA) {
+        JSONObject betResultJson = JSONUtil.parseObj(betResult);
+        if (!betResultJson.getBool("success", false)) {
+            return false;
+        }
+
+        String betId = null;
+        String account = betResultJson.getStr("account");
+        String accountId = betResultJson.getStr("accountId");
+        String websiteId = isA ? sweepwaterDTO.getWebsiteIdA() : sweepwaterDTO.getWebsiteIdB();
+
+        if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+            betId = betResultJson.getJSONObject("data").getJSONObject("betInfo").getStr("betId");
+            // todo 投注成功后就用betId去盘口投注历史接口中查找当前的投注单，进行保存
+        } else if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            betId = betResultJson.getJSONObject("data").getStr("wagerId");
+        } else {
+            betId = betResultJson.getJSONObject("data").getJSONObject("serverresponse").getStr("ticket_id");
+        }
+
+        if (StringUtils.isNotBlank(betId)) {
+            if (isA) {
+                sweepwaterDTO.setBetIdA(betId);
+                sweepwaterDTO.setBetAccountA(account);
+                sweepwaterDTO.setBetAccountIdA(accountId);
+            } else {
+                sweepwaterDTO.setBetIdB(betId);
+                sweepwaterDTO.setBetAccountB(account);
+                sweepwaterDTO.setBetAccountIdB(accountId);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 获取盘口未结投注单进行保存
+     * @param username
+     */
+    public void unsettledBet(String username) {
+        // 计时开始
+        TimeInterval timerTotal = DateUtil.timer();
+
+        // 1. 获取当天所有投注记录
+        List<SweepwaterBetDTO> bets = getBets(username, null, null);
+        if (CollUtil.isEmpty(bets)) {
+            log.info("没有投注记录，直接返回");
+            return;
+        }
+
+        // 2. 根据投注条数和 CPU 动态构造线程池
+        int cpuCoreCount  = Math.min(Runtime.getRuntime().availableProcessors() * 4, 100);
+        int corePoolSize  = Math.min(bets.size(), cpuCoreCount);
+        int maxPoolSize   = Math.max(bets.size(), cpuCoreCount);
+        ExecutorService betExecutor = new ThreadPoolExecutor(
+                corePoolSize, maxPoolSize,
+                60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(1000),
+                new ThreadFactoryBuilder().setNameFormat("unsettled-task-%d").build(),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+
+        // 并发安全地存放各网站的未结注单列表 key是：网站ID_账户ID
+        Map<String, JSONArray> unsettleds = new ConcurrentHashMap<>();
+        // 3. 为每条 bet 并发创建任务，同时发 A、B 两个网站请求
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+        for (SweepwaterBetDTO bet : bets) {
+            String keyA = bet.getWebsiteIdA() + "_" + bet.getBetAccountIdA();
+            String keyB = bet.getWebsiteIdB() + "_" + bet.getBetAccountIdB();
+            // 网站A
+            if (!StringUtils.isBlank(bet.getBetAccountIdA())) {
+                futures.add(CompletableFuture.runAsync(() -> {
+                    unsettleds.computeIfAbsent(keyA, key -> {
+                        Object unsettledA = handicapApi.unsettled(username, bet.getWebsiteIdA(), bet.getBetAccountIdA());
+                        if (unsettledA != null) {
+                            JSONArray jsonArray = JSONUtil.parseArray(unsettledA);
+                            log.info("获取到网站A:{} 账户:{} 未结注单 {} 条", bet.getWebsiteIdA(), bet.getBetAccountIdA(), jsonArray.size());
+                            return jsonArray;
+                        }
+                        return new JSONArray(); // 注意：防止 null，返回空的
+                    });
+                }, betExecutor));
+            }
+
+            // 网站B
+            if (!StringUtils.isBlank(bet.getBetAccountIdB())) {
+                futures.add(CompletableFuture.runAsync(() -> {
+                    unsettleds.computeIfAbsent(keyB, key -> {
+                        Object unsettledB = handicapApi.unsettled(username, bet.getWebsiteIdB(), bet.getBetAccountIdB());
+                        if (unsettledB != null) {
+                            JSONArray jsonArray = JSONUtil.parseArray(unsettledB);
+                            log.info("获取到网站B:{} 账户:{} 未结注单 {} 条", bet.getWebsiteIdB(), bet.getBetAccountIdB(), jsonArray.size());
+                            return jsonArray;
+                        }
+                        return new JSONArray();
+                    });
+                }, betExecutor));
+            }
+        }
+
+        // 等待所有并发任务完成
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        // 优雅关闭线程池
+        PriorityTaskExecutor.shutdownExecutor(betExecutor);
+
+        if (unsettleds.isEmpty()) {
+            log.info("未获取到任何未结注单，退出");
+            return;
+        }
+
+        // 4. 同步遍历 bets，匹配未结注单并批量写回 Redis
+        RBatch batch = businessPlatformRedissonClient.createBatch();
+        for (SweepwaterBetDTO bet : bets) {
+            boolean updated = false;
+            JSONArray arrA = unsettleds.get(bet.getWebsiteIdA() + "_" + bet.getBetAccountIdA());
+            if (arrA != null) {
+                for (Object o : arrA) {
+                    JSONObject j = JSONUtil.parseObj(o);
+                    if (bet.getBetIdA().equals(j.getStr("betId"))) {
+                        bet.setBetInfoA(j);
+                        updated = true;
+                        break;
+                    }
+                }
+            }
+            JSONArray arrB = unsettleds.get(bet.getWebsiteIdB() + "_" + bet.getBetAccountIdB());
+            if (arrB != null) {
+                for (Object o : arrB) {
+                    JSONObject j = JSONUtil.parseObj(o);
+                    if (bet.getBetIdB().equals(j.getStr("betId"))) {
+                        bet.setBetInfoB(j);
+                        updated = true;
+                        break;
+                    }
+                }
+            }
+            if (updated) {
+                String key = KeyUtil.genKey(
+                        RedisConstants.PLATFORM_BET_PREFIX,
+                        username,
+                        LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
+                        bet.getId()
+                );
+                batch.getBucket(key).setAsync(JSONUtil.toJsonStr(bet));
+            }
+        }
+        // 一次性执行所有 Redis 写入
+        batch.execute();
+
+        log.info("获取未结注单结束，总耗时 {} ms", timerTotal.interval());
+    }
+
+}

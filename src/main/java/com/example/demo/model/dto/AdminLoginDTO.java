@@ -22,4 +22,5 @@ public class AdminLoginDTO {
     private Integer stopBet = 0;
     private Integer simulateBet = 0;
     private String group;
+    private Integer platform;           // 平台 1对冲 2跟投 3足球
 }

@@ -72,4 +72,14 @@ public class RedisConstants {
      * 扫水列表 前缀
      */
     public static final String SWEEPWATER_PREFIX = "platform:sweepwater";
+
+    /**
+     * 投注列表 前缀
+     */
+    public static final String PLATFORM_BET_PREFIX = "platform:bet";
+
+    /**
+     * 投注次数限制 前缀
+     */
+    public static final String PLATFORM_BET_LIMIT_PREFIX = "platform:bet:limit";
 }

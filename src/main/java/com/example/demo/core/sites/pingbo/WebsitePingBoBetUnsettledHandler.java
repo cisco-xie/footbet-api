@@ -95,10 +95,14 @@ public class WebsitePingBoBetUnsettledHandler implements ApiHandler {
         responseJson.forEach(json -> {
             JSONArray jsonArray = (JSONArray) json;
             JSONObject jsonObject = new JSONObject();
+            jsonObject.putOpt("betId", jsonArray.getStr(4));
             jsonObject.putOpt("product", "体育博彩");
-            jsonObject.putOpt("detail", jsonArray.getStr(4)+" 足球 "+jsonArray.getStr(8));
-            jsonObject.putOpt("team", jsonArray.getStr(22)+jsonArray.getStr(6)+jsonArray.getStr(22));
-            jsonObject.putOpt("odds", jsonArray.getStr(10));
+            jsonObject.putOpt("league", jsonArray.getStr(22));
+            jsonObject.putOpt("team", jsonArray.getStr(6));
+            jsonObject.putOpt("odds", jsonArray.getStr(16) + " " + jsonArray.getStr(18) + " @ " + jsonArray.getStr(10));
+            // jsonObject.putOpt("detail", jsonArray.getStr(4)+" 足球 "+jsonArray.getStr(8));
+            // jsonObject.putOpt("team", jsonArray.getStr(22)+jsonArray.getStr(6)+jsonArray.getStr(16));
+            // jsonObject.putOpt("odds", jsonArray.getStr(10));
             jsonObject.putOpt("amount", df.format(jsonArray.getBigDecimal(36)));
             jsonObject.putOpt("win", df.format(jsonArray.getBigDecimal(35)));
             jsonObject.putOpt("status", "OPEN".equals(jsonArray.getStr(12)) ? "进行中" : "已结算");
