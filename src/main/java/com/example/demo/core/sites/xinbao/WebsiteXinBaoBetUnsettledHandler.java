@@ -9,6 +9,7 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.common.constants.Constants;
 import com.example.demo.core.factory.ApiHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -35,9 +36,6 @@ public class WebsiteXinBaoBetUnsettledHandler implements ApiHandler {
         this.apiUrlService = apiUrlService;
     }
 
-    // 版本
-    private static final String VER = "2025-01-03-removeBanner_69";
-
     /**
      * 构建请求体
      * @param params 请求参数
@@ -53,7 +51,7 @@ public class WebsiteXinBaoBetUnsettledHandler implements ApiHandler {
         // 构造请求体
         String requestBody = String.format("p=get_today_wagers&uid=%s&ver=%s&langx=zh-cn&LS=g&selGtype=ALL&chk_cw=N&ts=%s&format=json",
                 params.getStr("uid"),
-                VER,
+                Constants.VER,
                 System.currentTimeMillis()
         );
         return new HttpEntity<>(requestBody, headers);
@@ -121,7 +119,7 @@ public class WebsiteXinBaoBetUnsettledHandler implements ApiHandler {
 
         // 构造请求体
         String queryParams = String.format("ver=%s",
-                VER
+                Constants.VER
         );
 
         // 拼接完整的 URL

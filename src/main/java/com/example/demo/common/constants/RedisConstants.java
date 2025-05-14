@@ -82,4 +82,8 @@ public class RedisConstants {
      * 投注次数限制 前缀
      */
     public static final String PLATFORM_BET_LIMIT_PREFIX = "platform:bet:limit";
+    /**
+     * 投注间隔限制 前缀
+     */
+    public static final String PLATFORM_BET_INTERVAL_PREFIX = "platform:bet:interval";
 }

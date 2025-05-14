@@ -6,6 +6,7 @@ import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONObject;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.common.constants.Constants;
 import com.example.demo.core.factory.ApiHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -30,9 +31,6 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         this.apiUrlService = apiUrlService;
     }
 
-    // 版本
-    private static final String VER = "2025-01-03-removeBanner_69";
-
     /**
      * 构建请求体
      * @param params 请求参数
@@ -48,7 +46,7 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         // 构造请求体
         String requestBody = String.format("p=get_member_data&uid=%s&ver=%s&langx=zh-cn&change=credit",
                 params.getStr("uid"),
-                VER
+                Constants.VER
         );
         return new HttpEntity<>(requestBody, headers);
     }
@@ -71,7 +69,7 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         // 解析响应
         Document docResult = XmlUtil.readXML(response.body());
         JSONObject responseJson = new JSONObject(response.body());
-        responseJson.putOpt("betCredit", XmlUtil.getByXPath("//serverrequest/maxcredit", docResult, XPathConstants.STRING));
+        responseJson.putOpt("betCredit", XmlUtil.getByXPath("//serverresponse/maxcredit", docResult, XPathConstants.STRING));
         responseJson.putOpt("msg", "获取账户额度成功");
         return responseJson;
     }
@@ -93,7 +91,7 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
 
         // 构造请求体
         String queryParams = String.format("ver=%s",
-                VER
+                Constants.VER
         );
 
         // 拼接完整的 URL

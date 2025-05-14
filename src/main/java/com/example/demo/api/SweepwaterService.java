@@ -227,10 +227,8 @@ public class SweepwaterService {
                             continue;
                         }
 
-                        String eventIdA = StringUtils.isBlank(ecidA) ? events.getIdA() : ecidA;
-                        String eventIdB = StringUtils.isBlank(ecidB) ? events.getIdB() : ecidB;
                         // 调用aggregateEventOdds进行合并
-                        List<SweepwaterDTO> results = aggregateEventOdds(oddsScanDTO, eventAJson, eventBJson, events.getNameA(), events.getNameB(), websiteIdA, websiteIdB, bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(), eventIdA, eventIdB);
+                        List<SweepwaterDTO> results = aggregateEventOdds(oddsScanDTO, eventAJson, eventBJson, events.getNameA(), events.getNameB(), websiteIdA, websiteIdB, bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(), events.getIdA(), events.getIdB());
                         if (!results.isEmpty()) {
                             // 将比对结果添加到redis中
                             String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);

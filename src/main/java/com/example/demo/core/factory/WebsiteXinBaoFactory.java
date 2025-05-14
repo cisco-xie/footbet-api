@@ -2,6 +2,7 @@ package com.example.demo.core.factory;
 
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.core.sites.pingbo.WebsitePingBoBetUnsettledHandler;
 import com.example.demo.core.sites.pingbo.WebsitePingBoEventsHandler;
 import com.example.demo.core.sites.pingbo.WebsitePingBoEventsOddsHandler;
@@ -24,7 +25,7 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
 
     @Override
     public boolean supports(String siteId) {
-        return "1877702689064243200".equalsIgnoreCase(siteId);
+        return WebsiteType.XINBAO.getId().equalsIgnoreCase(siteId);
     }
 
     @Override

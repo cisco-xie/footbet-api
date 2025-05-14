@@ -4,6 +4,7 @@ import cn.hutool.json.JSONObject;
 import com.example.demo.api.ConfigAccountService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.enmu.SystemError;
+import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
@@ -174,11 +175,11 @@ public class ProxyController extends BaseController {
         WebDriver driver = webDriver; // 从配置中获取共享实例
 
         // 根据 websiteId 判断执行不同的方法
-        if ("1874805533324103680".equals(websiteId)) {
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
             return Result.success(proxySeleniumForWebsitePingBo(admin, websiteId, accountId, baseUrl, driver));
-        } else if ("1877702689064243200".equals(websiteId)) {
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             return Result.success(proxySeleniumForWebsiteXinBao(admin, websiteId, accountId, baseUrl, driver));
-        } else if ("1874804932787851264".equals(websiteId)) {
+        } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             return Result.success(proxySeleniumForWebsiteZhiBo(admin, websiteId, accountId, baseUrl, driver));
         } else {
             throw new RuntimeException("未知的网站");

@@ -9,6 +9,7 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.common.constants.Constants;
 import com.example.demo.core.factory.ApiHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -34,9 +35,6 @@ public class WebsiteXinBaoStatementHandler implements ApiHandler {
         this.websiteService = websiteService;
         this.apiUrlService = apiUrlService;
     }
-
-    // 版本
-    private static final String VER = "2025-01-03-removeBanner_69";
 
     /**
      * 构建请求体
@@ -104,7 +102,7 @@ public class WebsiteXinBaoStatementHandler implements ApiHandler {
 
         // 构造请求体
         String queryParams = String.format("ver=%s",
-                VER
+                Constants.VER
         );
 
         // 拼接完整的 URL

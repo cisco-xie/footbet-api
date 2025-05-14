@@ -8,6 +8,7 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.common.constants.Constants;
 import com.example.demo.core.factory.ApiHandler;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,9 +35,6 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
         this.apiUrlService = apiUrlService;
     }
 
-    // 版本
-    private static final String VER = "2025-02-14-rmBanner_76";
-
     /**
      * 构建请求体
      * @param params 请求参数
@@ -55,7 +53,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
         // 构造请求体
         String requestBody = String.format("p=get_game_more&uid=%s&ver=%s&langx=zh-cn&gtype=ft&showtype=%s&ltype=3&isRB=Y&lid=%s&specialClick=&mode=NORMAL&filter=Main&ecid=%s&ts=%s",
                 params.getStr("uid"),
-                VER,
+                Constants.VER,
                 showType,
                 params.getStr("lid"),
                 params.getStr("ecid"),
@@ -337,7 +335,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
 
         // 构造请求体
         String queryParams = String.format("ver=%s",
-                VER
+                Constants.VER
         );
 
         // 拼接完整的 URL

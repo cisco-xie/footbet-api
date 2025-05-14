@@ -14,6 +14,8 @@ import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.model.dto.bet.SweepwaterBetDTO;
+import com.example.demo.model.dto.settings.BetAmountDTO;
+import com.example.demo.model.dto.settings.IntervalDTO;
 import com.example.demo.model.dto.settings.LimitDTO;
 import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -23,7 +25,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.*;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
@@ -45,6 +49,8 @@ public class BetService {
     private SweepwaterService sweepwaterService;
     @Resource
     private SettingsBetService settingsBetService;
+    @Resource
+    private SettingsService settingsService;
 
     /**
      * 获取投注记录
@@ -222,6 +228,8 @@ public class BetService {
             return;
         }
         LimitDTO limitDTO = settingsBetService.getLimit(username);
+        IntervalDTO intervalDTO = settingsBetService.getInterval(username);
+        BetAmountDTO amountDTO = settingsService.getBetAmout(username);
         // CPU核数*4或者最大100线程
         int cpuCoreCount = Math.min(Runtime.getRuntime().availableProcessors() * 4, 100);
         // 核心线程数就是内部BindLeagueVO数量，最大线程数取个合理值
@@ -250,53 +258,36 @@ public class BetService {
                 try {
                     boolean betSuc = false;
 
-                    String limitKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, sweepwaterBetDTO.getEventIdA());
-                    RAtomicLong counterA = businessPlatformRedissonClient.getAtomicLong(limitKeyA);
-                    // 设置初始值 + 过期时间（只在第一次）
-                    if (!counterA.isExists()) {
-                        counterA.set(0);
-                        counterA.expire(Duration.ofHours(24));
-                    }
 
-                    if (counterA.get() >= limitDTO.getBetLimitGame()) {
-                        log.info("用户 {} 的投注已达上限，当前次数={}", username,  counterA.get());
-                    } else {
-                        // 投A
-                        JSONObject paramsA = buildBetParams(sweepwaterBetDTO, true);
-                        Object betResultA = handicapApi.bet(username, sweepwaterBetDTO.getWebsiteIdA(), paramsA);
-                        if (betResultA != null && parseBetSuccess(betResultA, sweepwaterBetDTO, true)) {
-                            counterA.incrementAndGet(); // 每次 +1
-                            betSuc = true;
-                            sweepwaterBetDTO.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN));
-                        }
-                    }
+                    // 尝试投注 A
+                    boolean betSucA = tryBet(username,
+                            sweepwaterBetDTO.getEventIdA(),
+                            sweepwaterBetDTO.getWebsiteIdA(),
+                            true, // isA
+                            sweepwaterBetDTO,
+                            limitDTO,
+                            intervalDTO,
+                            amountDTO
+                    );
 
-                    String limitKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, sweepwaterBetDTO.getEventIdB());
-                    RAtomicLong counterB = businessPlatformRedissonClient.getAtomicLong(limitKeyB);
-                    // 设置初始值 + 过期时间（只在第一次）
-                    if (!counterB.isExists()) {
-                        counterB.set(0);
-                        counterB.expire(Duration.ofHours(24));
-                    }
+                    // 尝试投注 B
+                    boolean betSucB = tryBet(username,
+                            sweepwaterBetDTO.getEventIdB(),
+                            sweepwaterBetDTO.getWebsiteIdB(),
+                            false, // isA
+                            sweepwaterBetDTO,
+                            limitDTO,
+                            intervalDTO,
+                            amountDTO
+                    );
 
-                    if (counterB.get() >= limitDTO.getBetLimitGame()) {
-                        log.info("用户 {} 的投注已达上限，当前次数={}", username,  counterA.get());
-                    } else {
-                        // 投B
-                        JSONObject paramsB = buildBetParams(sweepwaterBetDTO, false);
-                        Object betResultB = handicapApi.bet(username, sweepwaterBetDTO.getWebsiteIdB(), paramsB);
-                        if (betResultB != null && parseBetSuccess(betResultB, sweepwaterBetDTO, false)) {
-                            counterB.incrementAndGet(); // 每次 +1
-                            betSuc = true;
-                            sweepwaterBetDTO.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN));
-                        }
-                    }
+                    boolean betSuccess = betSucA || betSucB;
 
                     // 更新投注状态
                     sweepwaterService.setIsBet(username, sweepwaterBetDTO.getId());
 
                     // 投注成功后存Redis
-                    if (betSuc) {
+                    if (betSuccess) {
                         String key = KeyUtil.genKey(
                                 RedisConstants.PLATFORM_BET_PREFIX,
                                 username,
@@ -323,27 +314,93 @@ public class BetService {
     }
 
     /**
+     * 执行投注
+     * @param username
+     * @param eventId
+     * @param websiteId
+     * @param isA
+     * @param dto
+     * @param limitDTO
+     * @param intervalDTO
+     * @param amountDTO
+     * @return
+     */
+    private boolean tryBet(String username,
+                           String eventId,
+                           String websiteId,
+                           boolean isA,
+                           SweepwaterBetDTO dto,
+                           LimitDTO limitDTO,
+                           IntervalDTO intervalDTO,
+                           BetAmountDTO amountDTO) {
+        String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventId);
+        RAtomicLong counter = businessPlatformRedissonClient.getAtomicLong(limitKey);
+
+        // 设置初始值和过期时间（仅首次）
+        if (!counter.isExists()) {
+            counter.set(0);
+            counter.expire(Duration.ofHours(24));
+        }
+
+        long currentCount = counter.get();
+        if (currentCount >= limitDTO.getBetLimitGame()) {
+            log.info("用户 {} 的投注已达上限，eventId={}, 当前次数={}", username, eventId, currentCount);
+            return false;
+        }
+
+        // 校验投注间隔
+        String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, eventId);
+        Object lastBetTimeObj = businessPlatformRedissonClient.getBucket(intervalKey).get();
+        if (lastBetTimeObj != null) {
+            long lastBetTime = (Long) lastBetTimeObj;
+            if (System.currentTimeMillis() - lastBetTime < intervalDTO.getBetSuccessSec() * 1000L) {
+                log.info("用户 {} 投注间隔未到，eventId={}, 当前时间={}, 上次投注时间={}",
+                        username, eventId, LocalDateTime.now(), Instant.ofEpochMilli(lastBetTime));
+                return false;
+            }
+        }
+
+        // 构建投注参数并调用投注接口
+        JSONObject params = buildBetParams(dto, amountDTO.getAmount(), isA);
+        Object betResult = handicapApi.bet(username, websiteId, params);
+
+        if (betResult != null && parseBetSuccess(betResult, dto, isA)) {
+            counter.incrementAndGet();
+            // 设置投注时间记录
+            businessPlatformRedissonClient.getBucket(intervalKey).set(System.currentTimeMillis(), Duration.ofHours(24));
+            if (isA) {
+                dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN));
+            } else {
+                dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN));
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * 构建投注参数
      */
-    private JSONObject buildBetParams(SweepwaterBetDTO sweepwaterDTO, boolean isA) {
+    private JSONObject buildBetParams(SweepwaterBetDTO sweepwaterDTO, BigDecimal amount, boolean isA) {
         JSONObject params = new JSONObject();
         String websiteId = isA ? sweepwaterDTO.getWebsiteIdA() : sweepwaterDTO.getWebsiteIdB();
 
         if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("marketSelectionId", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
-            params.putOpt("stake", 110);
+            params.putOpt("stake", amount);
             params.putOpt("odds", isA ? sweepwaterDTO.getOddsA() : sweepwaterDTO.getOddsB());
             params.putOpt("decimalOdds", isA ? sweepwaterDTO.getDecimalOddsA() : sweepwaterDTO.getDecimalOddsB());
             params.putOpt("handicap", isA ? sweepwaterDTO.getHandicapA() : sweepwaterDTO.getHandicapB());
             params.putOpt("score", isA ? sweepwaterDTO.getScoreA() : sweepwaterDTO.getScoreB());
         } else if (WebsiteType.PINGBO.getId().equals(websiteId)) {
-            params.putOpt("stake", 150);
+            params.putOpt("stake", amount);
             params.putOpt("odds", isA ? sweepwaterDTO.getOddsA() : sweepwaterDTO.getOddsB());
             params.putOpt("oddsId", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
             params.putOpt("selectionId", isA ? sweepwaterDTO.getSelectionIdA() : sweepwaterDTO.getSelectionIdB());
         } else {
             params.putOpt("gid", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
-            params.putOpt("golds", 50);
+            params.putOpt("golds", amount);
             params.putOpt("oddFType", isA ? sweepwaterDTO.getStrongA() : sweepwaterDTO.getStrongB());
             params.putOpt("gtype", isA ? sweepwaterDTO.getGTypeA() : sweepwaterDTO.getGTypeB());
             params.putOpt("wtype", isA ? sweepwaterDTO.getWTypeA() : sweepwaterDTO.getWTypeB());

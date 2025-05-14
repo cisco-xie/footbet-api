@@ -9,6 +9,7 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.common.constants.Constants;
 import com.example.demo.core.factory.ApiHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -35,9 +36,6 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
         this.apiUrlService = apiUrlService;
     }
 
-    // 版本
-    private static final String VER = "2025-01-03-removeBanner_69";
-
     /**
      * 构建请求体
      * @param params 请求参数
@@ -50,15 +48,15 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
         headers.add("accept", "*/*");
         headers.add("content-type", "application/x-www-form-urlencoded");
 
-        String showType = "live";  // 滚球赛事
-//        String showType = "today";  // 今日赛事
+//        String showType = "live";  // 滚球赛事
+        String showType = "today";  // 今日赛事
 
-        String rType = "rb";  // 滚球赛事
-//        String rType = "r";  // 今日赛事
+//        String rType = "rb";  // 滚球赛事
+        String rType = "r";  // 今日赛事
         // 构造请求体
         String requestBody = String.format("p=get_game_list&uid=%s&ver=%s&langx=zh-cn&gtype=ft&showtype=%s&rtype=%s&ltype=3&cupFantasy=N&sorttype=L&isFantasy=N&ts=%s",
                 params.getStr("uid"),
-                VER,
+                Constants.VER,
                 showType,
                 rType,
                 System.currentTimeMillis()
@@ -98,6 +96,7 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
         originalJson.forEach(json -> {
             JSONObject gameJson = JSONUtil.parseObj(json.getValue());
             String lid = gameJson.getStr("LID");        // 联赛LID
+            String gid = gameJson.getStr("GID");        // 比赛队伍GID
             String ecid = gameJson.getStr("ECID");      // 联赛ECID
             String league = gameJson.getStr("LEAGUE");  // 联赛名称
 
@@ -116,10 +115,11 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
             JSONObject eventCJson = new JSONObject();
             JSONObject eventHJson = new JSONObject();
             // H是主队C是客队
-            eventHJson.putOpt("id", gameJson.getStr("GNUM_H"));
+            // eventHJson.putOpt("id", gameJson.getStr("GNUM_H"));
+            eventHJson.putOpt("id", gid);
             eventHJson.putOpt("name", gameJson.getStr("TEAM_H"));
-            eventHJson.putOpt("ecid", ecid);
-            eventCJson.putOpt("id", gameJson.getStr("GNUM_C"));
+            // eventHJson.putOpt("ecid", ecid);
+            eventCJson.putOpt("id", gid);
             eventCJson.putOpt("name", gameJson.getStr("TEAM_C"));
             eventCJson.putOpt("ecid", ecid);
 
@@ -154,7 +154,7 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
 
         // 构造请求体
         String queryParams = String.format("ver=%s",
-                VER
+                Constants.VER
         );
 
         // 拼接完整的 URL
