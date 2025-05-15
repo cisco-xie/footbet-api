@@ -57,7 +57,7 @@ public class AutoSweepwaterTask {
                     // 执行扫水
                     sweepwaterService.sweepwater(adminUser.getUsername());
                     // 执行下注
-                    betService.bet(adminUser.getUsername());
+                    // betService.bet(adminUser.getUsername());
                     // 获取盘口未结注单并加以保存
                     betService.unsettledBet(adminUser.getUsername());
                 }, executorAdminUserService);

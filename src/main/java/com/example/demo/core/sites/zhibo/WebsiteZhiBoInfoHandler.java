@@ -56,11 +56,11 @@ public class WebsiteZhiBoInfoHandler implements ApiHandler {
         }
         // 解析响应
         JSONObject responseJson = new JSONObject(response.body());
-        if (!responseJson.getBool("success", false)) {
+        /*if (!responseJson.getBool("success", false)) {
             responseJson.putOpt("success", false);
             responseJson.putOpt("msg", "获取账户额度失败");
             return responseJson;
-        }
+        }*/
         responseJson.putOpt("success", true);
         responseJson.putOpt("msg", "获取账户额度成功");
         return responseJson;

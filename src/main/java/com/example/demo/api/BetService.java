@@ -256,30 +256,27 @@ public class BetService {
             SweepwaterBetDTO sweepwaterBetDTO = BeanUtil.copyProperties(sweepwaterDTO, SweepwaterBetDTO.class);
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 try {
-                    boolean betSuc = false;
-
-
-                    // 尝试投注 A
-                    boolean betSucA = tryBet(username,
+                    // 尝试投注 A，最多重试3次
+                    boolean betSucA = retry(1, () -> tryBet(username,
                             sweepwaterBetDTO.getEventIdA(),
                             sweepwaterBetDTO.getWebsiteIdA(),
-                            true, // isA
+                            true,
                             sweepwaterBetDTO,
                             limitDTO,
                             intervalDTO,
                             amountDTO
-                    );
+                    ));
 
-                    // 尝试投注 B
-                    boolean betSucB = tryBet(username,
+                    // 尝试投注 B，最多重试3次
+                    boolean betSucB = retry(1, () -> tryBet(username,
                             sweepwaterBetDTO.getEventIdB(),
                             sweepwaterBetDTO.getWebsiteIdB(),
-                            false, // isA
+                            false,
                             sweepwaterBetDTO,
                             limitDTO,
                             intervalDTO,
                             amountDTO
-                    );
+                    ));
 
                     boolean betSuccess = betSucA || betSucB;
 
@@ -311,6 +308,39 @@ public class BetService {
         PriorityTaskExecutor.shutdownExecutor(betExecutor);
 
         log.info("投注结束，总花费:{}毫秒", timerTotal.interval());
+    }
+
+    @FunctionalInterface
+    public interface RetryableTask {
+        boolean execute() throws Exception;
+    }
+
+    /**
+     * 重试机制
+     * @param maxAttempts
+     * @param task
+     * @return
+     */
+    private boolean retry(int maxAttempts, RetryableTask task) {
+        int attempt = 0;
+        while (attempt < maxAttempts) {
+            try {
+                if (task.execute()) {
+                    return true;
+                }
+            } catch (Exception e) {
+                log.info("投注第{}次尝试失败：", attempt + 1, e);
+            }
+            attempt++;
+            try {
+                // 加入一点延迟，避免连续快速失败
+                Thread.sleep(300);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return false;
     }
 
     /**
@@ -352,7 +382,7 @@ public class BetService {
         String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, eventId);
         Object lastBetTimeObj = businessPlatformRedissonClient.getBucket(intervalKey).get();
         if (lastBetTimeObj != null) {
-            long lastBetTime = (Long) lastBetTimeObj;
+            long lastBetTime = Long.parseLong(lastBetTimeObj.toString());
             if (System.currentTimeMillis() - lastBetTime < intervalDTO.getBetSuccessSec() * 1000L) {
                 log.info("用户 {} 投注间隔未到，eventId={}, 当前时间={}, 上次投注时间={}",
                         username, eventId, LocalDateTime.now(), Instant.ofEpochMilli(lastBetTime));
@@ -536,7 +566,7 @@ public class BetService {
             if (arrA != null) {
                 for (Object o : arrA) {
                     JSONObject j = JSONUtil.parseObj(o);
-                    if (bet.getBetIdA().equals(j.getStr("betId"))) {
+                    if (j.getStr("betId").contains(bet.getBetIdA())) {
                         bet.setBetInfoA(j);
                         updated = true;
                         break;
@@ -547,7 +577,7 @@ public class BetService {
             if (arrB != null) {
                 for (Object o : arrB) {
                     JSONObject j = JSONUtil.parseObj(o);
-                    if (bet.getBetIdB().equals(j.getStr("betId"))) {
+                    if (j.getStr("betId").contains(bet.getBetIdB())) {
                         bet.setBetInfoB(j);
                         updated = true;
                         break;

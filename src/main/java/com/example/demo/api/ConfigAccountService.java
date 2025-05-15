@@ -178,4 +178,30 @@ public class ConfigAccountService {
             return JSONUtil.parse(account).toString();
         });
     }
+
+    /**
+     * 退出指定账户-即清空token
+     * @param username
+     * @param websiteId
+     * @param accountId
+     */
+    public void logoutByWebsiteAndAccountId(String username, String websiteId, String accountId) {
+
+        // 生成 Redis 中的 key
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
+
+        // 获取 Redis 中的列表
+        List<String> accountList = businessPlatformRedissonClient.getList(key);
+
+        // 将所有账户token置空
+        accountList.replaceAll(json -> {
+            ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
+            if (account.getId().equals(accountId)) {
+                account.setIsTokenValid(0);
+                account.setToken(new JSONObject());
+            }
+            return JSONUtil.parse(account).toString();
+        });
+    }
+
 }

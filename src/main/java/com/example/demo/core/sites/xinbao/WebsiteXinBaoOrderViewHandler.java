@@ -1,32 +1,32 @@
 package com.example.demo.core.sites.xinbao;
 
-import cn.hutool.core.util.XmlUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONObject;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.constants.Constants;
+import com.example.demo.common.enmu.XinBaoOddsFormatType;
 import com.example.demo.core.factory.ApiHandler;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
-import org.w3c.dom.Document;
-
-import javax.xml.xpath.XPathConstants;
 
 /**
- * 智博网站 - 账户额度 API具体实现
+ * 新二网站 - 投注预览 查看 API具体实现
  */
+@Slf4j
 @Component
-public class WebsiteXinBaoInfoHandler implements ApiHandler {
+public class WebsiteXinBaoOrderViewHandler implements ApiHandler {
 
     private final WebsiteService websiteService;
     private final ApiUrlService apiUrlService;
 
     @Autowired
-    public WebsiteXinBaoInfoHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
+    public WebsiteXinBaoOrderViewHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
         this.websiteService = websiteService;
         this.apiUrlService = apiUrlService;
     }
@@ -42,11 +42,30 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         HttpHeaders headers = new HttpHeaders();
         headers.add("accept", "*/*");
         headers.add("content-type", "application/x-www-form-urlencoded");
+        headers.add("Accept-Language", "zh-CN,zh;q=0.9,pt-BR;q=0.8,pt;q=0.7");
+        headers.add("Connection", "keep-alive");
+        headers.add("Sec-Fetch-Dest", "empty");
+        headers.add("Sec-Fetch-Mode", "cors");
+        headers.add("Sec-Fetch-Site", "same-origin");
+        headers.add("sec-ch-ua", Constants.SEC_CH_UA);
+        headers.add("User-Agent", Constants.USER_AGENT);
+        headers.add("sec-ch-ua-mobile", "?0");
+        headers.add("sec-ch-ua-platform", "\"Windows\"");
 
+        // String oddFType = params.getStr("oddFType");
+        String gid = params.getStr("gid");
+        String gtype = params.getStr("gtype");
+        String wtype = params.getStr("wtype");
+        String choseTeam = params.getStr("choseTeam");
         // 构造请求体
-        String requestBody = String.format("p=get_member_data&uid=%s&ver=%s&langx=zh-cn&change=credit",
+        String requestBody = String.format("p=FT_order_view&uid=%s&ver=%s&langx=zh-cn&odd_f_type=%s&gid=%s&gtype=%s&wtype=%s&chose_team=%s",
                 params.getStr("uid"),
-                Constants.VER
+                Constants.VER,
+                XinBaoOddsFormatType.RM.getCurrencyCode(),
+                gid,
+                gtype,
+                wtype,
+                choseTeam
         );
         return new HttpEntity<>(requestBody, headers);
     }
@@ -67,22 +86,22 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         }
 
         // 解析响应
-        Document docResult = XmlUtil.readXML(response.body());
         JSONObject responseJson = new JSONObject(response.body());
-
-        if (responseJson.getJSONObject("serverresponse").getStr("code").equals("error")) {
+        log.info("[新2][投注预览]{}", responseJson);
+        JSONObject serverresponse = responseJson.getJSONObject("serverresponse");
+        if (!"501".equals(serverresponse.getStr("code"))) {
             responseJson.putOpt("success", false);
-            responseJson.putOpt("msg", "账户登录失效");
+            responseJson.putOpt("msg", "投注预览失败:"+serverresponse.getStr("msg"));
             return responseJson;
         }
         responseJson.putOpt("success", true);
-        responseJson.putOpt("betCredit", XmlUtil.getByXPath("//serverresponse/maxcredit", docResult, XPathConstants.STRING));
-        responseJson.putOpt("msg", "获取账户额度成功");
+        responseJson.putOpt("data", responseJson);
+        responseJson.putOpt("msg", "投注预览成功");
         return responseJson;
     }
 
     /**
-     * 发送账户额度请求并返回结果
+     * 发送投注请求并返回结果
      * @param params 请求参数
      * @return 结果
      */
@@ -92,7 +111,7 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
-        String apiUrl = apiUrlService.getApiUrl(siteId, "info");
+        String apiUrl = apiUrlService.getApiUrl(siteId, "bet");
         // 构建请求
         HttpEntity<String> request = buildRequest(params);
 
@@ -104,6 +123,10 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         // 拼接完整的 URL
         String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, queryParams);
 
+        // 打印 cURL 格式请求
+        String curlCommand = buildCurlCommand(fullUrl, request);
+        log.info("即将发送投注预览请求:\n{}", curlCommand);
+
         // 发送请求
         HttpResponse response = HttpRequest.post(fullUrl)
                 .addHeaders(request.getHeaders().toSingleValueMap())
@@ -113,4 +136,33 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         // 解析响应并返回
         return parseResponse(response);
     }
+
+    /**
+     * 构建 cURL 命令
+     * @param url
+     * @param request
+     * @return
+     */
+    private String buildCurlCommand(String url, HttpEntity<String> request) {
+        StringBuilder curl = new StringBuilder("curl -X POST");
+
+        // 添加 headers
+        request.getHeaders().forEach((key, values) -> {
+            for (String value : values) {
+                curl.append(" -H '").append(key).append(": ").append(value).append("'");
+            }
+        });
+
+        // 添加 body
+        String body = request.getBody();
+        if (StringUtils.isNotBlank(body)) {
+            curl.append(" -d '").append(body.replace("'", "\\'")).append("'");
+        }
+
+        // 添加 URL
+        curl.append(" '").append(url).append("'");
+
+        return curl.toString();
+    }
+
 }

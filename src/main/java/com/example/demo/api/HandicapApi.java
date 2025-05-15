@@ -138,7 +138,7 @@ public class HandicapApi {
     }
 
     // 运行登录工厂
-    private void processAccountLogin(ConfigAccountVO account, String username, String websiteId) {
+    public void processAccountLogin(ConfigAccountVO account, String username, String websiteId) {
         TimeInterval timer = DateUtil.timer();
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
         ApiHandler apiHandler = factory.getLoginHandler();
@@ -254,17 +254,17 @@ public class HandicapApi {
      * @param websiteId
      * @param account
      */
-    public void balanceByAccount(String username, String websiteId, ConfigAccountVO account) {
+    public Object balanceByAccount(String username, String websiteId, ConfigAccountVO account) {
         if (account.getIsTokenValid() == 0) {
             // 未登录直接跳过
-            return;
+            return null;
         }
         TimeInterval timer = DateUtil.timer();
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
 
         ApiHandler apiHandler = factory.getInfoHandler();
         if (apiHandler == null) {
-            return;
+            return null;
         }
         JSONObject params = new JSONObject();
         params.putOpt("adminUsername", username);
@@ -281,6 +281,7 @@ public class HandicapApi {
         account.setBetCredit(result.getBigDecimal("betCredit"));
         account.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
         accountService.saveAccount(username, websiteId, account);
+        return result;
     }
 
     /**
@@ -478,6 +479,56 @@ public class HandicapApi {
     }
 
     /**
+     * 投注前下单预览 - 目前只有新二网站需要
+     * @param username
+     * @param websiteId
+     * @param odds
+     * @return
+     */
+    public Object orderView(String username, String websiteId, JSONObject odds) {
+        List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
+        for (ConfigAccountVO account : accounts) {
+            if (account.getIsTokenValid() == 0) {
+                // 未登录直接跳过
+                continue;
+            }
+            WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+
+            ApiHandler apiHandler = factory.orderView();
+            if (apiHandler == null) {
+                continue;
+            }
+            JSONObject params = new JSONObject();
+            params.putOpt("adminUsername", username);
+            params.putOpt("websiteId", websiteId);
+            // 根据不同站点传入不同的参数
+            if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+                return null;
+            } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+                return null;
+            } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("serverresponse"));
+
+                params.putOpt("gid", odds.getStr("gid"));
+                params.putOpt("oddFType", odds.getStr("oddFType"));
+                params.putOpt("gtype", odds.getStr("gtype"));
+                params.putOpt("wtype", odds.getStr("wtype"));
+                params.putOpt("choseTeam", odds.getStr("choseTeam"));
+
+            }
+            JSONObject result = apiHandler.execute(params);
+
+            if (result.getBool("success")) {
+                // 保存记录投注账号id
+                result.putOpt("account", account.getAccount());
+                result.putOpt("accountId", account.getId());
+                return result;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 投注
      * @param username
      * @param websiteId
@@ -516,19 +567,21 @@ public class HandicapApi {
                 params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
-
-                params.putOpt("gid", odds.getStr("gid"));
-                params.putOpt("golds", odds.getStr("golds"));
-                params.putOpt("oddFType", odds.getStr("oddFType"));
-                params.putOpt("gtype", odds.getStr("gtype"));
-                params.putOpt("wtype", odds.getStr("wtype"));
-                params.putOpt("rtype", odds.getStr("rtype"));
-                params.putOpt("choseTeam", odds.getStr("choseTeam"));
-                params.putOpt("ioratio", odds.getStr("ioratio"));
-                params.putOpt("con", odds.getStr("con"));
-                params.putOpt("ratio", odds.getStr("ratio"));
-                params.putOpt("autoOdd", odds.getStr("autoOdd"));
-
+                Object orderView = orderView(username, websiteId, odds);
+                if (orderView != null) {
+                    JSONObject orderViewJson = JSONUtil.parseObj(orderView);
+                    params.putOpt("gid", odds.getStr("gid"));
+                    params.putOpt("golds", odds.getStr("golds"));
+                    params.putOpt("oddFType", odds.getStr("oddFType"));
+                    params.putOpt("gtype", odds.getStr("gtype"));
+                    params.putOpt("wtype", odds.getStr("wtype"));
+                    params.putOpt("rtype", odds.getStr("rtype"));
+                    params.putOpt("choseTeam", odds.getStr("choseTeam"));
+                    params.putOpt("ioratio", orderViewJson.getJSONObject("serverresponse").getStr("ioratio"));
+                    params.putOpt("con", orderViewJson.getJSONObject("serverresponse").getStr("con"));
+                    params.putOpt("ratio", orderViewJson.getJSONObject("serverresponse").getStr("ratio"));
+                    params.putOpt("autoOdd", odds.getStr("autoOdd"));
+                }
             }
             JSONObject result = apiHandler.execute(params);
 

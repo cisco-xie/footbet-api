@@ -20,6 +20,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RedissonClient;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -46,6 +47,10 @@ public class SweepwaterService {
 
     @Resource
     private SettingsService settingsService;
+
+    @Lazy
+    @Resource
+    private BetService betService;
 
     public void setIsBet(String username, String id) {
         String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
@@ -85,71 +90,6 @@ public class SweepwaterService {
         String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
         businessPlatformRedissonClient.getList(key).delete();
     }
-    /**
-     * 获取已绑定的球队字典进行扫水比对
-     * @param username
-     * @return
-     */
-    public void sweepwater2(String username) {
-        TimeInterval timerTotal = DateUtil.timer();
-        List<List<BindLeagueVO>> bindLeagueVOList = bindDictService.getAllBindDict(username);
-        OddsScanDTO oddsScanDTO = settingsService.getOddsScan(username);
-
-        // 用来记录已经获取过的ecid，避免重复调用
-        Map<String, JSONArray> fetchedEcidSetA = new HashMap<>();
-        Map<String, JSONArray> fetchedEcidSetB = new HashMap<>();
-
-        // 遍历bindLeagueVOList
-        for (List<BindLeagueVO> list : bindLeagueVOList) {
-            for (BindLeagueVO bindLeagueVO : list) {
-                if (StringUtils.isBlank(bindLeagueVO.getLeagueIdA()) || StringUtils.isBlank(bindLeagueVO.getLeagueIdB())) {
-                    continue;
-                }
-
-                String websiteIdA = bindLeagueVO.getWebsiteIdA();
-                String websiteIdB = bindLeagueVO.getWebsiteIdB();
-                JSONArray eventsA = new JSONArray();
-                JSONArray eventsB = new JSONArray();
-
-                // 遍历bindLeagueVO中的每个事件
-                for (BindTeamVO events : bindLeagueVO.getEvents()) {
-                    String ecidA = events.getEcidA();  // 获取ecidA
-                    String ecidB = events.getEcidB();  // 获取ecidB
-
-                    // 处理ecidA
-                    eventsA = getEventsForEcid(username, fetchedEcidSetA, websiteIdA, bindLeagueVO.getLeagueIdA(), ecidA);
-
-                    // 处理ecidB
-                    eventsB = getEventsForEcid(username, fetchedEcidSetB, websiteIdB, bindLeagueVO.getLeagueIdB(), ecidB);
-
-                    if (eventsA == null || eventsB == null) {
-                        continue;
-                    }
-
-                    // 查找对应的eventAJson和eventBJson
-                    JSONObject eventAJson = findEventByLeagueId(eventsA, bindLeagueVO.getLeagueIdA());
-                    JSONObject eventBJson = findEventByLeagueId(eventsB, bindLeagueVO.getLeagueIdB());
-
-                    if (eventAJson == null || eventBJson == null) {
-                        continue;
-                    }
-
-                    String eventIdA = StringUtils.isBlank(ecidA) ? events.getIdA() : ecidA;
-                    String eventIdB = StringUtils.isBlank(ecidB) ? events.getIdB() : ecidB;
-                    // 调用aggregateEventOdds进行合并
-                    List<SweepwaterDTO> results = aggregateEventOdds(oddsScanDTO, eventAJson, eventBJson, events.getNameA(), events.getNameB(), websiteIdA, websiteIdB, bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(), eventIdA, eventIdB);
-                    if (!results.isEmpty()) {
-                        // 将比对结果添加到redis中
-                        String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
-                        results.forEach(result -> {
-                            businessPlatformRedissonClient.getList(key).add(JSONUtil.toJsonStr(result));
-                        });
-                    }
-                }
-            }
-        }
-        log.info("扫水结束,总花费:{}毫秒", timerTotal.interval());
-    }
 
     /**
      * 获取已绑定的球队字典进行扫水比对
@@ -158,42 +98,53 @@ public class SweepwaterService {
      */
     public void sweepwater(String username) {
         TimeInterval timerTotal = DateUtil.timer();
+
         List<List<BindLeagueVO>> bindLeagueVOList = bindDictService.getAllBindDict(username);
         if (CollUtil.isEmpty(bindLeagueVOList)) {
+            log.warn("无球队绑定数据，平台用户:{}", username);
             return;
         }
-        OddsScanDTO oddsScanDTO = settingsService.getOddsScan(username);
 
-        // 用来记录已经获取过的ecid，避免重复调用
+        OddsScanDTO oddsScanDTO = settingsService.getOddsScan(username);
+        // 用于记录已获取的 ecid 对应事件，避免重复请求远程 API
         Map<String, JSONArray> fetchedEcidSetA = new ConcurrentHashMap<>();
         Map<String, JSONArray> fetchedEcidSetB = new ConcurrentHashMap<>();
-        // 计算总的 BindLeagueVO 数量
+
+        // 统计所有 BindLeagueVO 数量
         int totalBindLeagueCount = bindLeagueVOList.stream()
-                .flatMap(List::stream) // 展开内部List<BindLeagueVO>
-                .filter(vo -> StringUtils.isNotBlank(vo.getLeagueIdA()) && StringUtils.isNotBlank(vo.getLeagueIdB())) // 只保留有效的
-                .mapToInt(vo -> 1) // 每个有效的算1个
+                .flatMap(List::stream)
+                .filter(vo -> StringUtils.isNotBlank(vo.getLeagueIdA()) && StringUtils.isNotBlank(vo.getLeagueIdB()))
+                .mapToInt(vo -> 1)
                 .sum();
-        // CPU核数*4或者最大100线程
+
         int cpuCoreCount = Math.min(Runtime.getRuntime().availableProcessors() * 4, 100);
-        // 核心线程数就是内部BindLeagueVO数量，最大线程数取个合理值
         int corePoolSize = Math.min(totalBindLeagueCount, cpuCoreCount);
         int maxPoolSize = Math.max(totalBindLeagueCount, cpuCoreCount);
 
-        log.info("核心线程数:{},最大线程数:{}", corePoolSize, maxPoolSize);
-        // 最外层球队绑定线程池
+        log.info("sweepwater 开始执行，平台用户:{}，核心线程数:{}，最大线程数:{}", username, corePoolSize, maxPoolSize);
+
+        // 联赛级线程池（外层）
         ExecutorService executorLeagueService = new ThreadPoolExecutor(
-                corePoolSize, // 核心线程数
-                maxPoolSize, // 最大线程数
-                0L, TimeUnit.SECONDS, // 空闲线程超时时间
-                new LinkedBlockingQueue<>(1000), // 有界队列，防止任务积压
+                corePoolSize, maxPoolSize,
+                0L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(1000),
                 new ThreadFactoryBuilder().setNameFormat("league-pool-%d").build(),
-                new ThreadPoolExecutor.AbortPolicy() // 拒绝策略：抛出异常，便于发现问题
+                new ThreadPoolExecutor.AbortPolicy()
+        );
+
+        // 事件级线程池（内层）
+        ExecutorService eventExecutor = new ThreadPoolExecutor(
+                20, 40,
+                60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(500),
+                new ThreadFactoryBuilder().setNameFormat("event-pool-%d").build(),
+                new ThreadPoolExecutor.CallerRunsPolicy()
         );
 
         List<CompletableFuture<Void>> leagueFutures = new ArrayList<>();
-        // 遍历bindLeagueVOList
-        for (List<BindLeagueVO> list : bindLeagueVOList) {
-            for (BindLeagueVO bindLeagueVO : list) {
+
+        for (List<BindLeagueVO> leagueGroup : bindLeagueVOList) {
+            for (BindLeagueVO bindLeagueVO : leagueGroup) {
                 leagueFutures.add(CompletableFuture.runAsync(() -> {
                     if (StringUtils.isBlank(bindLeagueVO.getLeagueIdA()) || StringUtils.isBlank(bindLeagueVO.getLeagueIdB())) {
                         return;
@@ -201,55 +152,60 @@ public class SweepwaterService {
 
                     String websiteIdA = bindLeagueVO.getWebsiteIdA();
                     String websiteIdB = bindLeagueVO.getWebsiteIdB();
-                    JSONArray eventsA = new JSONArray();
-                    JSONArray eventsB = new JSONArray();
 
-                    // 遍历bindLeagueVO中的每个事件
-                    for (BindTeamVO events : bindLeagueVO.getEvents()) {
-                        String ecidA = events.getEcidA();  // 获取ecidA
-                        String ecidB = events.getEcidB();  // 获取ecidB
+                    List<CompletableFuture<Void>> eventFutures = new ArrayList<>();
 
-                        // 处理ecidA
-                        eventsA = getEventsForEcid(username, fetchedEcidSetA, websiteIdA, bindLeagueVO.getLeagueIdA(), ecidA);
+                    for (BindTeamVO event : bindLeagueVO.getEvents()) {
+                        eventFutures.add(CompletableFuture.runAsync(() -> {
+                            try {
+                                String ecidA = event.getEcidA();
+                                String ecidB = event.getEcidB();
 
-                        // 处理ecidB
-                        eventsB = getEventsForEcid(username, fetchedEcidSetB, websiteIdB, bindLeagueVO.getLeagueIdB(), ecidB);
+                                JSONArray eventsA = getEventsForEcid(username, fetchedEcidSetA, websiteIdA, bindLeagueVO.getLeagueIdA(), ecidA);
+                                JSONArray eventsB = getEventsForEcid(username, fetchedEcidSetB, websiteIdB, bindLeagueVO.getLeagueIdB(), ecidB);
 
-                        if (eventsA == null || eventsB == null) {
-                            continue;
-                        }
+                                if (eventsA == null || eventsB == null) return;
 
-                        // 查找对应的eventAJson和eventBJson
-                        JSONObject eventAJson = findEventByLeagueId(eventsA, bindLeagueVO.getLeagueIdA());
-                        JSONObject eventBJson = findEventByLeagueId(eventsB, bindLeagueVO.getLeagueIdB());
+                                JSONObject eventAJson = findEventByLeagueId(eventsA, bindLeagueVO.getLeagueIdA());
+                                JSONObject eventBJson = findEventByLeagueId(eventsB, bindLeagueVO.getLeagueIdB());
 
-                        if (eventAJson == null || eventBJson == null) {
-                            continue;
-                        }
+                                if (eventAJson == null || eventBJson == null) return;
 
-                        // 调用aggregateEventOdds进行合并
-                        List<SweepwaterDTO> results = aggregateEventOdds(oddsScanDTO, eventAJson, eventBJson, events.getNameA(), events.getNameB(), websiteIdA, websiteIdB, bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(), events.getIdA(), events.getIdB());
-                        if (!results.isEmpty()) {
-                            // 将比对结果添加到redis中
-                            String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
-                            results.forEach(result -> {
-                                businessPlatformRedissonClient.getList(key).add(JSONUtil.toJsonStr(result));
-                            });
-                        }
+                                List<SweepwaterDTO> results = aggregateEventOdds(
+                                        username,
+                                        oddsScanDTO,
+                                        eventAJson, eventBJson,
+                                        event.getNameA(), event.getNameB(),
+                                        websiteIdA, websiteIdB,
+                                        bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(),
+                                        event.getIdA(), event.getIdB()
+                                );
+                            } catch (Exception ex) {
+                                log.error("扫水事件处理异常，平台用户:{}，联赛:{} - {}，事件:{} - {}", username,
+                                        bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(),
+                                        event.getNameA(), event.getNameB(), ex);
+                            }
+                        }, eventExecutor));
                     }
+
+                    // 等待当前联赛所有事件处理完
+                    CompletableFuture.allOf(eventFutures.toArray(new CompletableFuture[0])).join();
+
                 }, executorLeagueService));
             }
         }
-        // 等待所有计划任务完成
-        CompletableFuture<Void> allLeagues = CompletableFuture.allOf(leagueFutures.toArray(new CompletableFuture[0]));
+
+        // 等待所有联赛级任务执行完毕
         try {
-            allLeagues.get();
+            CompletableFuture.allOf(leagueFutures.toArray(new CompletableFuture[0])).get();
         } catch (Exception e) {
-            log.error("执行任务时发生异常 平台用户:{}", username, e);
+            log.error("扫水执行失败，平台用户:{}，异常信息:{}", username, e.getMessage(), e);
+        } finally {
+            PriorityTaskExecutor.shutdownExecutor(executorLeagueService);
+            PriorityTaskExecutor.shutdownExecutor(eventExecutor);
         }
-        // 执行完所有任务后关闭线程池
-        PriorityTaskExecutor.shutdownExecutor(executorLeagueService);
-        log.info("扫水结束,总花费:{}毫秒", timerTotal.interval());
+
+        log.info("扫水结束，平台用户:{}，耗时:{}毫秒", username, timerTotal.interval());
     }
 
     private JSONArray getEventsForEcid(String username, Map<String, JSONArray> fetchedEcidSet, String websiteId, String leagueId, String ecid) {
@@ -298,7 +254,7 @@ public class SweepwaterService {
         return null; // 如果没有找到，返回null
     }
 
-    public static List<SweepwaterDTO> aggregateEventOdds(OddsScanDTO oddsScanDTO, JSONObject eventAJson, JSONObject eventBJson, String teamNameA, String teamNameB, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB) {
+    public List<SweepwaterDTO> aggregateEventOdds(String username, OddsScanDTO oddsScanDTO, JSONObject eventAJson, JSONObject eventBJson, String teamNameA, String teamNameB, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB) {
         List<SweepwaterDTO> results = new ArrayList<>();
         // 遍历第一个 JSON 的事件列表
         JSONArray eventsA = eventAJson.getJSONArray("events");
@@ -322,8 +278,8 @@ public class SweepwaterService {
                 if (nameA.equals(teamNameA) && !nameB.equals(teamNameB) ||
                         nameA.equals(teamNameB) && !nameB.equals(teamNameA)) {
                     // 合并 fullCourt 和 firstHalf 数据
-                    processFullCourtOdds(oddsScanDTO, fullCourtA, fullCourtB, "fullCourt", nameA, nameB, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, results, scoreA, scoreB);
-                    processFullCourtOdds(oddsScanDTO, firstHalfA, firstHalfB, "firstHalf", nameA, nameB, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, results, scoreA, scoreB);
+                    processFullCourtOdds(username, oddsScanDTO, fullCourtA, fullCourtB, "fullCourt", nameA, nameB, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, results, scoreA, scoreB);
+                    processFullCourtOdds(username, oddsScanDTO, firstHalfA, firstHalfB, "firstHalf", nameA, nameB, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, results, scoreA, scoreB);
                 }
             }
         }
@@ -331,7 +287,7 @@ public class SweepwaterService {
     }
 
     // 提取的处理逻辑
-    private static void processFullCourtOdds(OddsScanDTO oddsScanDTO, JSONObject fullCourtA, JSONObject fullCourtB, String courtType, String nameA, String nameB, JSONObject eventAJson, JSONObject eventBJson, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, List<SweepwaterDTO> results, String scoreA, String scoreB) {
+    private void processFullCourtOdds(String username, OddsScanDTO oddsScanDTO, JSONObject fullCourtA, JSONObject fullCourtB, String courtType, String nameA, String nameB, JSONObject eventAJson, JSONObject eventBJson, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, List<SweepwaterDTO> results, String scoreA, String scoreB) {
         for (String key : fullCourtA.keySet()) {
             if (fullCourtB.containsKey(key)) {
                 if (("win".equals(key) || "draw".equals(key))) {
@@ -352,6 +308,7 @@ public class SweepwaterService {
                                                 valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio")
                                         );
                                         results.add(sweepwaterDTO);
+                                        tryBet(username, sweepwaterDTO);
                                     }
                                     logInfo("平手盘", nameA, key, valueA, nameB, key, valueB, value, oddsScanDTO);
                                 }
@@ -382,6 +339,7 @@ public class SweepwaterService {
                                                 valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio")
                                                 );
                                         results.add(sweepwaterDTO);
+                                        tryBet(username, sweepwaterDTO);
                                     }
                                     logInfo("让球盘", nameA, subKey, valueA, nameB, subKey, valueB, value, oddsScanDTO);
                                 }
@@ -447,6 +405,20 @@ public class SweepwaterService {
         sweepwaterDTO.setRatioB(ratioB);
 
         return sweepwaterDTO;
+    }
+
+    /**
+     * 尝试投注
+     * @param username      平台用户名
+     * @param sweepwaterDTO 扫水数据
+     */
+    public void tryBet(String username, SweepwaterDTO sweepwaterDTO) {
+        log.info("扫水匹配到数据-保存扫水数据");
+        String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
+        businessPlatformRedissonClient.getList(sweepWaterKey).add(JSONUtil.toJsonStr(sweepwaterDTO));
+        // 只要扫水有结果就执行下注
+        log.info("扫水匹配到数据-进行投注");
+        betService.bet(username);
     }
 
     // 提取的日志输出方法

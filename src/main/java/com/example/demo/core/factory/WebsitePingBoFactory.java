@@ -60,4 +60,9 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
     public ApiHandler bet() {
         return new WebsitePingBoBetHandler(websiteService, apiUrlService); // 返回具体的投注处理类
     }
+
+    @Override
+    public ApiHandler orderView() {
+        return null; // 平博网站不需要投注预览
+    }
 }

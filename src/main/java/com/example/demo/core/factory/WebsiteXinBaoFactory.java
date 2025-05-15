@@ -62,4 +62,9 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
     public ApiHandler bet() {
         return new WebsiteXinBaoBetHandler(websiteService, apiUrlService); // 返回具体的投注处理类
     }
+
+    @Override
+    public ApiHandler orderView() {
+        return new WebsiteXinBaoOrderViewHandler(websiteService, apiUrlService); // 返回具体的投注预览处理类
+    }
 }

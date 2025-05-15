@@ -5,6 +5,7 @@ import com.example.demo.api.ConfigAccountService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.enmu.SystemError;
 import com.example.demo.common.enmu.WebsiteType;
+import com.example.demo.common.enmu.XinBaoOddsFormatType;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
@@ -244,7 +245,7 @@ public class ProxyController extends BaseController {
             JSONObject serverResponse = account.getToken().getJSONObject("serverresponse");
 
             // 使用 String.format 进行格式化拼接 URL
-            String url = String.format("%s/?cu=N&cuipv6=N&ipv6=N&uid=%s&pay_type=%s&username=%s&passwd_safe=%s&mid=%s&ltype=%s&currency=%s&odd_f=%s&domain=%s&blackBoxStatus=%s&odd_f_type=H&timetype=sysTime&four_pwd=new&abox4pwd_notshow=N&msg=&langx=zh-cn&iovationCnt=1",
+            String url = String.format("%s/?cu=N&cuipv6=N&ipv6=N&uid=%s&pay_type=%s&username=%s&passwd_safe=%s&mid=%s&ltype=%s&currency=%s&odd_f=%s&domain=%s&blackBoxStatus=%s&odd_f_type=%s&timetype=sysTime&four_pwd=new&abox4pwd_notshow=N&msg=&langx=zh-cn&iovationCnt=1",
                     baseUrl,
                     serverResponse.getStr("uid"),
                     serverResponse.getStr("pay_type"),
@@ -255,7 +256,8 @@ public class ProxyController extends BaseController {
                     serverResponse.getStr("currency"),
                     serverResponse.getStr("odd_f"),
                     serverResponse.getStr("domain"),
-                    serverResponse.getStr("blackBoxStatus")
+                    serverResponse.getStr("blackBoxStatus"),
+                    XinBaoOddsFormatType.RM.getCurrencyCode()
             );
             // 导航到根域名页面
             driver.get(url);

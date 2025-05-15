@@ -1,6 +1,5 @@
 package com.example.demo.core.sites.xinbao;
 
-import cn.hutool.core.util.ObjectUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONArray;
@@ -9,6 +8,7 @@ import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.constants.Constants;
+import com.example.demo.common.enmu.XinBaoOddsFormatType;
 import com.example.demo.core.factory.ApiHandler;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,9 +16,6 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 新2网站 - 赛事详情赔率 API具体实现
@@ -148,7 +145,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 JSONObject homeOddsJson = new JSONObject();
                 homeOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 homeOddsJson.putOpt("odds", calculateOddsValue(game.getDouble("ior_REH"))); // 投注赔率
-                homeOddsJson.putOpt("oddFType", game.getStr("strong"));
+                homeOddsJson.putOpt("oddFType", XinBaoOddsFormatType.RM.getCurrencyCode());
                 homeOddsJson.putOpt("gtype", game.getStr("gtype"));
                 homeOddsJson.putOpt("wtype", "RE");
                 homeOddsJson.putOpt("rtype", "REH");
@@ -159,7 +156,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 JSONObject awayOddsJson = new JSONObject();
                 awayOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 awayOddsJson.putOpt("odds", calculateOddsValue(game.getDouble("ior_REC"))); // 投注赔率
-                awayOddsJson.putOpt("oddFType", game.getStr("strong"));
+                awayOddsJson.putOpt("oddFType", XinBaoOddsFormatType.RM.getCurrencyCode());
                 awayOddsJson.putOpt("gtype", game.getStr("gtype"));
                 awayOddsJson.putOpt("wtype", "RE");
                 awayOddsJson.putOpt("rtype", "REC");
@@ -176,7 +173,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 JSONObject homeOverSizeOddsJson = new JSONObject();
                 homeOverSizeOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 homeOverSizeOddsJson.putOpt("odds", calculateOddsValue(game.getDouble("ior_ROUC"))); // 投注赔率
-                homeOverSizeOddsJson.putOpt("oddFType", game.getStr("strong"));
+                homeOverSizeOddsJson.putOpt("oddFType", XinBaoOddsFormatType.RM.getCurrencyCode());
                 homeOverSizeOddsJson.putOpt("gtype", game.getStr("gtype"));
                 homeOverSizeOddsJson.putOpt("wtype", "ROU");
                 homeOverSizeOddsJson.putOpt("rtype", "ROUC");
@@ -187,7 +184,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 JSONObject awayOverSizeOddsJson = new JSONObject();
                 awayOverSizeOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 awayOverSizeOddsJson.putOpt("odds", calculateOddsValue(game.getDouble("ior_ROUH"))); // 投注赔率
-                awayOverSizeOddsJson.putOpt("oddFType", game.getStr("strong"));
+                awayOverSizeOddsJson.putOpt("oddFType", XinBaoOddsFormatType.RM.getCurrencyCode());
                 awayOverSizeOddsJson.putOpt("gtype", game.getStr("gtype"));
                 awayOverSizeOddsJson.putOpt("wtype", "ROU");
                 awayOverSizeOddsJson.putOpt("rtype", "ROUH");
@@ -221,7 +218,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 JSONObject homeOddsJson = new JSONObject();
                 homeOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 homeOddsJson.putOpt("odds", calculateOddsValue(game.getDouble("ior_HREH"))); // 投注赔率
-                homeOddsJson.putOpt("oddFType", game.getStr("strong"));
+                homeOddsJson.putOpt("oddFType", XinBaoOddsFormatType.RM.getCurrencyCode());
                 homeOddsJson.putOpt("gtype", game.getStr("gtype"));
                 homeOddsJson.putOpt("wtype", "HRE");
                 homeOddsJson.putOpt("rtype", "HREH");
@@ -232,7 +229,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 JSONObject awayOddsJson = new JSONObject();
                 awayOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 awayOddsJson.putOpt("odds", calculateOddsValue(game.getDouble("ior_HREC"))); // 投注赔率
-                awayOddsJson.putOpt("oddFType", game.getStr("strong"));
+                awayOddsJson.putOpt("oddFType", XinBaoOddsFormatType.RM.getCurrencyCode());
                 awayOddsJson.putOpt("gtype", game.getStr("gtype"));
                 awayOddsJson.putOpt("wtype", "HRE");
                 awayOddsJson.putOpt("rtype", "HREC");
