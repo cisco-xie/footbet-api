@@ -399,9 +399,9 @@ public class BetService {
             // 设置投注时间记录
             businessPlatformRedissonClient.getBucket(intervalKey).set(System.currentTimeMillis(), Duration.ofHours(24));
             if (isA) {
-                dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN));
+                dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
             } else {
-                dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN));
+                dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
             }
             return true;
         }
@@ -518,7 +518,7 @@ public class BetService {
             String keyA = bet.getWebsiteIdA() + "_" + bet.getBetAccountIdA();
             String keyB = bet.getWebsiteIdB() + "_" + bet.getBetAccountIdB();
             // 网站A
-            if (!StringUtils.isBlank(bet.getBetAccountIdA())) {
+            if (!StringUtils.isBlank(bet.getBetAccountIdA()) && bet.getBetInfoA() == null) {
                 futures.add(CompletableFuture.runAsync(() -> {
                     unsettleds.computeIfAbsent(keyA, key -> {
                         Object unsettledA = handicapApi.unsettled(username, bet.getWebsiteIdA(), bet.getBetAccountIdA());
@@ -533,7 +533,7 @@ public class BetService {
             }
 
             // 网站B
-            if (!StringUtils.isBlank(bet.getBetAccountIdB())) {
+            if (!StringUtils.isBlank(bet.getBetAccountIdB()) && bet.getBetInfoB() == null) {
                 futures.add(CompletableFuture.runAsync(() -> {
                     unsettleds.computeIfAbsent(keyB, key -> {
                         Object unsettledB = handicapApi.unsettled(username, bet.getWebsiteIdB(), bet.getBetAccountIdB());
@@ -562,25 +562,30 @@ public class BetService {
         RBatch batch = businessPlatformRedissonClient.createBatch();
         for (SweepwaterBetDTO bet : bets) {
             boolean updated = false;
-            JSONArray arrA = unsettleds.get(bet.getWebsiteIdA() + "_" + bet.getBetAccountIdA());
-            if (arrA != null) {
-                for (Object o : arrA) {
-                    JSONObject j = JSONUtil.parseObj(o);
-                    if (j.getStr("betId").contains(bet.getBetIdA())) {
-                        bet.setBetInfoA(j);
-                        updated = true;
-                        break;
+            if (bet.getBetInfoA() == null) {
+                JSONArray arrA = unsettleds.get(bet.getWebsiteIdA() + "_" + bet.getBetAccountIdA());
+                if (arrA != null) {
+                    for (Object o : arrA) {
+                        JSONObject j = JSONUtil.parseObj(o);
+                        if (j.getStr("betId").contains(bet.getBetIdA())) {
+                            bet.setBetInfoA(j);
+                            updated = true;
+                            break;
+                        }
                     }
                 }
             }
-            JSONArray arrB = unsettleds.get(bet.getWebsiteIdB() + "_" + bet.getBetAccountIdB());
-            if (arrB != null) {
-                for (Object o : arrB) {
-                    JSONObject j = JSONUtil.parseObj(o);
-                    if (j.getStr("betId").contains(bet.getBetIdB())) {
-                        bet.setBetInfoB(j);
-                        updated = true;
-                        break;
+
+            if (bet.getBetInfoB() == null) {
+                JSONArray arrB = unsettleds.get(bet.getWebsiteIdB() + "_" + bet.getBetAccountIdB());
+                if (arrB != null) {
+                    for (Object o : arrB) {
+                        JSONObject j = JSONUtil.parseObj(o);
+                        if (j.getStr("betId").contains(bet.getBetIdB())) {
+                            bet.setBetInfoB(j);
+                            updated = true;
+                            break;
+                        }
                     }
                 }
             }

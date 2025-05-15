@@ -123,10 +123,6 @@ public class WebsiteXinBaoOrderViewHandler implements ApiHandler {
         // 拼接完整的 URL
         String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, queryParams);
 
-        // 打印 cURL 格式请求
-        String curlCommand = buildCurlCommand(fullUrl, request);
-        log.info("即将发送投注预览请求:\n{}", curlCommand);
-
         // 发送请求
         HttpResponse response = HttpRequest.post(fullUrl)
                 .addHeaders(request.getHeaders().toSingleValueMap())
@@ -135,34 +131,6 @@ public class WebsiteXinBaoOrderViewHandler implements ApiHandler {
 
         // 解析响应并返回
         return parseResponse(response);
-    }
-
-    /**
-     * 构建 cURL 命令
-     * @param url
-     * @param request
-     * @return
-     */
-    private String buildCurlCommand(String url, HttpEntity<String> request) {
-        StringBuilder curl = new StringBuilder("curl -X POST");
-
-        // 添加 headers
-        request.getHeaders().forEach((key, values) -> {
-            for (String value : values) {
-                curl.append(" -H '").append(key).append(": ").append(value).append("'");
-            }
-        });
-
-        // 添加 body
-        String body = request.getBody();
-        if (StringUtils.isNotBlank(body)) {
-            curl.append(" -d '").append(body.replace("'", "\\'")).append("'");
-        }
-
-        // 添加 URL
-        curl.append(" '").append(url).append("'");
-
-        return curl.toString();
     }
 
 }

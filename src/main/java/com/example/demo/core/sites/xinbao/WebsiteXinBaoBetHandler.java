@@ -145,8 +145,8 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
         String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, queryParams);
 
         // 打印 cURL 格式请求
-        String curlCommand = buildCurlCommand(fullUrl, request);
-        log.info("即将发送请求:\n{}", curlCommand);
+        // String curlCommand = buildCurlCommand(fullUrl, request);
+        // log.info("即将发送请求:\n{}", curlCommand);
 
         // 发送请求
         HttpResponse response = HttpRequest.post(fullUrl)

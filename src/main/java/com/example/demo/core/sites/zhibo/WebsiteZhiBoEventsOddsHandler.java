@@ -63,7 +63,6 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
         JSONArray result = new JSONArray();
         JSONObject responseJson = new JSONObject(response.body());
         JSONArray leagues = responseJson.getJSONObject("schedule").getJSONArray("leagues");
-        System.out.println(leagues);
         if (!leagues.isEmpty()) {
             leagues.forEach(league -> {
                 JSONObject leagueJson = new JSONObject();
