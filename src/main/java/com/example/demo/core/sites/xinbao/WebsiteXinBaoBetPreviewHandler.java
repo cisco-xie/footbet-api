@@ -9,7 +9,6 @@ import com.example.demo.common.constants.Constants;
 import com.example.demo.common.enmu.XinBaoOddsFormatType;
 import com.example.demo.core.factory.ApiHandler;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -20,13 +19,13 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class WebsiteXinBaoOrderViewHandler implements ApiHandler {
+public class WebsiteXinBaoBetPreviewHandler implements ApiHandler {
 
     private final WebsiteService websiteService;
     private final ApiUrlService apiUrlService;
 
     @Autowired
-    public WebsiteXinBaoOrderViewHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
+    public WebsiteXinBaoBetPreviewHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
         this.websiteService = websiteService;
         this.apiUrlService = apiUrlService;
     }
@@ -101,7 +100,7 @@ public class WebsiteXinBaoOrderViewHandler implements ApiHandler {
     }
 
     /**
-     * 发送投注请求并返回结果
+     * 发送投注预览请求并返回结果
      * @param params 请求参数
      * @return 结果
      */
@@ -111,7 +110,7 @@ public class WebsiteXinBaoOrderViewHandler implements ApiHandler {
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
-        String apiUrl = apiUrlService.getApiUrl(siteId, "bet");
+        String apiUrl = apiUrlService.getApiUrl(siteId, "betPreview");
         // 构建请求
         HttpEntity<String> request = buildRequest(params);
 

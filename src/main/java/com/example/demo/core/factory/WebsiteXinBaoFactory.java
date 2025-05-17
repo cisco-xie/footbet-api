@@ -3,12 +3,7 @@ package com.example.demo.core.factory;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.enmu.WebsiteType;
-import com.example.demo.core.sites.pingbo.WebsitePingBoBetUnsettledHandler;
-import com.example.demo.core.sites.pingbo.WebsitePingBoEventsHandler;
-import com.example.demo.core.sites.pingbo.WebsitePingBoEventsOddsHandler;
-import com.example.demo.core.sites.pingbo.WebsitePingBoInfoHandler;
 import com.example.demo.core.sites.xinbao.*;
-import com.example.demo.core.sites.zhibo.WebsiteZhiBoInfoHandler;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
@@ -64,7 +59,7 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
     }
 
     @Override
-    public ApiHandler orderView() {
-        return new WebsiteXinBaoOrderViewHandler(websiteService, apiUrlService); // 返回具体的投注预览处理类
+    public ApiHandler betPreview() {
+        return new WebsiteXinBaoBetPreviewHandler(websiteService, apiUrlService); // 返回具体的投注预览处理类
     }
 }

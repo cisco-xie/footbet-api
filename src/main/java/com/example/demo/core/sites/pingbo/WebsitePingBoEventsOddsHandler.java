@@ -85,6 +85,10 @@ import org.springframework.stereotype.Component;
  *             ]
  *         }
  */
+
+/**
+ * 平博网站 - 赛事赔率 API具体实现
+ */
 @Component
 public class WebsitePingBoEventsOddsHandler implements ApiHandler {
 
@@ -121,6 +125,10 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
 
     /**
      * 解析响应体
+     * 获取赔率后解析计算下注请求需要的oddsId和selectionId
+     * 例子：
+     * oddsId=1609168865|0|2|0|1|-1.75              {比赛id}|{全场=0;上半场=1}|{输赢盘=1;让球盘=2;大小盘=3}|{主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2}|{好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1}|{赔率}
+     * selectionId=1609168865|0|2|0|1|-1.75|1      oddsId|{主队=0,客队=1}
      * @param response 响应内容
      * @return 解析后的数据
      */
@@ -183,19 +191,32 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                 for (Object letBall : letBallJson) {
                                     JSONArray letBallJsonArr = (JSONArray) letBall;
                                     JSONObject homeOddsJson = new JSONObject();
-                                    homeOddsJson.putOpt("id", JSONUtil.parseArray(team).getStr(0) + "|0|2|1|1|" + letBallJsonArr.getStr(1));  // 投注id
+
+                                    int homeOddsIdIndex1 = 0;   // 全场=0;上半场=1
+                                    int homeOddsIdIndex2 = 2;   // 输赢盘=1;让球盘=2;大小盘=3
+                                    int homeOddsIdIndex3 = 0;   // 主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2
+                                    int homeOddsIdIndex4 = letBallJsonArr.getInt(8);   // 好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1
+
+                                    int awayOddsIdIndex1 = 0;   // 全场=0;上半场=1
+                                    int awayOddsIdIndex2 = 2;   // 输赢盘=1;让球盘=2;大小盘=3
+                                    int awayOddsIdIndex3 = 1;   // 主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2
+                                    int awayOddsIdIndex4 = letBallJsonArr.getInt(8);   // 好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1
+
+                                    String homeOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+homeOddsIdIndex1+"|"+homeOddsIdIndex2+"|"+homeOddsIdIndex3+"|"+homeOddsIdIndex4+"|" + letBallJsonArr.getStr(1);           // 主队投注id
+                                    homeOddsJson.putOpt("id", homeOddsId);  // 投注id
                                     if (positionLetBall == 1) {
-                                        homeOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|0|" + JSONUtil.parseArray(team).getStr(0) + "|0|2|1|1|" + String.format("%.2f", letBallJsonArr.getDouble(1)) + "|0");  // 投注id
+                                        homeOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + homeOddsId + "|0");  // 投注id
                                     } else {
-                                        homeOddsJson.putOpt("selectionId", letBallJson.getJSONArray(letBallJson.size() == 1 ? 0 : positionLetBall == 0 ? positionLetBall + 1 : positionLetBall - 1).getStr(7) + "|" + letBallJsonArr.getStr(7) + "|" + JSONUtil.parseArray(team).getStr(0) + "|0|2|1|1|" + String.format("%.2f", letBallJsonArr.getDouble(1)) + "|0");  // 投注id
+                                        homeOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + homeOddsId + "|0");  // 投注id
                                     }
                                     homeOddsJson.putOpt("odds", letBallJsonArr.getStr(3));                    // 投注赔率
                                     JSONObject awayOddsJson = new JSONObject();
-                                    awayOddsJson.putOpt("id", JSONUtil.parseArray(team).getStr(0) + "|0|2|0|1|" + letBallJsonArr.getStr(1));  // 投注id
+                                    String awayOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+awayOddsIdIndex1+"|"+awayOddsIdIndex2+"|"+awayOddsIdIndex3+"|"+awayOddsIdIndex4+"|" + letBallJsonArr.getStr(1);           // 客队投注id
+                                    awayOddsJson.putOpt("id", awayOddsId);  // 投注id
                                     if (positionLetBall == 1) {
-                                        awayOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|0|" + JSONUtil.parseArray(team).getStr(0) + "|0|2|0|1|" + String.format("%.2f", letBallJsonArr.getDouble(1)) + "|1");  // 投注id
+                                        awayOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + awayOddsId + "|1");  // 投注id
                                     } else {
-                                        awayOddsJson.putOpt("selectionId", letBallJson.getJSONArray(letBallJson.size() == 1 ? 0 : positionLetBall == 0 ? positionLetBall + 1 : positionLetBall - 1).getStr(7) + "|" + letBallJsonArr.getStr(7) + "|" + JSONUtil.parseArray(team).getStr(0) + "|0|2|0|1|" + String.format("%.2f", letBallJsonArr.getDouble(1)) + "|1");  // 投注id
+                                        awayOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + awayOddsId + "|1");  // 投注id
                                     }
                                     awayOddsJson.putOpt("odds", letBallJsonArr.getStr(4));                    // 投注赔率
                                     letCJson.putOpt(letBallJsonArr.getStr(2), homeOddsJson);
@@ -208,19 +229,32 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                 for (Object sizeBall : sizeBallJson) {
                                     JSONArray sizeBallJsonArr = (JSONArray) sizeBall;
                                     JSONObject homeOddsJson = new JSONObject();
-                                    homeOddsJson.putOpt("id", JSONUtil.parseArray(team).getStr(0) + "|0|3|3|1|" + sizeBallJsonArr.getStr(1));      // 投注id
+
+                                    int homeOddsIdIndex1 = 0;   // 全场=0;上半场=1
+                                    int homeOddsIdIndex2 = 3;   // 输赢盘=1;让球盘=2;大小盘=3
+                                    int homeOddsIdIndex3 = 3;   // 主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2
+                                    int homeOddsIdIndex4 = sizeBallJsonArr.getInt(5);   // 好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1
+
+                                    int awayOddsIdIndex1 = 0;   // 全场=0;上半场=1
+                                    int awayOddsIdIndex2 = 3;   // 输赢盘=1;让球盘=2;大小盘=3
+                                    int awayOddsIdIndex3 = 4;   // 主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2
+                                    int awayOddsIdIndex4 = sizeBallJsonArr.getInt(5);   // 好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1
+
+                                    String homeOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+homeOddsIdIndex1+"|"+homeOddsIdIndex2+"|"+homeOddsIdIndex3+"|"+homeOddsIdIndex4+"|" + sizeBallJsonArr.getStr(1);           // 主队投注id
+                                    homeOddsJson.putOpt("id", homeOddsId);      // 投注id
                                     if (positionSizeBall == 1) {
-                                        homeOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|0|" + JSONUtil.parseArray(team).getStr(0) + "|0|3|3|1|" + String.format("%.2f", sizeBallJsonArr.getDouble(1)) + "|0");  // 投注id
+                                        homeOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|" + homeOddsId + "|0");  // 投注id
                                     } else {
-                                        homeOddsJson.putOpt("selectionId", sizeBallJson.getJSONArray(sizeBallJson.size() == 1 ? 0 : positionSizeBall == 0 ? positionSizeBall + 1 : positionSizeBall - 1).getStr(4) + "|" + sizeBallJsonArr.getStr(4) + "|" + JSONUtil.parseArray(team).getStr(0) + "|0|3|3|1|" + String.format("%.2f", sizeBallJsonArr.getDouble(1)) + "|0");  // 投注id
+                                        homeOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|" + homeOddsId + "|0");  // 投注id
                                     }
                                     homeOddsJson.putOpt("odds", sizeBallJsonArr.getStr(2));                         // 投注赔率
                                     JSONObject awayOddsJson = new JSONObject();
-                                    awayOddsJson.putOpt("id", JSONUtil.parseArray(team).getStr(0) + "|0|3|4|1|" + sizeBallJsonArr.getStr(1));      // 投注id
+                                    String awayOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+awayOddsIdIndex1+"|"+awayOddsIdIndex2+"|"+awayOddsIdIndex3+"|"+awayOddsIdIndex4+"|" + sizeBallJsonArr.getStr(1);           // 客队投注id
+                                    awayOddsJson.putOpt("id", awayOddsId);      // 投注id
                                     if (positionSizeBall == 1) {
-                                        awayOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|0|" + JSONUtil.parseArray(team).getStr(0) + "|0|3|4|1|" + String.format("%.2f", sizeBallJsonArr.getDouble(1)) + "|1");  // 投注id
+                                        awayOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|" + awayOddsId + "|1");  // 投注id
                                     } else {
-                                        awayOddsJson.putOpt("selectionId", sizeBallJson.getJSONArray(sizeBallJson.size() == 1 ? 0 : positionSizeBall == 0 ? positionSizeBall + 1 : positionSizeBall - 1).getStr(4) + "|" + sizeBallJsonArr.getStr(4) + "|" + JSONUtil.parseArray(team).getStr(0) + "|0|3|4|1|" + String.format("%.2f", sizeBallJsonArr.getDouble(1)) + "|0");  // 投注id
+                                        awayOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|" + awayOddsId + "|1");  // 投注id
                                     }
                                     awayOddsJson.putOpt("odds", sizeBallJsonArr.getStr(3));                         // 投注赔率
                                     sizeCJson.putOpt(sizeBallJsonArr.getStr(0), homeOddsJson);
@@ -264,19 +298,32 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                 for(Object letBall : firstHalfLetBallJson) {
                                     JSONArray letBallJsonArr = (JSONArray) letBall;
                                     JSONObject homeOddsJson = new JSONObject();
-                                    homeOddsJson.putOpt("id", JSONUtil.parseArray(team).getStr(0) + "|1|2|0|1|" + letBallJsonArr.getStr(1));                              // 投注id
+
+                                    int homeOddsIdIndex1 = 1;   // 全场=0;上半场=1
+                                    int homeOddsIdIndex2 = 2;   // 输赢盘=1;让球盘=2;大小盘=3
+                                    int homeOddsIdIndex3 = 0;   // 主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2
+                                    int homeOddsIdIndex4 = letBallJsonArr.getInt(8);   // 好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1
+
+                                    int awayOddsIdIndex1 = 1;   // 全场=0;上半场=1
+                                    int awayOddsIdIndex2 = 2;   // 输赢盘=1;让球盘=2;大小盘=3
+                                    int awayOddsIdIndex3 = 1;   // 主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2
+                                    int awayOddsIdIndex4 = letBallJsonArr.getInt(8);   // 好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1
+
+                                    String homeOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+homeOddsIdIndex1+"|"+homeOddsIdIndex2+"|"+homeOddsIdIndex3+"|"+homeOddsIdIndex4+"|" + letBallJsonArr.getStr(1);           // 主队投注id
+                                    homeOddsJson.putOpt("id", homeOddsId);                              // 投注id
                                     if (positionLetBall == 1) {
-                                        homeOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|0|" + JSONUtil.parseArray(team).getStr(0) + "|1|2|0|1|" + String.format("%.2f", letBallJsonArr.getDouble(1)) + "|0");  // 投注id
+                                        homeOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + homeOddsId + "|0");  // 投注id
                                     } else {
-                                        homeOddsJson.putOpt("selectionId", firstHalfLetBallJson.getJSONArray(firstHalfLetBallJson.size() == 1 ? 0 : positionLetBall == 0 ? positionLetBall + 1 : positionLetBall - 1).getStr(7) + "|" + letBallJsonArr.getStr(7) + "|" + JSONUtil.parseArray(team).getStr(0) + "|1|2|0|1|" + String.format("%.2f", letBallJsonArr.getDouble(1)) + "|0");  // 投注id
+                                        homeOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + homeOddsId + "|0");  // 投注id
                                     }
                                     homeOddsJson.putOpt("odds", letBallJsonArr.getStr(3)); // 投注赔率
                                     JSONObject awayOddsJson = new JSONObject();
-                                    awayOddsJson.putOpt("id", JSONUtil.parseArray(team).getStr(0) + "|1|2|1|1|" + letBallJsonArr.getStr(1));                              // 投注id
+                                    String awayOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+awayOddsIdIndex1+"|"+awayOddsIdIndex2+"|"+awayOddsIdIndex3+"|"+awayOddsIdIndex4+"|" + letBallJsonArr.getStr(1);           // 客队投注id
+                                    awayOddsJson.putOpt("id", awayOddsId);                              // 投注id
                                     if (positionLetBall == 1) {
-                                        awayOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|0|" + JSONUtil.parseArray(team).getStr(0) + "|1|2|1|1|" + String.format("%.2f", letBallJsonArr.getDouble(1)) + "|1");  // 投注id
+                                        awayOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + awayOddsId + "|1");  // 投注id
                                     } else {
-                                        awayOddsJson.putOpt("selectionId", firstHalfLetBallJson.getJSONArray(firstHalfLetBallJson.size() == 1 ? 0 : positionLetBall == 0 ? positionLetBall + 1 : positionLetBall - 1).getStr(7) + "|" + letBallJsonArr.getStr(7) + "|" + JSONUtil.parseArray(team).getStr(0) + "|1|2|1|1|" + String.format("%.2f", letBallJsonArr.getDouble(1)) + "|0");  // 投注id
+                                        awayOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + awayOddsId + "|1");  // 投注id
                                     }
                                     awayOddsJson.putOpt("odds", letBallJsonArr.getStr(4)); // 投注赔率
                                     firstHalfLetCJson.putOpt(letBallJsonArr.getStr(2), homeOddsJson);
@@ -289,19 +336,32 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                 for(Object sizeBall : firstHalfSizeBallJson) {
                                     JSONArray sizeBallJsonArr = (JSONArray) sizeBall;
                                     JSONObject homeOddsJson = new JSONObject();
-                                    homeOddsJson.putOpt("id", JSONUtil.parseArray(team).getStr(0) + "|1|3|3|1|" + sizeBallJsonArr.getStr(1));                              // 投注id
+
+                                    int homeOddsIdIndex1 = 1;   // 全场=0;上半场=1
+                                    int homeOddsIdIndex2 = 3;   // 输赢盘=1;让球盘=2;大小盘=3
+                                    int homeOddsIdIndex3 = 3;   // 主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2
+                                    int homeOddsIdIndex4 = sizeBallJsonArr.getInt(5);   // 好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1
+
+                                    int awayOddsIdIndex1 = 1;   // 全场=0;上半场=1
+                                    int awayOddsIdIndex2 = 3;   // 输赢盘=1;让球盘=2;大小盘=3
+                                    int awayOddsIdIndex3 = 4;   // 主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2
+                                    int awayOddsIdIndex4 = sizeBallJsonArr.getInt(5);   // 好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1
+
+                                    String homeOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+homeOddsIdIndex1+"|"+homeOddsIdIndex2+"|"+homeOddsIdIndex3+"|"+homeOddsIdIndex4+"|" + sizeBallJsonArr.getStr(1);           // 主队投注id
+                                    homeOddsJson.putOpt("id", homeOddsId);                              // 投注id
                                     if (positionSizeBall == 1) {
-                                        homeOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|0|" + JSONUtil.parseArray(team).getStr(0) + "|1|3|3|1|" + String.format("%.2f", sizeBallJsonArr.getDouble(1)) + "|0");  // 投注id
+                                        homeOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|" + homeOddsId + "|0");  // 投注id
                                     } else {
-                                        homeOddsJson.putOpt("selectionId", firstHalfSizeBallJson.getJSONArray(firstHalfSizeBallJson.size() == 1 ? 0 : positionSizeBall == 0 ? positionSizeBall + 1 : positionSizeBall - 1).getStr(4) + "|" + sizeBallJsonArr.getStr(4) + "|" + JSONUtil.parseArray(team).getStr(0) + "|1|3|3|1|" + String.format("%.2f", sizeBallJsonArr.getDouble(1)) + "|0");  // 投注id
+                                        homeOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|" + homeOddsId + "|0");  // 投注id
                                     }
                                     homeOddsJson.putOpt("odds", sizeBallJsonArr.getStr(2)); // 投注赔率
                                     JSONObject awayOddsJson = new JSONObject();
-                                    awayOddsJson.putOpt("id", JSONUtil.parseArray(team).getStr(0) + "|1|3|4|1|" + sizeBallJsonArr.getStr(1));                              // 投注id
+                                    String awayOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+awayOddsIdIndex1+"|"+awayOddsIdIndex2+"|"+awayOddsIdIndex3+"|"+awayOddsIdIndex4+"|" + sizeBallJsonArr.getStr(1);           // 客队投注id
+                                    awayOddsJson.putOpt("id", awayOddsId);                              // 投注id
                                     if (positionSizeBall == 1) {
-                                        awayOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|0|" + JSONUtil.parseArray(team).getStr(0) + "|1|3|3|1|" + String.format("%.2f", sizeBallJsonArr.getDouble(1)) + "|1");  // 投注id
+                                        awayOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|" + awayOddsId + "|1");  // 投注id
                                     } else {
-                                        homeOddsJson.putOpt("selectionId", firstHalfSizeBallJson.getJSONArray(firstHalfSizeBallJson.size() == 1 ? 0 : positionSizeBall == 0 ? positionSizeBall + 1 : positionSizeBall - 1).getStr(4) + "|" + sizeBallJsonArr.getStr(4) + "|" + JSONUtil.parseArray(team).getStr(0) + "|1|3|3|1|" + String.format("%.2f", sizeBallJsonArr.getDouble(1)) + "|0");  // 投注id
+                                        homeOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|" + awayOddsId + "|1");  // 投注id
                                     }
                                     awayOddsJson.putOpt("odds", sizeBallJsonArr.getStr(3)); // 投注赔率
                                     firstHalfSizeCJson.putOpt(sizeBallJsonArr.getStr(0), homeOddsJson);
@@ -330,13 +390,19 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                 firstHalfHCourt.putOpt("draw", awayOddsJson);
                             }
 
+                            // 获取当前比分
+                            JSONArray scoreArray = JSONUtil.parseArray(team).getJSONArray(9);
+                            String scoreStr = scoreArray.getInt(0) + "-" + scoreArray.getInt(1);
+
                             eventCJson.putOpt("id", JSONUtil.parseArray(team).getStr(0));
                             eventCJson.putOpt("name", JSONUtil.parseArray(team).getStr(1));
+                            eventCJson.putOpt("score", scoreStr);
                             eventCJson.putOpt("fullCourt", fullCCourt);
                             eventCJson.putOpt("firstHalf", firstHalfCCourt);
 
                             eventHJson.putOpt("id", JSONUtil.parseArray(team).getStr(0));
                             eventHJson.putOpt("name", JSONUtil.parseArray(team).getStr(2));
+                            eventHJson.putOpt("score", scoreStr);
                             eventHJson.putOpt("fullCourt", fullHCourt);
                             eventHJson.putOpt("firstHalf", firstHalfHCourt);
                             teamsJson.put(eventCJson);

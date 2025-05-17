@@ -5,6 +5,7 @@ import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.enmu.ZhiBoOddsFormatType;
@@ -55,34 +56,40 @@ public class WebsitePingBoBetHandler implements ApiHandler {
 
         // 构造请求体
         JSONObject requestBody = new JSONObject();
-        JSONObject selections = new JSONObject();
-        JSONObject betLocationTracking = new JSONObject();
+        JSONArray selections = new JSONArray();
         requestBody.putOpt("acceptBetterOdds", true);
         requestBody.putOpt("oddsFormat", ZhiBoOddsFormatType.RM.getId());
         requestBody.putOpt("selections", selections);
-        selections.putOpt("odds", params.getStr("odds"));
-        selections.putOpt("oddsId", params.getStr("oddsId"));
-        selections.putOpt("selectionId", params.getStr("selectionId"));
-        selections.putOpt("stake", params.getDouble("stake"));
-        selections.putOpt("uniqueRequestId", IdUtil.fastUUID());
-        selections.putOpt("wagerType", "NORMAL");
-        selections.putOpt("betLocationTracking", betLocationTracking);
-        betLocationTracking.putOpt("view", "NEW_ASIAN_VIEW");
-        betLocationTracking.putOpt("navigation", "SPORTS");
-        betLocationTracking.putOpt("device", "DESKTOP");
-        betLocationTracking.putOpt("reuseSelection", false);
-        betLocationTracking.putOpt("mainPages", "SPORT");
-        betLocationTracking.putOpt("marketTab", "TODAY");
-        betLocationTracking.putOpt("market", "MATCHES");
-        betLocationTracking.putOpt("oddsContainerCategory", "MAIN");
-        betLocationTracking.putOpt("oddsContainerTitle", "LIVE");
-        betLocationTracking.putOpt("language", "zh_CN");
-        betLocationTracking.putOpt("displayMode", "LIGHT");
-        betLocationTracking.putOpt("marketType", "_3LINES");
-        betLocationTracking.putOpt("eventSorting", "LEAGUE");
-        betLocationTracking.putOpt("pageType", "DOUBLE");
-        betLocationTracking.putOpt("timeZone", "Asia/Shanghai");
-        betLocationTracking.putOpt("defaultPage", "TODAY");
+        for (Object selectionObj : params.getJSONArray("selections")) {
+            JSONObject selectionJson = JSONUtil.parseObj(selectionObj);
+            JSONObject selection = new JSONObject();
+            JSONObject betLocationTracking = new JSONObject();
+            selection.putOpt("odds", selectionJson.getStr("odds"));
+            selection.putOpt("oddsId", selectionJson.getStr("oddsId"));
+            selection.putOpt("selectionId", selectionJson.getStr("selectionId"));
+            selection.putOpt("stake", selectionJson.getDouble("stake"));
+            selection.putOpt("uniqueRequestId", IdUtil.fastUUID());
+            selection.putOpt("wagerType", "NORMAL");
+            selection.putOpt("betLocationTracking", betLocationTracking);
+            selections.add(selection);
+
+            betLocationTracking.putOpt("view", "NEW_ASIAN_VIEW");
+            betLocationTracking.putOpt("navigation", "SPORTS");
+            betLocationTracking.putOpt("device", "DESKTOP");
+            betLocationTracking.putOpt("reuseSelection", false);
+            betLocationTracking.putOpt("mainPages", "SPORT");
+            betLocationTracking.putOpt("marketTab", "TODAY");
+            betLocationTracking.putOpt("market", "MATCHES");
+            betLocationTracking.putOpt("oddsContainerCategory", "MAIN");
+            betLocationTracking.putOpt("oddsContainerTitle", "LIVE");
+            betLocationTracking.putOpt("language", "zh_CN");
+            betLocationTracking.putOpt("displayMode", "LIGHT");
+            betLocationTracking.putOpt("marketType", "_3LINES");
+            betLocationTracking.putOpt("eventSorting", "LEAGUE");
+            betLocationTracking.putOpt("pageType", "DOUBLE");
+            betLocationTracking.putOpt("timeZone", "Asia/Shanghai");
+            betLocationTracking.putOpt("defaultPage", "TODAY");
+        }
 
         return new HttpEntity<>(requestBody.toString(), headers);
     }
@@ -127,11 +134,10 @@ public class WebsitePingBoBetHandler implements ApiHandler {
             JSONArray responseArray = responseJson.getJSONArray("response");
             num = responseArray.size();
             for (Object res : responseArray) {
-                boolean isSuc = true;
                 JSONObject resObj = (JSONObject) res;
-                if (!"ACCEPTED".equals(resObj.getStr("status")) || !"PENDING_ACCEPTANCE".equals(resObj.getStr("status"))) {
+                String itemStatus = resObj.getStr("status");
+                if (!"ACCEPTED".equals(itemStatus) && !"PENDING_ACCEPTANCE".equals(itemStatus)) {
                     // 投注失败
-                    isSuc = false;
                     failedNum++;
                     log.info("[平博][投注][失败][{}]", resObj);
                     continue;
@@ -153,6 +159,9 @@ public class WebsitePingBoBetHandler implements ApiHandler {
      */
     @Override
     public JSONObject execute(JSONObject params) {
+        if (null == params.getJSONArray("selections") || params.getJSONArray("selections").isEmpty()) {
+            return null;
+        }
         // 获取 完整API 路径
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");

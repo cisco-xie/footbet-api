@@ -61,7 +61,7 @@ public class WebsiteZhiBoFactory implements WebsiteApiFactory {
     }
 
     @Override
-    public ApiHandler orderView() {
-        return null; // 智博网站不需要投注预览
+    public ApiHandler betPreview() {
+        return new WebsiteZhiBoBetPreviewHandler(websiteService, apiUrlService); // 返回具体的投注预览结果处理类
     }
 }

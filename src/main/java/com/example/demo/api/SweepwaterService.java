@@ -11,6 +11,7 @@ import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.config.PriorityTaskExecutor;
+import com.example.demo.model.dto.bet.SweepwaterBetDTO;
 import com.example.demo.model.dto.settings.OddsScanDTO;
 import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
 import com.example.demo.model.vo.dict.BindLeagueVO;
@@ -79,6 +80,8 @@ public class SweepwaterService {
 
         return jsonList.stream()
                 .map(json -> JSONUtil.toBean(json, SweepwaterDTO.class))
+                // 排序:id倒叙
+                .sorted(Comparator.comparing(SweepwaterDTO::getId).reversed())
                 .toList();
     }
 
@@ -158,6 +161,10 @@ public class SweepwaterService {
                     for (BindTeamVO event : bindLeagueVO.getEvents()) {
                         eventFutures.add(CompletableFuture.runAsync(() -> {
                             try {
+                                if (StringUtils.isBlank(event.getIdA()) || StringUtils.isBlank(event.getIdB())) {
+                                    return;
+                                }
+
                                 String ecidA = event.getEcidA();
                                 String ecidB = event.getEcidB();
 
@@ -308,6 +315,7 @@ public class SweepwaterService {
                                                 valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio")
                                         );
                                         results.add(sweepwaterDTO);
+                                        // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                         tryBet(username, sweepwaterDTO);
                                     }
                                     logInfo("平手盘", nameA, key, valueA, nameB, key, valueB, value, oddsScanDTO);
@@ -339,6 +347,7 @@ public class SweepwaterService {
                                                 valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio")
                                                 );
                                         results.add(sweepwaterDTO);
+                                        // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                         tryBet(username, sweepwaterDTO);
                                     }
                                     logInfo("让球盘", nameA, subKey, valueA, nameB, subKey, valueB, value, oddsScanDTO);
@@ -386,7 +395,7 @@ public class SweepwaterService {
         sweepwaterDTO.setHandicapA(subKey);
         sweepwaterDTO.setHandicapB(subKey);
         sweepwaterDTO.setScoreA(scoreA);
-        sweepwaterDTO.setScoreA(scoreB);
+        sweepwaterDTO.setScoreB(scoreB);
         sweepwaterDTO.setIsBet(0);
 
         sweepwaterDTO.setStrongA(strongA);

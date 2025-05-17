@@ -1,18 +1,16 @@
 package com.example.demo.api;
 
-import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.date.TimeInterval;
+import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.WebsiteType;
-import com.example.demo.common.enmu.ZhiBoOddsFormatType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.core.factory.WebsiteApiFactory;
 import com.example.demo.core.factory.WebsiteFactoryManager;
-import com.example.demo.core.model.UserConfig;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.*;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -23,7 +21,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -479,13 +476,13 @@ public class HandicapApi {
     }
 
     /**
-     * 投注前下单预览 - 目前只有新二网站需要
+     * 投注前下单预览 - 目前平博和新二网站需要此前置操作
      * @param username
      * @param websiteId
      * @param odds
      * @return
      */
-    public Object orderView(String username, String websiteId, JSONObject odds) {
+    public Object betPreview(String username, String websiteId, JSONObject odds) {
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
             if (account.getIsTokenValid() == 0) {
@@ -494,7 +491,7 @@ public class HandicapApi {
             }
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
 
-            ApiHandler apiHandler = factory.orderView();
+            ApiHandler apiHandler = factory.betPreview();
             if (apiHandler == null) {
                 continue;
             }
@@ -503,9 +500,12 @@ public class HandicapApi {
             params.putOpt("websiteId", websiteId);
             // 根据不同站点传入不同的参数
             if (WebsiteType.PINGBO.getId().equals(websiteId)) {
-                return null;
+                params.putAll(account.getToken().getJSONObject("tokens"));
+                params.putOpt("oddsId", odds.getStr("oddsId"));
+                params.putOpt("selectionId", odds.getStr("selectionId"));
             } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
-                return null;
+                params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+                params.putOpt("marketSelectionId", odds.getStr("marketSelectionId"));
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
 
@@ -553,23 +553,48 @@ public class HandicapApi {
             // 根据不同站点传入不同的参数
             if (WebsiteType.PINGBO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("tokens"));
-                params.putOpt("stake", odds.getStr("stake"));
-                params.putOpt("odds", odds.getStr("odds"));
-                params.putOpt("oddsId", odds.getStr("oddsId"));
-                params.putOpt("selectionId", odds.getStr("selectionId"));
+                Object betPreview = betPreview(username, websiteId, odds);
+                if (betPreview != null) {
+                    JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+                    if (betPreviewJson.getBool("success")) {
+                        JSONArray data = betPreviewJson.getJSONArray("data");
+                        if (data == null || data.isEmpty()) {
+                            return null;
+                        }
+                        JSONArray selections = new JSONArray();
+                        for (Object obj : data) {
+                            JSONObject objJson = JSONUtil.parseObj(obj);
+                            JSONObject selection = new JSONObject();
+                            selection.putOpt("stake", odds.getStr("stake"));
+                            selection.putOpt("odds", objJson.getStr("odds"));
+                            selection.putOpt("oddsId", objJson.getStr("oddsId"));
+                            selection.putOpt("selectionId", objJson.getStr("selectionId"));
+                            selections.add(selection);
+                        }
+                        params.putOpt("selections", selections);
+                    }
+                }
             } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
-                params.putOpt("marketSelectionId", odds.getStr("marketSelectionId"));
-                params.putOpt("stake", odds.getStr("stake"));
-                params.putOpt("odds", odds.getStr("odds"));
-                params.putOpt("decimalOdds", odds.getStr("decimalOdds"));
-                params.putOpt("handicap", odds.getStr("handicap"));
-                params.putOpt("score", odds.getStr("score"));
                 params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+                params.putOpt("stake", odds.getStr("stake"));
+                Object betPreview = betPreview(username, websiteId, odds);
+                if (betPreview != null) {
+                    JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+                    if (betPreviewJson.getBool("success")) {
+                        JSONObject data = betPreviewJson.getJSONObject("data");
+                        params.putOpt("odds", data.getStr("odds"));
+                        params.putOpt("decimalOdds", data.getStr("decimalOdds"));
+                        params.putOpt("handicap", data.getStr("handicap"));
+                        params.putOpt("score", data.getStr("score"));
+                        params.putOpt("oddsFormatId", data.getStr("oddsFormatId"));
+                        params.putOpt("marketSelectionId", data.getStr("marketSelectionId"));
+                    }
+                }
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
-                Object orderView = orderView(username, websiteId, odds);
-                if (orderView != null) {
-                    JSONObject orderViewJson = JSONUtil.parseObj(orderView);
+                Object betPreview = betPreview(username, websiteId, odds);
+                if (betPreview != null) {
+                    JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
                     params.putOpt("gid", odds.getStr("gid"));
                     params.putOpt("golds", odds.getStr("golds"));
                     params.putOpt("oddFType", odds.getStr("oddFType"));
@@ -577,14 +602,16 @@ public class HandicapApi {
                     params.putOpt("wtype", odds.getStr("wtype"));
                     params.putOpt("rtype", odds.getStr("rtype"));
                     params.putOpt("choseTeam", odds.getStr("choseTeam"));
-                    params.putOpt("ioratio", orderViewJson.getJSONObject("serverresponse").getStr("ioratio"));
-                    params.putOpt("con", orderViewJson.getJSONObject("serverresponse").getStr("con"));
-                    params.putOpt("ratio", orderViewJson.getJSONObject("serverresponse").getStr("ratio"));
+                    params.putOpt("ioratio", betPreviewJson.getJSONObject("serverresponse").getStr("ioratio"));
+                    params.putOpt("con", betPreviewJson.getJSONObject("serverresponse").getStr("con"));
+                    params.putOpt("ratio", betPreviewJson.getJSONObject("serverresponse").getStr("ratio"));
                     params.putOpt("autoOdd", odds.getStr("autoOdd"));
                 }
             }
             JSONObject result = apiHandler.execute(params);
-
+            if (result == null) {
+                return null;
+            }
             if (result.getBool("success")) {
                 // 保存记录投注账号id
                 result.putOpt("account", account.getAccount());

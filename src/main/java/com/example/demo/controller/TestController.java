@@ -60,7 +60,7 @@ public class TestController extends BaseController {
     @GetMapping("/odds")
     public Result eventsOdds(@RequestParam String websiteId) {
         AdminLoginDTO admin = getUser();
-        return Result.success(api.eventsOdds(admin.getUsername(), websiteId, "100822", "9112583"));
+        return Result.success(api.eventsOdds(admin.getUsername(), websiteId, "104523", "9487906"));
     }
 
     @Operation(summary = "扫水")

@@ -112,13 +112,17 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
         JSONArray events = new JSONArray();
         // 主队数据
         JSONObject homeTeam = new JSONObject();
+        // 获取当前比分
+        String score = games.getJSONObject(0).getStr("score_h") + "-" + games.getJSONObject(0).getStr("score_c");
         homeTeam.putOpt("id", games.getJSONObject(0).getStr("gnum_h")); // 主队ID
         homeTeam.putOpt("name", games.getJSONObject(0).getStr("team_h")); // 主队名称
+        homeTeam.putOpt("score", score); // 当前比分
 
         // 客队数据
         JSONObject awayTeam = new JSONObject();
         awayTeam.putOpt("id", games.getJSONObject(0).getStr("gnum_c")); // 客队ID
         awayTeam.putOpt("name", games.getJSONObject(0).getStr("team_c")); // 客队名称
+        awayTeam.putOpt("score", score); // 当前比分
 
         // 处理全场数据
         JSONObject homeFullCourt = new JSONObject();

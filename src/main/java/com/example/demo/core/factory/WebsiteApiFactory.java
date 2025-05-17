@@ -12,7 +12,7 @@ public interface WebsiteApiFactory {
     ApiHandler getStatementsHandler();      // 账目列表
     ApiHandler getBetUnsettledHandler();    // 投注列表-未结算
     ApiHandler bet();                       // 投注
-    ApiHandler orderView();                 // 投注预览
+    ApiHandler betPreview();                 // 投注预览
 //    ApiHandler getMatchListHandler();  // 获取比赛列表
 //    ApiHandler getOddsHandler();       // 获取赔率
 //    ApiHandler getBetHandler();        // 下注

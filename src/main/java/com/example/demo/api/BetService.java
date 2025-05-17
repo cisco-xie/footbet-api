@@ -99,122 +99,9 @@ public class BetService {
                     String team = dto.getTeam();
                     return (team != null && team.contains(teamName));
                 })
+                // 排序:id倒叙
+                .sorted(Comparator.comparing(SweepwaterBetDTO::getId).reversed())
                 .collect(Collectors.toList());
-    }
-
-
-    /**
-     *
-     * @param username
-     * @return
-     */
-    public void betOld(String username) {
-        TimeInterval timerTotal = DateUtil.timer();
-        List<SweepwaterDTO> sweepwaters = sweepwaterService.getSweepwaters(username);
-        if (sweepwaters == null) {
-            return;
-        }
-        for (SweepwaterDTO sweepwaterDTO : sweepwaters) {
-            if (sweepwaterDTO.getIsBet() == 1) {
-                continue;
-            }
-            boolean betSuc = false;
-            JSONObject paramsA = new JSONObject();
-            if (WebsiteType.ZHIBO.getId().equals(sweepwaterDTO.getWebsiteIdA())) {
-                paramsA.putOpt("marketSelectionId", sweepwaterDTO.getOddsIdA());
-                paramsA.putOpt("stake", 110); // todo 临时写死投注110元
-                paramsA.putOpt("odds", sweepwaterDTO.getOddsA());
-                paramsA.putOpt("decimalOdds", sweepwaterDTO.getDecimalOddsA());
-                paramsA.putOpt("handicap", sweepwaterDTO.getHandicapA());
-                paramsA.putOpt("score", sweepwaterDTO.getScoreA());
-            } else if (WebsiteType.PINGBO.getId().equals(sweepwaterDTO.getWebsiteIdA())) {
-                paramsA.putOpt("stake", 150); // todo 临时写死投注150元
-                paramsA.putOpt("odds", sweepwaterDTO.getOddsA());
-                paramsA.putOpt("oddsId", sweepwaterDTO.getOddsIdA());
-                paramsA.putOpt("selectionId", sweepwaterDTO.getSelectionIdA());
-            } else {
-                paramsA.putOpt("gid", sweepwaterDTO.getOddsIdA());
-                paramsA.putOpt("golds", 50); // todo 临时写死投注50元
-                paramsA.putOpt("oddFType", sweepwaterDTO.getStrongA());
-                paramsA.putOpt("gtype", sweepwaterDTO.getGTypeA());
-                paramsA.putOpt("wtype", sweepwaterDTO.getWTypeA());
-                paramsA.putOpt("rtype", sweepwaterDTO.getRTypeA());
-                paramsA.putOpt("choseTeam", sweepwaterDTO.getChoseTeamA());
-                paramsA.putOpt("ioratio", sweepwaterDTO.getOddsA());
-                paramsA.putOpt("con", sweepwaterDTO.getConA());
-                paramsA.putOpt("ratio", sweepwaterDTO.getRatioA());
-                paramsA.putOpt("autoOdd", "Y");
-            }
-            Object betResultA = handicapApi.bet(username, sweepwaterDTO.getWebsiteIdA(), paramsA);
-            if (betResultA != null) {
-                JSONObject betResultJson = JSONUtil.parseObj(betResultA);
-                if (betResultJson.getBool("success")) {
-                    String betId = null;
-                    // 投注成功
-                    if (WebsiteType.ZHIBO.getId().equals(sweepwaterDTO.getWebsiteIdA())) {
-                        betId = betResultJson.getJSONObject("data").getJSONObject("betInfo").getStr("betId");
-                    } else if (WebsiteType.PINGBO.getId().equals(sweepwaterDTO.getWebsiteIdA())) {
-                        betId = betResultJson.getJSONObject("data").getStr("wagerId");
-                    } else {
-                        betId = betResultJson.getJSONObject("data").getJSONObject("serverresponse").getStr("ticket_id");
-                    }
-                    betSuc = true;
-                    sweepwaterDTO.setBetIdA(betId);
-                }
-            }
-
-            JSONObject paramsB = new JSONObject();
-            if (WebsiteType.ZHIBO.getId().equals(sweepwaterDTO.getWebsiteIdB())) {
-                paramsB.putOpt("marketSelectionId", sweepwaterDTO.getOddsIdB());
-                paramsB.putOpt("stake", 110); // todo 临时写死投注110元
-                paramsB.putOpt("odds", sweepwaterDTO.getOddsB());
-                paramsB.putOpt("decimalOdds", sweepwaterDTO.getDecimalOddsB());
-                paramsB.putOpt("handicap", sweepwaterDTO.getHandicapB());
-                paramsB.putOpt("score", sweepwaterDTO.getScoreB());
-            } else if (WebsiteType.PINGBO.getId().equals(sweepwaterDTO.getWebsiteIdB())) {
-                paramsB.putOpt("stake", 150); // todo 临时写死投注150元
-                paramsB.putOpt("odds", sweepwaterDTO.getOddsB());
-                paramsB.putOpt("oddsId", sweepwaterDTO.getOddsIdB());
-                paramsB.putOpt("selectionId", sweepwaterDTO.getSelectionIdB());
-            } else {
-                paramsB.putOpt("gid", sweepwaterDTO.getOddsIdB());
-                paramsB.putOpt("golds", 50); // todo 临时写死投注50元
-                paramsB.putOpt("oddFType", sweepwaterDTO.getStrongB());
-                paramsB.putOpt("gtype", sweepwaterDTO.getGTypeB());
-                paramsB.putOpt("wtype", sweepwaterDTO.getWTypeB());
-                paramsB.putOpt("rtype", sweepwaterDTO.getRTypeB());
-                paramsB.putOpt("choseTeam", sweepwaterDTO.getChoseTeamB());
-                paramsB.putOpt("ioratio", sweepwaterDTO.getOddsB());
-                paramsB.putOpt("con", sweepwaterDTO.getConB());
-                paramsB.putOpt("ratio", sweepwaterDTO.getRatioB());
-                paramsB.putOpt("autoOdd", "Y");
-            }
-            Object betResultB = handicapApi.bet(username, sweepwaterDTO.getWebsiteIdB(), paramsB);
-            if (betResultB != null) {
-                JSONObject betResultJson = JSONUtil.parseObj(betResultB);
-                if (betResultJson.getBool("success")) {
-                    String betId = null;
-                    // 投注成功
-                    if (WebsiteType.ZHIBO.getId().equals(sweepwaterDTO.getWebsiteIdA())) {
-                        betId = betResultJson.getJSONObject("data").getJSONObject("betInfo").getStr("betId");
-                    } else if (WebsiteType.PINGBO.getId().equals(sweepwaterDTO.getWebsiteIdA())) {
-                        betId = betResultJson.getJSONObject("data").getStr("wagerId");
-                    } else {
-                        betId = betResultJson.getJSONObject("data").getJSONObject("serverresponse").getStr("ticket_id");
-                    }
-                    betSuc = true;
-                    sweepwaterDTO.setBetIdB(betId);
-                }
-            }
-            // 标记为已投注
-            sweepwaterService.setIsBet(username, sweepwaterDTO.getId());
-            if (betSuc) {
-                // 投注成功记录盘口返回的投注id
-                String key = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN), sweepwaterDTO.getId());
-                businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(sweepwaterDTO));
-            }
-        }
-        log.info("投注结束,总花费:{}毫秒", timerTotal.interval());
     }
 
     /**
@@ -223,10 +110,12 @@ public class BetService {
      */
     public void bet(String username) {
         TimeInterval timerTotal = DateUtil.timer();
-        List<SweepwaterDTO> sweepwaters = sweepwaterService.getSweepwaters(username);
+        List<SweepwaterDTO> sweepwaters = new ArrayList<>(sweepwaterService.getSweepwaters(username));
         if (CollUtil.isEmpty(sweepwaters)) {
             return;
         }
+        // ✅ 安全过滤已投注的
+        sweepwaters.removeIf(s -> s.getIsBet() == 1);
         LimitDTO limitDTO = settingsBetService.getLimit(username);
         IntervalDTO intervalDTO = settingsBetService.getInterval(username);
         BetAmountDTO amountDTO = settingsService.getBetAmout(username);
@@ -246,64 +135,43 @@ public class BetService {
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
 
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
 
         for (SweepwaterDTO sweepwaterDTO : sweepwaters) {
-            // 过滤已经投注过的
-            if (sweepwaterDTO.getIsBet() == 1) {
-                continue;
+            SweepwaterBetDTO dto = BeanUtil.copyProperties(sweepwaterDTO, SweepwaterBetDTO.class);
+
+            // ① 并行提交 A、B
+            CompletableFuture<Boolean> betA = CompletableFuture.supplyAsync(() ->
+                            tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true,  dto, limitDTO, intervalDTO, amountDTO),
+                    betExecutor
+            );
+            CompletableFuture<Boolean> betB = CompletableFuture.supplyAsync(() ->
+                            tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO),
+                    betExecutor
+            );
+
+            // ② 等待 A、B 都完成（串行于下一个 sweepwater）
+            boolean anySuccess;
+            try {
+                CompletableFuture.allOf(betA, betB).join();
+                anySuccess = betA.join() || betB.join();
+            } catch (CompletionException e) {
+                log.error("sweepwater={} A/B 投注异常", dto.getId(), e);
+                anySuccess = false;
             }
-            SweepwaterBetDTO sweepwaterBetDTO = BeanUtil.copyProperties(sweepwaterDTO, SweepwaterBetDTO.class);
-            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                try {
-                    // 尝试投注 A，最多重试3次
-                    boolean betSucA = retry(1, () -> tryBet(username,
-                            sweepwaterBetDTO.getEventIdA(),
-                            sweepwaterBetDTO.getWebsiteIdA(),
-                            true,
-                            sweepwaterBetDTO,
-                            limitDTO,
-                            intervalDTO,
-                            amountDTO
-                    ));
 
-                    // 尝试投注 B，最多重试3次
-                    boolean betSucB = retry(1, () -> tryBet(username,
-                            sweepwaterBetDTO.getEventIdB(),
-                            sweepwaterBetDTO.getWebsiteIdB(),
-                            false,
-                            sweepwaterBetDTO,
-                            limitDTO,
-                            intervalDTO,
-                            amountDTO
-                    ));
-
-                    boolean betSuccess = betSucA || betSucB;
-
-                    // 更新投注状态
-                    sweepwaterService.setIsBet(username, sweepwaterBetDTO.getId());
-
-                    // 投注成功后存Redis
-                    if (betSuccess) {
-                        String key = KeyUtil.genKey(
-                                RedisConstants.PLATFORM_BET_PREFIX,
-                                username,
-                                LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
-                                sweepwaterBetDTO.getId()
-                        );
-                        businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(sweepwaterBetDTO));
-                    }
-
-                } catch (Exception e) {
-                    log.error("投注异常：SweepwaterDTO={}，异常信息={}", JSONUtil.toJsonStr(sweepwaterBetDTO), e.getMessage(), e);
-                }
-            }, betExecutor);
-
-            futures.add(future);
+            // ③ 标记 & 缓存
+            sweepwaterService.setIsBet(username, dto.getId());
+            if (anySuccess) {
+                String key = KeyUtil.genKey(
+                        RedisConstants.PLATFORM_BET_PREFIX,
+                        username,
+                        LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
+                        dto.getId()
+                );
+                businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(dto));
+            }
         }
 
-        // 等待所有投注完成
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
         // **确保 executorAdminUserService 正确关闭**
         PriorityTaskExecutor.shutdownExecutor(betExecutor);
 
@@ -363,20 +231,6 @@ public class BetService {
                            LimitDTO limitDTO,
                            IntervalDTO intervalDTO,
                            BetAmountDTO amountDTO) {
-        String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventId);
-        RAtomicLong counter = businessPlatformRedissonClient.getAtomicLong(limitKey);
-
-        // 设置初始值和过期时间（仅首次）
-        if (!counter.isExists()) {
-            counter.set(0);
-            counter.expire(Duration.ofHours(24));
-        }
-
-        long currentCount = counter.get();
-        if (currentCount >= limitDTO.getBetLimitGame()) {
-            log.info("用户 {} 的投注已达上限，eventId={}, 当前次数={}", username, eventId, currentCount);
-            return false;
-        }
 
         // 校验投注间隔
         String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, eventId);
@@ -390,12 +244,22 @@ public class BetService {
             }
         }
 
+        // 投注次数限制
+        String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventId);
+        String score = isA ? dto.getScoreA() : dto.getScoreB();
+        // 校验投注次数限制
+        // 投注前锁定额度（确保不会超过）
+        if (!tryReserveBetLimit(limitKey, score, limitDTO)) {
+            log.info("用户 {} 当前比分 {} 投注次数超限，eventId={}", username, score, eventId);
+            return false;
+        }
+
         // 构建投注参数并调用投注接口
         JSONObject params = buildBetParams(dto, amountDTO.getAmount(), isA);
+        // 投注
         Object betResult = handicapApi.bet(username, websiteId, params);
 
         if (betResult != null && parseBetSuccess(betResult, dto, isA)) {
-            counter.incrementAndGet();
             // 设置投注时间记录
             businessPlatformRedissonClient.getBucket(intervalKey).set(System.currentTimeMillis(), Duration.ofHours(24));
             if (isA) {
@@ -404,9 +268,97 @@ public class BetService {
                 dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
             }
             return true;
+        } else {
+            // 撤销预占额度
+            rollbackBetLimit(limitKey, score);
+            return false;
         }
 
-        return false;
+    }
+
+    /**
+     * 校验比分限制和总投注限制
+     * 下注前检查 + 锁定额度
+     * @param limitKey
+     * @param score
+     * @param limitDTO
+     * @return
+     */
+    private boolean tryReserveBetLimit(String limitKey, String score, LimitDTO limitDTO) {
+        String lockKey = "lock:betlimit:" + limitKey;
+        RLock lock = businessPlatformRedissonClient.getLock(lockKey);
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(2, 5, TimeUnit.SECONDS);
+            if (!locked) {
+                log.warn("获取比分限制锁失败，limitKey={}", limitKey);
+                return false;
+            }
+
+            RBucket<Object> bucket = businessPlatformRedissonClient.getBucket(limitKey);
+            JSONObject counterJson = Optional.ofNullable(bucket.get())
+                    .map(JSONUtil::parseObj)
+                    .orElse(new JSONObject());
+
+            int scoreCount = counterJson.getInt(score, 0);
+            int totalCount = counterJson.values().stream()
+                    .filter(val -> val instanceof Integer)
+                    .mapToInt(val -> (Integer) val)
+                    .sum();
+
+            if (scoreCount >= limitDTO.getBetLimitScore() || totalCount >= limitDTO.getBetLimitGame()) {
+                return false;
+            }
+
+            // 预占额度
+            counterJson.putOpt(score, scoreCount + 1);
+            bucket.set(counterJson, Duration.ofHours(24));
+            return true;
+
+        } catch (Exception e) {
+            log.error("预占比分限制失败，limitKey={}, score={}", limitKey, score, e);
+            return false;
+        } finally {
+            if (locked) {
+                lock.unlock();
+            }
+        }
+    }
+
+    /**
+     * 投注失败后撤销配额
+     * @param limitKey
+     * @param score
+     */
+    private void rollbackBetLimit(String limitKey, String score) {
+        String lockKey = "lock:betlimit:" + limitKey;
+        RLock lock = businessPlatformRedissonClient.getLock(lockKey);
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(2, 5, TimeUnit.SECONDS);
+            if (!locked) {
+                log.warn("回滚比分限制锁失败，limitKey={}", limitKey);
+                return;
+            }
+
+            RBucket<Object> bucket = businessPlatformRedissonClient.getBucket(limitKey);
+            JSONObject counterJson = Optional.ofNullable(bucket.get())
+                    .map(JSONUtil::parseObj)
+                    .orElse(new JSONObject());
+
+            int scoreCount = counterJson.getInt(score, 0);
+            if (scoreCount > 0) {
+                counterJson.putOpt(score, scoreCount - 1);
+                bucket.set(counterJson, Duration.ofHours(24));
+            }
+
+        } catch (Exception e) {
+            log.error("回滚比分限制失败，limitKey={}, score={}", limitKey, score, e);
+        } finally {
+            if (locked) {
+                lock.unlock();
+            }
+        }
     }
 
     /**
@@ -458,11 +410,11 @@ public class BetService {
         String accountId = betResultJson.getStr("accountId");
         String websiteId = isA ? sweepwaterDTO.getWebsiteIdA() : sweepwaterDTO.getWebsiteIdB();
 
+        // 投注成功后就用betId去盘口投注历史接口中查找当前的投注单，进行保存
         if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             betId = betResultJson.getJSONObject("data").getJSONObject("betInfo").getStr("betId");
-            // todo 投注成功后就用betId去盘口投注历史接口中查找当前的投注单，进行保存
         } else if (WebsiteType.PINGBO.getId().equals(websiteId)) {
-            betId = betResultJson.getJSONObject("data").getStr("wagerId");
+            betId = betResultJson.getJSONArray("response").getJSONObject(0).getStr("wagerId");
         } else {
             betId = betResultJson.getJSONObject("data").getJSONObject("serverresponse").getStr("ticket_id");
         }

@@ -103,7 +103,7 @@ public class WebsitePingBoBetUnsettledHandler implements ApiHandler {
             // jsonObject.putOpt("detail", jsonArray.getStr(4)+" 足球 "+jsonArray.getStr(8));
             // jsonObject.putOpt("team", jsonArray.getStr(22)+jsonArray.getStr(6)+jsonArray.getStr(16));
             // jsonObject.putOpt("odds", jsonArray.getStr(10));
-            jsonObject.putOpt("amount", df.format(jsonArray.getBigDecimal(36)));
+            jsonObject.putOpt("amount", df.format(jsonArray.getBigDecimal(23)));
             jsonObject.putOpt("win", df.format(jsonArray.getBigDecimal(35)));
             jsonObject.putOpt("status", "OPEN".equals(jsonArray.getStr(12)) ? "进行中" : "已结算");
             responseJsonList.add(jsonObject);
