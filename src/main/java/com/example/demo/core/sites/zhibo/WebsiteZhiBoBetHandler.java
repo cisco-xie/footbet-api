@@ -43,7 +43,7 @@ public class WebsiteZhiBoBetHandler implements ApiHandler {
         body.putOpt("requestId", System.currentTimeMillis());
         body.putOpt("marketSelectionId", params.getStr("marketSelectionId"));
         body.putOpt("stake", params.getStr("stake"));
-        body.putOpt("oddsFormatId", ZhiBoOddsFormatType.RM.getId());
+        body.putOpt("oddsFormatId", params.getStr("oddsFormatId"));
         body.putOpt("odds", params.getStr("odds"));
         body.putOpt("decimalOdds", params.getStr("decimalOdds"));
         body.putOpt("handicap", params.getStr("handicap"));
@@ -54,7 +54,7 @@ public class WebsiteZhiBoBetHandler implements ApiHandler {
     }
 
     @Override
-    public JSONObject parseResponse(HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
         // 检查响应状态
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();
@@ -109,6 +109,6 @@ public class WebsiteZhiBoBetHandler implements ApiHandler {
                 .execute();
 
         // 解析响应
-        return parseResponse(response);
+        return parseResponse(params, response);
     }
 }

@@ -6,8 +6,7 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
-import com.example.demo.common.enmu.SystemError;
-import com.example.demo.common.enmu.WebsiteType;
+import com.example.demo.common.enmu.*;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.factory.ApiHandler;
@@ -36,6 +35,9 @@ public class HandicapApi {
 
     @Resource
     private WebsiteFactoryManager factoryManager;
+
+    @Resource
+    private WebsiteService websiteService;
 
     @Resource
     private AdminService adminService;
@@ -309,6 +311,8 @@ public class HandicapApi {
      * @return
      */
     public Object events(String username, String websiteId) {
+        WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
+        Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
             if (account.getIsTokenValid() == 0) {
@@ -327,8 +331,34 @@ public class HandicapApi {
             // 根据不同站点传入不同的参数
             if (WebsiteType.PINGBO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("tokens"));
+                // 转换赔率类型
+                int oddsFormatType = 0;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = PingBoOddsFormatType.HKC.getId();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
             } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                 params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+                // 转换赔率类型
+                int oddsFormatType = 0;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = ZhiBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = ZhiBoOddsFormatType.HKC.getId();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = ZhiBoOddsFormatType.RM.getId();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
             }
@@ -348,6 +378,8 @@ public class HandicapApi {
      * @return
      */
     public Object eventsOdds(String username, String websiteId, String lid, String ecid) {
+        WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
+        Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
             if (account.getIsTokenValid() == 0) {
@@ -366,12 +398,51 @@ public class HandicapApi {
             // 根据不同站点传入不同的参数
             if (WebsiteType.PINGBO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("tokens"));
+                // 转换赔率类型
+                int oddsFormatType = 0;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = PingBoOddsFormatType.HKC.getId();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
             } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                 params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+                // 转换赔率类型
+                int oddsFormatType = 0;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = ZhiBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = ZhiBoOddsFormatType.HKC.getId();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = ZhiBoOddsFormatType.RM.getId();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
                 params.putOpt("lid", lid);
                 params.putOpt("ecid", ecid);
+                // 转换赔率类型
+                String oddsFormatType = "";
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
             }
             JSONObject result = apiHandler.execute(params);
 
@@ -497,6 +568,86 @@ public class HandicapApi {
     }
 
     /**
+     * 偏好设置
+     * @param username
+     * @param websiteId
+     * @return
+     */
+    public Object preferences(String username, String websiteId) {
+        WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
+        Integer oddsType = websiteVO.getOddsType();
+        List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
+        for (ConfigAccountVO account : accounts) {
+            if (account.getIsTokenValid() == 0) {
+                // 未登录直接跳过
+                continue;
+            }
+            WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+
+            ApiHandler apiHandler = factory.preferences();
+            if (apiHandler == null) {
+                continue;
+            }
+            JSONObject params = new JSONObject();
+            params.putOpt("adminUsername", username);
+            params.putOpt("websiteId", websiteId);
+            // 根据不同站点传入不同的参数
+            if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("tokens"));
+                // 转换赔率类型
+                int oddsFormatType = 0;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = PingBoOddsFormatType.HKC.getId();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
+            } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+                params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+                // 转换赔率类型
+                int oddsFormatType = 0;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = ZhiBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = ZhiBoOddsFormatType.HKC.getId();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = ZhiBoOddsFormatType.RM.getId();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
+            } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("serverresponse"));
+                // 转换赔率类型
+                String oddsFormatType;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
+            }
+            JSONObject result = apiHandler.execute(params);
+
+            if (result.getBool("success")) {
+                return result;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 投注前下单预览 - 目前平博和新二网站需要此前置操作
      * @param username
      * @param websiteId
@@ -504,6 +655,8 @@ public class HandicapApi {
      * @return
      */
     public Object betPreview(String username, String websiteId, JSONObject odds) {
+        WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
+        Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
             if (account.getIsTokenValid() == 0) {
@@ -524,18 +677,56 @@ public class HandicapApi {
                 params.putAll(account.getToken().getJSONObject("tokens"));
                 params.putOpt("oddsId", odds.getStr("oddsId"));
                 params.putOpt("selectionId", odds.getStr("selectionId"));
+                // 转换赔率类型
+                int oddsFormatType = 0;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = PingBoOddsFormatType.HKC.getId();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
             } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                 params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
                 params.putOpt("marketSelectionId", odds.getStr("marketSelectionId"));
+                // 转换赔率类型
+                int oddsFormatType = 0;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = ZhiBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = ZhiBoOddsFormatType.HKC.getId();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = ZhiBoOddsFormatType.RM.getId();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
 
                 params.putOpt("gid", odds.getStr("gid"));
-                params.putOpt("oddFType", odds.getStr("oddFType"));
                 params.putOpt("gtype", odds.getStr("gtype"));
                 params.putOpt("wtype", odds.getStr("wtype"));
                 params.putOpt("choseTeam", odds.getStr("choseTeam"));
 
+                // 转换赔率类型
+                String oddsFormatType;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
             }
             JSONObject result = apiHandler.execute(params);
 
@@ -556,6 +747,8 @@ public class HandicapApi {
      * @return
      */
     public Object bet(String username, String websiteId, JSONObject odds) {
+        WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
+        Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
             if (account.getIsTokenValid() == 0) {
@@ -575,6 +768,19 @@ public class HandicapApi {
             if (WebsiteType.PINGBO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("tokens"));
                 Object betPreview = betPreview(username, websiteId, odds);
+                // 转换赔率类型
+                int oddsFormatType = 0;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = PingBoOddsFormatType.HKC.getId();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
                 if (betPreview != null) {
                     JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
                     if (betPreviewJson.getBool("success")) {
@@ -618,7 +824,6 @@ public class HandicapApi {
                     JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
                     params.putOpt("gid", odds.getStr("gid"));
                     params.putOpt("golds", odds.getStr("golds"));
-                    params.putOpt("oddFType", odds.getStr("oddFType"));
                     params.putOpt("gtype", odds.getStr("gtype"));
                     params.putOpt("wtype", odds.getStr("wtype"));
                     params.putOpt("rtype", odds.getStr("rtype"));
@@ -627,6 +832,20 @@ public class HandicapApi {
                     params.putOpt("con", betPreviewJson.getJSONObject("serverresponse").getStr("con"));
                     params.putOpt("ratio", betPreviewJson.getJSONObject("serverresponse").getStr("ratio"));
                     params.putOpt("autoOdd", odds.getStr("autoOdd"));
+
+                    // 转换赔率类型
+                    String oddsFormatType;
+                    if (oddsType == 1) {
+                        // 平台设置的马来盘
+                        oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                    } else if (oddsType == 2) {
+                        // 平台设置的香港盘
+                        oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
+                    } else {
+                        // 默认马来盘
+                        oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                    }
+                    params.putOpt("oddsFormatType", oddsFormatType);
                 }
             }
             JSONObject result = apiHandler.execute(params);

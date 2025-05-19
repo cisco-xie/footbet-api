@@ -58,8 +58,7 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
 //        String cookies = "b-user-id=85477736-98f0-11a4-4d7f-e21dbea69097; b-user-id=ODU0Nzc3MzYtOThmMC0xMWE0LTRkN2YtZTIxZGJlYTY5MDk3; odd_f_type_36826212=VFE9PQ==; box4pwd_notshow_36826212=MzY4MjYyMTJfTg==; CookieChk=WQ; iorChgSw=WQ==; myGameVer_36826212=XzIxMTIyOA==; box4pwd_notshow_37015545=MzcwMTU1NDVfTg==; myGameVer_37015545=XzIxMTIyOA==; box4pwd_notshow_37587241=Mzc1ODcyNDFfTg==; myGameVer_37587241=XzIxMTIyOA==; ft_myGame_37587241=e30=; lastBetCredit_sw_37587241=WQ==; lastBetCredit_37587241=NTA=; protocolstr=aHR0cHM=; test=aW5pdA; bk_myGame_37587241=e30=; login_37587241=MTc0NzIxMDAzNA; cu=Tg==; cuipv6=Tg==; ipv6=Tg==";
 //        headers.add("cookie", cookies);
 
-        // String oddFType = params.getStr("oddFType");
-        String oddFType = "H";
+        String oddsFormatType = params.getStr("oddsFormatType");
         String golds = params.getStr("golds");
         String gid = params.getStr("gid");
         String gtype = params.getStr("gtype");
@@ -75,7 +74,7 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
                         "&timestamp=%s&timestamp2=&isRB=Y&imp=N&ptype=&isYesterday=N&f=1M",
                 params.getStr("uid"),
                 Constants.VER,
-                XinBaoOddsFormatType.RM.getCurrencyCode(),
+                oddsFormatType,
                 golds,
                 gid,
                 gtype,
@@ -97,7 +96,7 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
      * @return 解析后的数据
      */
     @Override
-    public JSONObject parseResponse(HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
         // 检查响应状态
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();
@@ -155,7 +154,7 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
                 .execute();
 
         // 解析响应并返回
-        return parseResponse(response);
+        return parseResponse(params, response);
     }
 
     /**

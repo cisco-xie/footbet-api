@@ -45,7 +45,7 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
     }
 
     @Override
-    public JSONObject parseResponse(HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
 
         // 检查响应状态
         if (response.getStatus() != 200) {
@@ -188,7 +188,7 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
         if (params.containsKey("leagueId")) {
             leagueId = params.getInt("leagueId");
         }
-        apiUrl = String.format(apiUrl, ZhiBoSportsType.SOCCER.getId(), ZhiBoSchedulesType.LIVESCHEDULE.getId(), leagueId, ZhiBoOddsFormatType.RM.getId(), 3);
+        apiUrl = String.format(apiUrl, ZhiBoSportsType.SOCCER.getId(), ZhiBoSchedulesType.LIVESCHEDULE.getId(), leagueId, params.getInt("oddsFormatType"), 3);
         // 构建请求
         HttpEntity<String> request = buildRequest(params);
 
@@ -206,7 +206,7 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                 .execute();
 
         // 解析响应
-        return parseResponse(response);
+        return parseResponse(params, response);
     }
 
     /**

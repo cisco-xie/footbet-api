@@ -9,16 +9,22 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.*;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 public class WebsiteService {
+
+    @Lazy
+    @Resource
+    private HandicapApi handicapApi;
 
     @Resource(name = "defaultRedissonClient")
     private RedissonClient redisson;
@@ -27,7 +33,7 @@ public class WebsiteService {
     private RedissonClient businessPlatformRedissonClient;
 
     /**
-     * 获取网站列表
+     * 获取指定网站
      * @param username
      * @return
      */
@@ -112,6 +118,10 @@ public class WebsiteService {
             websiteList.replaceAll(json -> {
                 WebsiteVO site = JSONUtil.toBean(json, WebsiteVO.class);
                 if (site.getId().equals(websiteVO.getId())) {
+                    if (!Objects.equals(site.getOddsType(), websiteVO.getOddsType())) {
+                        // 如果修改了赔率类型，则执行盘口偏好设置
+                        handicapApi.preferences(username, site.getId());
+                    }
                     return JSONUtil.parse(websiteVO).toString();
                 }
                 return json;

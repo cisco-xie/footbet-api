@@ -58,7 +58,7 @@ public class WebsitePingBoBetHandler implements ApiHandler {
         JSONObject requestBody = new JSONObject();
         JSONArray selections = new JSONArray();
         requestBody.putOpt("acceptBetterOdds", true);
-        requestBody.putOpt("oddsFormat", ZhiBoOddsFormatType.RM.getId());
+        requestBody.putOpt("oddsFormat", params.getInt("oddsFormatType"));
         requestBody.putOpt("selections", selections);
         for (Object selectionObj : params.getJSONArray("selections")) {
             JSONObject selectionJson = JSONUtil.parseObj(selectionObj);
@@ -100,7 +100,7 @@ public class WebsitePingBoBetHandler implements ApiHandler {
      * @return 解析后的数据
      */
     @Override
-    public JSONObject parseResponse(HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
 
         // 检查响应状态
         if (response.getStatus() != 200) {
@@ -186,6 +186,6 @@ public class WebsitePingBoBetHandler implements ApiHandler {
                 .execute();
 
         // 解析响应并返回
-        return parseResponse(response);
+        return parseResponse(params, response);
     }
 }

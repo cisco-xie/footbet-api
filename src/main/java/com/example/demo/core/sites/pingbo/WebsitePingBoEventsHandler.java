@@ -56,7 +56,7 @@ public class WebsitePingBoEventsHandler implements ApiHandler {
      * @return 解析后的数据
      */
     @Override
-    public JSONObject parseResponse(HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
 
         // 检查响应状态
         if (response.getStatus() != 200) {
@@ -127,6 +127,7 @@ public class WebsitePingBoEventsHandler implements ApiHandler {
         int mk = 1;
         boolean more = false;
         int o = 1;
+        int ot = params.getInt("oddsFormatType");     // 赔率类型
         String sp = "29";
         if (params.containsKey("me")) {
             // 存在me参数即表示查询的是指定联赛而不是列表
@@ -142,13 +143,14 @@ public class WebsitePingBoEventsHandler implements ApiHandler {
         HttpEntity<String> request = buildRequest(params);
 
         // 构造请求体
-        String queryParams = String.format("btg=1&c=%s&cl=3&d=&ec=&ev=&g=QQ==&hle=%s&ic=false&inl=false&l=3&lang=&lg=&lv=&me=%s&mk=%s&more=%s&o=%s&ot=4&pa=0&pimo=0,1,8,39,2,3,6,7,4,5&pn=-1&pv=1&sp=%s&tm=0&v=0&locale=zh_CN&_=%s&withCredentials=true",
+        String queryParams = String.format("btg=1&c=%s&cl=3&d=&ec=&ev=&g=QQ==&hle=%s&ic=false&inl=false&l=3&lang=&lg=&lv=&me=%s&mk=%s&more=%s&o=%s&ot=%s&pa=0&pimo=0,1,8,39,2,3,6,7,4,5&pn=-1&pv=1&sp=%s&tm=0&v=0&locale=zh_CN&_=%s&withCredentials=true",
                 c,
                 hle,
                 me,
                 mk,
                 more,
                 o,
+                ot,
                 sp,
                 System.currentTimeMillis()
         );
@@ -163,6 +165,6 @@ public class WebsitePingBoEventsHandler implements ApiHandler {
                 .execute();
 
         // 解析响应并返回
-        return parseResponse(response);
+        return parseResponse(params, response);
     }
 }

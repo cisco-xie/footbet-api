@@ -55,7 +55,7 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
      * @return 解析后的数据
      */
     @Override
-    public JSONObject parseResponse(HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
 
         // 检查响应状态
         if (response.getStatus() != 200) {
@@ -116,6 +116,6 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
                 .execute();
 
         // 解析响应并返回
-        return parseResponse(response);
+        return parseResponse(params, response);
     }
 }

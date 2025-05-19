@@ -75,7 +75,7 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
      * @return 解析后的数据
      */
     @Override
-    public JSONObject parseResponse(HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
         // 打印 Set-Cookie
         List<String> setCookieHeaders = response.headers().get("Set-Cookie");
         if (CollUtil.isNotEmpty(setCookieHeaders)) {
@@ -149,6 +149,6 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
                 .execute();
 
         // 解析响应并返回
-        return parseResponse(response);
+        return parseResponse(params, response);
     }
 }

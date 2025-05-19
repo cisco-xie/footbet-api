@@ -43,7 +43,7 @@ public class WebsiteZhiBoBetPreviewHandler implements ApiHandler {
     }
 
     @Override
-    public JSONObject parseResponse(HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
 
         // 检查响应状态
         if (response.getStatus() != 200) {
@@ -101,7 +101,7 @@ public class WebsiteZhiBoBetPreviewHandler implements ApiHandler {
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
         String apiUrl = apiUrlService.getApiUrl(siteId, "betPreview");
 
-        apiUrl = String.format(apiUrl, params.getStr("marketSelectionId"), ZhiBoOddsFormatType.RM.getId(), 3);
+        apiUrl = String.format(apiUrl, params.getStr("marketSelectionId"), params.getInt("oddsFormatType"), 3);
         // 构建请求
         HttpEntity<String> request = buildRequest(params);
 
@@ -119,6 +119,6 @@ public class WebsiteZhiBoBetPreviewHandler implements ApiHandler {
                 .execute();
 
         // 解析响应
-        return parseResponse(response);
+        return parseResponse(params, response);
     }
 }

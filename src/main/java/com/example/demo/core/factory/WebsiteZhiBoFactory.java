@@ -56,6 +56,11 @@ public class WebsiteZhiBoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler preferences() {
+        return null;         // 智博网站暂不用进行偏好设置
+    }
+
+    @Override
     public ApiHandler bet() {
         return new WebsiteZhiBoBetHandler(websiteService, apiUrlService); // 返回具体的投注结果处理类
     }

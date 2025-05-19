@@ -51,7 +51,7 @@ public class WebsiteXinBaoBetPreviewHandler implements ApiHandler {
         headers.add("sec-ch-ua-mobile", "?0");
         headers.add("sec-ch-ua-platform", "\"Windows\"");
 
-        // String oddFType = params.getStr("oddFType");
+        String oddsFormatType = params.getStr("oddsFormatType");
         String gid = params.getStr("gid");
         String gtype = params.getStr("gtype");
         String wtype = params.getStr("wtype");
@@ -60,7 +60,7 @@ public class WebsiteXinBaoBetPreviewHandler implements ApiHandler {
         String requestBody = String.format("p=FT_order_view&uid=%s&ver=%s&langx=zh-cn&odd_f_type=%s&gid=%s&gtype=%s&wtype=%s&chose_team=%s",
                 params.getStr("uid"),
                 Constants.VER,
-                XinBaoOddsFormatType.RM.getCurrencyCode(),
+                oddsFormatType,
                 gid,
                 gtype,
                 wtype,
@@ -75,7 +75,7 @@ public class WebsiteXinBaoBetPreviewHandler implements ApiHandler {
      * @return 解析后的数据
      */
     @Override
-    public JSONObject parseResponse(HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
         // 检查响应状态
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();
@@ -129,7 +129,7 @@ public class WebsiteXinBaoBetPreviewHandler implements ApiHandler {
                 .execute();
 
         // 解析响应并返回
-        return parseResponse(response);
+        return parseResponse(params, response);
     }
 
 }

@@ -57,7 +57,7 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
         JSONObject requestBody = new JSONObject();
         JSONObject selections = new JSONObject();
         JSONArray oddsSelections = new JSONArray();
-        selections.putOpt("oddsFormat", ZhiBoOddsFormatType.RM.getId());
+        selections.putOpt("oddsFormat", params.getInt("oddsFormatType"));
         selections.putOpt("oddsId", params.getStr("oddsId"));
         selections.putOpt("selectionId", params.getStr("selectionId"));
         selections.putOpt("oddsSelectionsType", "NORMAL");
@@ -73,7 +73,7 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
      * @return 解析后的数据
      */
     @Override
-    public JSONObject parseResponse(HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
         JSONObject result = new JSONObject();
 
         int status = response.getStatus();
@@ -186,6 +186,6 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
                 .execute();
 
         // 解析响应并返回
-        return parseResponse(response);
+        return parseResponse(params, response);
     }
 }

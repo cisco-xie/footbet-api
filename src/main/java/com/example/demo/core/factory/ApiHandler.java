@@ -11,6 +11,6 @@ import java.util.Map;
  */
 public interface ApiHandler {
     HttpEntity<String> buildRequest(JSONObject params); // 构建请求
-    Map<String, Object> parseResponse(HttpResponse response);      // 解析响应
+    Map<String, Object> parseResponse(JSONObject params, HttpResponse response);        // 解析响应,带请求参数版
     JSONObject execute(JSONObject params); // 发送请求
 }
