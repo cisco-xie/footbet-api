@@ -6,8 +6,10 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
+import com.example.demo.common.enmu.SystemError;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.utils.KeyUtil;
+import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.core.factory.WebsiteApiFactory;
 import com.example.demo.core.factory.WebsiteFactoryManager;
@@ -132,6 +134,25 @@ public class HandicapApi {
         logThreadPoolStatus((ThreadPoolExecutor) executorLoginService, "指定网站账户登录线程池");
         // 执行完所有任务后关闭线程池
         shutdownExecutor(executorLoginService);
+    }
+
+    /**
+     * 单个登录 - 根据平台用户和指定网站账号登录
+     * 不限制网站或者账户状态是否开启
+     * @param username
+     * @param websiteId
+     */
+    public void singleLogin(String username, String websiteId, String accountId) {
+        ConfigAccountVO account = accountService.getAccountById(username, websiteId, accountId);
+        if (account == null) {
+            throw new BusinessException(SystemError.USER_1017);
+        }
+
+        try {
+            processAccountLogin(account, username, websiteId);
+        } catch (Exception e) {
+            log.error("执行单个登入任务时出现异常", e);
+        }
     }
 
     // 运行登录工厂

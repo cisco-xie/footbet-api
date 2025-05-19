@@ -71,7 +71,7 @@ public class AccountController extends BaseController {
         return Result.success(BeanUtil.copyToList(websites, ConfigAccountDTO.class));
     }
 
-    @Operation(summary = "一键登录指定网站的账号列表")
+    @Operation(summary = "批量登录 - 一键登录指定网站的账号列表")
     @GetMapping("/login/{websiteId}")
     public Result loginByWebsite(@PathVariable String websiteId) {
         AdminLoginDTO admin = getUser();
@@ -79,11 +79,35 @@ public class AccountController extends BaseController {
         return Result.success();
     }
 
+    @Operation(summary = "单个登录 - 登录指定网站账号")
+    @GetMapping("/single-login/{websiteId}/{accountId}")
+    public Result singleLogin(@PathVariable String websiteId, @PathVariable String accountId) {
+        AdminLoginDTO admin = getUser();
+        handicapApi.singleLogin(admin.getUsername(), websiteId, accountId);
+        return Result.success();
+    }
+
     @Operation(summary = "一键下线指定网站的账号列表")
     @GetMapping("/logout/{websiteId}")
     public Result logoutByWebsite(@PathVariable String websiteId) {
         AdminLoginDTO admin = getUser();
-        accountService.logoutByWebsite(admin.getUsername(), websiteId);
+        accountService.logoutByWebsite(admin.getUsername(), websiteId, null);
+        return Result.success();
+    }
+
+    @Operation(summary = "单个下线 - 下线指定网站账号")
+    @GetMapping("/single-login-out/{websiteId}/{accountId}")
+    public Result singleLoginout(@PathVariable String websiteId, @PathVariable String accountId) {
+        AdminLoginDTO admin = getUser();
+        accountService.logoutByWebsite(admin.getUsername(), websiteId, accountId);
+        return Result.success();
+    }
+
+    @Operation(summary = "一键启停 - 指定网站的账号列表")
+    @GetMapping("/enable/{websiteId}/{enable}")
+    public Result enable(@PathVariable String websiteId, @PathVariable Integer enable) {
+        AdminLoginDTO admin = getUser();
+        accountService.enable(admin.getUsername(), websiteId, enable);
         return Result.success();
     }
 

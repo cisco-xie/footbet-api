@@ -158,24 +158,52 @@ public class ConfigAccountService {
     }
 
     /**
-     * 退出所有账户-即清空所有token
+     * 账号一键启停
      * @param username
      * @param websiteId
+     * @param isEnable
      */
-    public void logoutByWebsite(String username, String websiteId) {
-
-        // 生成 Redis 中的 key
+    public void enable(String username, String websiteId, Integer isEnable) {
+        // Redis key
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
 
         // 获取 Redis 中的列表
         List<String> accountList = businessPlatformRedissonClient.getList(key);
 
-        // 将所有账户token置空
+        // 替换列表中所有账户的 启停
         accountList.replaceAll(json -> {
             ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
+            // 设置启停
+            account.setEnable(isEnable);
+            return JSONUtil.toJsonStr(account);
+        });
+    }
+
+    /**
+     * 退出所有账户-即清空所有token
+     * @param username
+     * @param websiteId
+     */
+    public void logoutByWebsite(String username, String websiteId, String accountId) {
+        // Redis key
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
+
+        // 获取 Redis 中的列表
+        List<String> accountList = businessPlatformRedissonClient.getList(key);
+
+        // 替换列表中所有账户的 token
+        accountList.replaceAll(json -> {
+            ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
+
+            // 若指定 accountId，跳过不匹配的账户
+            if (StringUtils.isNotBlank(accountId) && !accountId.equals(account.getId())) {
+                return json; // 保持原样
+            }
+            // 清除 token 信息
             account.setIsTokenValid(0);
             account.setToken(new JSONObject());
-            return JSONUtil.parse(account).toString();
+
+            return JSONUtil.toJsonStr(account);
         });
     }
 
