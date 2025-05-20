@@ -74,8 +74,10 @@ public class WebsiteZhiBoEventsHandler implements ApiHandler {
                     JSONObject eventJsonOld = (JSONObject) event;
                     homeTeam.putOpt("id", eventJsonOld.getStr("id"));
                     homeTeam.putOpt("name", eventJsonOld.getStr("homeTeam"));
+                    homeTeam.putOpt("isHome", true);
                     awayTeam.putOpt("id", eventJsonOld.getStr("id"));
                     awayTeam.putOpt("name", eventJsonOld.getStr("awayTeam"));
+                    awayTeam.putOpt("isHome", false);
                     leaguesArray.put(homeTeam);
                     leaguesArray.put(awayTeam);
                 });

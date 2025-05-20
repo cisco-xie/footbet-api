@@ -14,6 +14,7 @@ import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.model.dto.bet.SweepwaterBetDTO;
 import com.example.demo.model.dto.settings.OddsScanDTO;
 import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
+import com.example.demo.model.vo.WebsiteVO;
 import com.example.demo.model.vo.dict.BindLeagueVO;
 import com.example.demo.model.vo.dict.BindTeamVO;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -26,6 +27,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 扫水
@@ -52,6 +55,9 @@ public class SweepwaterService {
     @Lazy
     @Resource
     private BetService betService;
+
+    @Resource
+    private WebsiteService websiteService;
 
     public void setIsBet(String username, String id) {
         String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
@@ -108,7 +114,18 @@ public class SweepwaterService {
             return;
         }
 
-        OddsScanDTO oddsScanDTO = settingsService.getOddsScan(username);
+        OddsScanDTO oddsScan = settingsService.getOddsScan(username);
+        List<WebsiteVO> websites = websiteService.getWebsites(username);
+        // 过滤掉未启用的网站
+        websites.removeIf(website -> website.getEnable() == 0);
+        if (CollUtil.isEmpty(websites)) {
+            log.info("无启用网站，平台用户:{}", username);
+            return;
+        }
+
+        // 转换为 Map<id, WebsiteVO>
+        Map<String, WebsiteVO> websiteMap = websites.stream()
+                .collect(Collectors.toMap(WebsiteVO::getId, Function.identity()));
         // 用于记录已获取的 ecid 对应事件，避免重复请求远程 API
         Map<String, JSONArray> fetchedEcidSetA = new ConcurrentHashMap<>();
         Map<String, JSONArray> fetchedEcidSetB = new ConcurrentHashMap<>();
@@ -156,6 +173,10 @@ public class SweepwaterService {
                     String websiteIdA = bindLeagueVO.getWebsiteIdA();
                     String websiteIdB = bindLeagueVO.getWebsiteIdB();
 
+                    if (!websiteMap.containsKey(websiteIdA) || !websiteMap.containsKey(websiteIdB)) {
+                        log.info("扫水任务 - 网站idA[{}]idB[{}]存在未启用状态", websiteIdA, websiteIdB);
+                        return;
+                    }
                     List<CompletableFuture<Void>> eventFutures = new ArrayList<>();
 
                     for (BindTeamVO event : bindLeagueVO.getEvents()) {
@@ -167,12 +188,12 @@ public class SweepwaterService {
 
                                 String ecidA = event.getEcidA();
                                 String ecidB = event.getEcidB();
-
+                                // 根据网站获取对应盘口的赛事列表
                                 JSONArray eventsA = getEventsForEcid(username, fetchedEcidSetA, websiteIdA, bindLeagueVO.getLeagueIdA(), ecidA);
                                 JSONArray eventsB = getEventsForEcid(username, fetchedEcidSetB, websiteIdB, bindLeagueVO.getLeagueIdB(), ecidB);
 
                                 if (eventsA == null || eventsB == null) return;
-
+                                // 平台绑定球队赛事对应获取盘口赛事列表
                                 JSONObject eventAJson = findEventByLeagueId(eventsA, bindLeagueVO.getLeagueIdA());
                                 JSONObject eventBJson = findEventByLeagueId(eventsB, bindLeagueVO.getLeagueIdB());
 
@@ -180,12 +201,14 @@ public class SweepwaterService {
 
                                 List<SweepwaterDTO> results = aggregateEventOdds(
                                         username,
-                                        oddsScanDTO,
+                                        oddsScan,
+                                        websiteMap.get(websiteIdA), websiteMap.get(websiteIdB),
                                         eventAJson, eventBJson,
                                         event.getNameA(), event.getNameB(),
                                         websiteIdA, websiteIdB,
                                         bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(),
-                                        event.getIdA(), event.getIdB()
+                                        event.getIdA(), event.getIdB(),
+                                        event.getIsHomeA(), event.getIsHomeB()
                                 );
                             } catch (Exception ex) {
                                 log.error("扫水事件处理异常，平台用户:{}，联赛:{} - {}，事件:{} - {}", username,
@@ -217,6 +240,7 @@ public class SweepwaterService {
 
     private JSONArray getEventsForEcid(String username, Map<String, JSONArray> fetchedEcidSet, String websiteId, String leagueId, String ecid) {
         if (StringUtils.isNotBlank(ecid)) {
+            // 存在ecid表示这是新二网站的比赛id
             if (fetchedEcidSet.containsKey(ecid)) {
                 return fetchedEcidSet.get(ecid);
             } else {
@@ -261,7 +285,7 @@ public class SweepwaterService {
         return null; // 如果没有找到，返回null
     }
 
-    public List<SweepwaterDTO> aggregateEventOdds(String username, OddsScanDTO oddsScanDTO, JSONObject eventAJson, JSONObject eventBJson, String teamNameA, String teamNameB, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB) {
+    public List<SweepwaterDTO> aggregateEventOdds(String username, OddsScanDTO oddsScanDTO, WebsiteVO websiteA, WebsiteVO websiteB, JSONObject eventAJson, JSONObject eventBJson, String bindTeamNameA, String bindTeamNameB, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, boolean isHomeA, boolean isHomeB) {
         List<SweepwaterDTO> results = new ArrayList<>();
         // 遍历第一个 JSON 的事件列表
         JSONArray eventsA = eventAJson.getJSONArray("events");
@@ -270,20 +294,68 @@ public class SweepwaterService {
             JSONObject aJson = (JSONObject) eventA;
             String nameA = aJson.getStr("name");
             String scoreA = aJson.getStr("score");
-            JSONObject fullCourtA = aJson.getJSONObject("fullCourt");
-            JSONObject firstHalfA = aJson.getJSONObject("firstHalf");
+            JSONObject fullCourtA = new JSONObject();
+            JSONObject firstHalfA = new JSONObject();
+            if (websiteA.getFullCourt() == 1) {
+                // 开启全场
+                fullCourtA = aJson.getJSONObject("fullCourt");
+                if (websiteA.getBigBall() == 0 && isHomeA) {
+                    // 关闭大球,主队是大球,直接清空大小球信息
+                    fullCourtA.putOpt("overSize", new JSONObject());
+                }
+                if (websiteA.getSmallBall() == 0 && !isHomeA) {
+                    // 关闭小球,客队是小球,直接清空大小球信息
+                    fullCourtA.putOpt("overSize", new JSONObject());
+                }
+            }
+            if (websiteA.getFirstHalf() == 1) {
+                // 开启上半场
+                firstHalfA = aJson.getJSONObject("firstHalf");
+                if (websiteA.getBigBall() == 0 && isHomeA) {
+                    // 关闭大球,主队是大球,直接清空大小球信息
+                    firstHalfA.putOpt("overSize", new JSONObject());
+                }
+                if (websiteA.getSmallBall() == 0 && !isHomeA) {
+                    // 关闭小球,客队是小球,直接清空大小球信息
+                    firstHalfA.putOpt("overSize", new JSONObject());
+                }
+            }
 
             // 遍历第二个 JSON 的事件列表
             for (Object event2 : eventsB) {
                 JSONObject bJson = (JSONObject) event2;
                 String nameB = bJson.getStr("name");
                 String scoreB = bJson.getStr("score");
-                JSONObject fullCourtB = bJson.getJSONObject("fullCourt");
-                JSONObject firstHalfB = bJson.getJSONObject("firstHalf");
+                JSONObject fullCourtB = new JSONObject();
+                JSONObject firstHalfB = new JSONObject();
+                if (websiteB.getFullCourt() == 1) {
+                    // 开启全场
+                    fullCourtB = bJson.getJSONObject("fullCourt");
+                    if (websiteB.getBigBall() == 0 && isHomeB) {
+                        // 关闭大球,主队是大球,直接清空大小球信息
+                        fullCourtB.putOpt("overSize", new JSONObject());
+                    }
+                    if (websiteB.getSmallBall() == 0 && !isHomeB) {
+                        // 关闭小球,客队是小球,直接清空大小球信息
+                        fullCourtB.putOpt("overSize", new JSONObject());
+                    }
+                }
+                if (websiteB.getFirstHalf() == 1) {
+                    // 开启上半场
+                    firstHalfB = bJson.getJSONObject("firstHalf");
+                    if (websiteB.getBigBall() == 0 && isHomeB) {
+                        // 关闭大球,主队是大球,直接清空大小球信息
+                        firstHalfB.putOpt("overSize", new JSONObject());
+                    }
+                    if (websiteB.getSmallBall() == 0 && !isHomeB) {
+                        // 关闭小球,客队是小球,直接清空大小球信息
+                        firstHalfB.putOpt("overSize", new JSONObject());
+                    }
+                }
 
                 // 检查是否是相反的队伍
-                if (nameA.equals(teamNameA) && !nameB.equals(teamNameB) ||
-                        nameA.equals(teamNameB) && !nameB.equals(teamNameA)) {
+                if (nameA.equals(bindTeamNameA) && !nameB.equals(bindTeamNameB) ||
+                        nameA.equals(bindTeamNameB) && !nameB.equals(bindTeamNameA)) {
                     // 合并 fullCourt 和 firstHalf 数据
                     processFullCourtOdds(username, oddsScanDTO, fullCourtA, fullCourtB, "fullCourt", nameA, nameB, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, results, scoreA, scoreB);
                     processFullCourtOdds(username, oddsScanDTO, firstHalfA, firstHalfB, "firstHalf", nameA, nameB, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, results, scoreA, scoreB);

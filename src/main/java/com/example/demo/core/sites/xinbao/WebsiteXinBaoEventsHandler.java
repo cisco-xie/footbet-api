@@ -118,10 +118,12 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
             // eventHJson.putOpt("id", gameJson.getStr("GNUM_H"));
             eventHJson.putOpt("id", gid);
             eventHJson.putOpt("name", gameJson.getStr("TEAM_H"));
+            eventHJson.putOpt("isHome", true);
             eventHJson.putOpt("ecid", ecid);
             // eventCJson.putOpt("id", gameJson.getStr("GNUM_C"));
             eventCJson.putOpt("id", gid);
             eventCJson.putOpt("name", gameJson.getStr("TEAM_C"));
+            eventCJson.putOpt("isHome", false);
             eventCJson.putOpt("ecid", ecid);
 
             // 将队伍信息添加到当前联赛的 events 中

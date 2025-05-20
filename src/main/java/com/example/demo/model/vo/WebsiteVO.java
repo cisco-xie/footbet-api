@@ -19,13 +19,13 @@ public class WebsiteVO {
     private List<String> baseUrls;
     @Schema(description = "是否启用（0否1是）")
     private Integer enable = 0;
-    @Schema(description = "是否单式（0否1是）")
+    @Schema(description = "是否单式（0否1是）-表示不是滚球盘，还未开赛的")
     private Integer simplex = 0;
     @Schema(description = "是否滚球（0否1是）")
-    private Integer rollingBall = 0;
-    @Schema(description = "上盘（0否1是）")
+    private Integer rollingBall = 1;
+    @Schema(description = "上盘（0否1是）-让球盘的让球一方代表上盘")
     private Integer hangingWall = 0;
-    @Schema(description = "下盘（0否1是）")
+    @Schema(description = "下盘（0否1是）-让球盘的被让球一方代表上盘")
     private Integer footwall = 0;
     @Schema(description = "大球（0否1是）")
     private Integer bigBall = 0;

@@ -22,9 +22,9 @@ public class WebSiteDTO {
     private Integer simplex;
     @Schema(description = "是否滚球（0否1是）")
     private Integer rollingBall;
-    @Schema(description = "上盘（0否1是）")
+    @Schema(description = "上盘（0否1是）-让球盘的让球一方代表上盘")
     private Integer hangingWall;
-    @Schema(description = "下盘（0否1是）")
+    @Schema(description = "下盘（0否1是）-让球盘的被让球一方代表上盘")
     private Integer footwall;
     @Schema(description = "大球（0否1是）")
     private Integer bigBall;

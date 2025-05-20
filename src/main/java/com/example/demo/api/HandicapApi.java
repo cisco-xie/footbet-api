@@ -751,8 +751,8 @@ public class HandicapApi {
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
-            if (account.getIsTokenValid() == 0) {
-                // 未登录直接跳过
+            if (account.getEnable() == 0 || account.getIsTokenValid() == 0) {
+                // 未启用或未登录直接跳过
                 continue;
             }
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);

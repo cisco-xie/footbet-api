@@ -96,7 +96,7 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
                 responseArray = new JSONArray(responseBody);
             } else {
                 JSONObject obj = new JSONObject(responseBody);
-                log.error("[平博][投注][响应为对象非数组][body={}]", obj);
+                log.error("[平博][投注预览][响应为对象非数组][body={}]", obj);
                 result.putOpt("code", 500);
                 result.putOpt("success", false);
                 result.putOpt("msg", "投注预览返回格式错误（应为数组）");

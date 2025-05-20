@@ -4,6 +4,7 @@ import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.constants.Constants;
@@ -97,27 +98,47 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
      */
     @Override
     public JSONObject parseResponse(JSONObject params, HttpResponse response) {
-        // 检查响应状态
+        // 1. 检查响应状态码
         if (response.getStatus() != 200) {
-            JSONObject res = new JSONObject();
-            res.putOpt("success", false);
-            res.putOpt("msg", "账户登录失效");
-            return res;
+            return new JSONObject()
+                    .putOpt("success", false)
+                    .putOpt("msg", "账户登录失效");
         }
 
-        // 解析响应
-        JSONObject responseJson = new JSONObject(response.body());
-        log.info("[新2][投注]{}", responseJson);
-        JSONObject serverresponse = responseJson.getJSONObject("serverresponse");
-        if (!"560".equals(serverresponse.getStr("code"))) {
-            responseJson.putOpt("success", false);
-            responseJson.putOpt("msg", "投注失败:"+serverresponse.getStr("msg"));
-            return responseJson;
+        // 2. 获取响应内容
+        String responseBody = response.body().trim();
+        JSONObject responseJson;
+
+        // 3. 判断是否为 JSON 格式
+        if (responseBody.startsWith("{")) {
+            try {
+                responseJson = JSONUtil.parseObj(responseBody);
+            } catch (Exception e) {
+                log.error("[新2][投注失败][JSON解析异常][body={}]", responseBody, e);
+                return new JSONObject()
+                        .putOpt("success", false)
+                        .putOpt("msg", "投注返回格式错误（JSON 解析失败）");
+            }
+        } else {
+            log.error("[新2][投注失败][响应非JSON][body={}]", responseBody);
+            return new JSONObject()
+                    .putOpt("success", false)
+                    .putOpt("msg", "投注返回格式错误（应为 JSON）");
         }
-        responseJson.putOpt("success", true);
-        responseJson.putOpt("data", responseJson);
-        responseJson.putOpt("msg", "投注成功");
-        return responseJson;
+
+        // 4. 日志输出
+        log.info("[新2][投注结果]{}", responseJson);
+
+        // 5. 提取并验证投注结果
+        JSONObject serverResponse = responseJson.getJSONObject("serverresponse");
+        String code = serverResponse.getStr("code");
+        String msg = serverResponse.getStr("msg");
+
+        boolean isSuccess = "560".equals(code);
+        return new JSONObject()
+                .putOpt("success", isSuccess)
+                .putOpt("msg", isSuccess ? "投注成功" : "投注失败: " + msg)
+                .putOpt("data", responseJson);
     }
 
     /**

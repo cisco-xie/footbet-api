@@ -145,12 +145,14 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
 
                     homeTeam.putOpt("id", eventJsonOld.getStr("id"));
                     homeTeam.putOpt("name", homeTeamStr);
+                    homeTeam.putOpt("isHome", true);
                     homeTeam.putOpt("score", eventJsonOld.getStr("score"));
                     homeTeam.putOpt("fullCourt", fullHomeCourt);
                     homeTeam.putOpt("firstHalf", firstHalfHomeCourt);
 
                     awayTeam.putOpt("id", eventJsonOld.getStr("id"));
                     awayTeam.putOpt("name", awayTeamStr);
+                    awayTeam.putOpt("isHome", false);
                     awayTeam.putOpt("score", eventJsonOld.getStr("score"));
                     awayTeam.putOpt("fullCourt", fullAwayCourt);
                     awayTeam.putOpt("firstHalf", firstHalfAwayCourt);

@@ -86,14 +86,18 @@ public class WebsitePingBoEventsHandler implements ApiHandler {
                     if (!teams.isEmpty()) {
                         JSONArray teamsJson = new JSONArray();
                         teams.forEach(team -> {
-                            JSONObject eventCJson = new JSONObject();
-                            JSONObject eventHJson = new JSONObject();
-                            eventCJson.putOpt("id", JSONUtil.parseArray(team).getStr(0));
-                            eventCJson.putOpt("name", JSONUtil.parseArray(team).getStr(1));
-                            eventHJson.putOpt("id", JSONUtil.parseArray(team).getStr(0));
-                            eventHJson.putOpt("name", JSONUtil.parseArray(team).getStr(2));
-                            teamsJson.put(eventCJson);
-                            teamsJson.put(eventHJson);
+                            // 主队
+                            JSONObject eventHomeJson = new JSONObject();
+                            // 客队
+                            JSONObject eventAwayJson = new JSONObject();
+                            eventHomeJson.putOpt("id", JSONUtil.parseArray(team).getStr(0));
+                            eventHomeJson.putOpt("name", JSONUtil.parseArray(team).getStr(1));
+                            eventHomeJson.putOpt("isHome", true);
+                            eventAwayJson.putOpt("id", JSONUtil.parseArray(team).getStr(0));
+                            eventAwayJson.putOpt("name", JSONUtil.parseArray(team).getStr(2));
+                            eventAwayJson.putOpt("isHome", false);
+                            teamsJson.put(eventAwayJson);
+                            teamsJson.put(eventHomeJson);
                         });
                         leagueJson.putOpt("events", teamsJson);
                     }

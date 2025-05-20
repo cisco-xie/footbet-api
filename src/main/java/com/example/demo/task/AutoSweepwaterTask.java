@@ -44,6 +44,11 @@ public class AutoSweepwaterTask {
             log.info("开始执行 自动扫水...");
 
             List<AdminLoginDTO> adminUsers = adminService.getUsers(null);
+            adminUsers.removeIf(adminUser -> adminUser.getStatus() == 0);
+            if (adminUsers.isEmpty()) {
+                log.info("没有开启投注的平台用户!!!");
+                return;
+            }
             int cpuCoreCount = Runtime.getRuntime().availableProcessors();
 
             // 创建管理所有任务的线程池
