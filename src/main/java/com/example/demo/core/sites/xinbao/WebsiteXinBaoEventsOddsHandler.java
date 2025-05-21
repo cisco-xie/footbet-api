@@ -16,6 +16,11 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
 
 /**
  * 新2网站 - 赛事详情赔率 API具体实现
@@ -144,44 +149,74 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
         JSONObject firstHalfAwayLetBall = new JSONObject();
         JSONObject homeFirstHomeOverSize = new JSONObject();
         JSONObject homeFirstAwayOverSize = new JSONObject();
+        // 记录每个队伍的最小盘口值（负数则为下盘）
+        Map<String, Double> teamMinRatioMap = new HashMap<>();
+        // 是否记录主队的上下盘
+        AtomicBoolean wallHomeTake = new AtomicBoolean(false);
+        // 是否记录客队的上下盘
+        AtomicBoolean wallAwayTake = new AtomicBoolean(false);
+        AtomicReference<String> wallHome = new AtomicReference<>();
+        AtomicReference<String> wallAway = new AtomicReference<>();
+
         // 遍历所有比赛
         games.forEach(gameObj -> {
             JSONObject game = (JSONObject) gameObj;
-
             // 全场让球
-            if (game.containsKey("ior_REH") && 0 != game.getInt("ior_REH")) {
+            if (game.containsKey("ior_REH") && 0 != game.getDouble("ior_REH")) {
                 JSONObject homeOddsJson = new JSONObject();
                 homeOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 homeOddsJson.putOpt("odds", calculateOddsValue(oddsFormatType, game.getDouble("ior_REH"))); // 投注赔率
-                homeOddsJson.putOpt("oddFType", XinBaoOddsFormatType.RM.getCurrencyCode());
+                homeOddsJson.putOpt("oddFType", oddsFormatType);
                 homeOddsJson.putOpt("gtype", game.getStr("gtype"));
                 homeOddsJson.putOpt("wtype", "RE");
                 homeOddsJson.putOpt("rtype", "REH");
                 homeOddsJson.putOpt("choseTeam", "H");
                 homeOddsJson.putOpt("con", getMiddleValue(game.getStr("ratio_re")));
-                homeOddsJson.putOpt("ratio", getRatio(game.getStr("ratio_re"), "主队"));
+                int ratioHome = getRatio(game.getStr("ratio_re"), "主队");
+                homeOddsJson.putOpt("ratio", ratioHome);
+                if (StringUtils.isBlank(wallHome.get())) {
+                    if (ratioHome > 0) {
+                        // 上盘
+                        wallHome.set("hanging");
+                    } else if (ratioHome < 0) {
+                        // 下盘
+                        wallHome.set("foot");
+                    }
+                }
+                homeOddsJson.putOpt("wall", wallHome.get());   // hanging=上盘,foot=下盘
 
                 JSONObject awayOddsJson = new JSONObject();
                 awayOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 awayOddsJson.putOpt("odds", calculateOddsValue(oddsFormatType, game.getDouble("ior_REC"))); // 投注赔率
-                awayOddsJson.putOpt("oddFType", XinBaoOddsFormatType.RM.getCurrencyCode());
+                awayOddsJson.putOpt("oddFType", oddsFormatType);
                 awayOddsJson.putOpt("gtype", game.getStr("gtype"));
                 awayOddsJson.putOpt("wtype", "RE");
                 awayOddsJson.putOpt("rtype", "REC");
                 awayOddsJson.putOpt("choseTeam", "C");
                 awayOddsJson.putOpt("con", -Math.abs(getMiddleValue(game.getStr("ratio_re"))));
-                awayOddsJson.putOpt("ratio", getRatio(game.getStr("ratio_re"), "客队"));
+                int ratioAway = getRatio(game.getStr("ratio_re"), "客队");
+                awayOddsJson.putOpt("ratio", ratioAway);
+                if (StringUtils.isBlank(wallAway.get())) {
+                    if (ratioAway > 0) {
+                        // 上盘
+                        wallAway.set("hanging");
+                    } else if (ratioAway < 0) {
+                        // 下盘
+                        wallAway.set("foot");
+                    }
+                }
+                awayOddsJson.putOpt("wall", wallAway.get());   // hanging=上盘,foot=下盘
 
                 homeLetBall.putOpt(getHandicapRange(game.getStr("ratio_re")), homeOddsJson);
                 awayLetBall.putOpt(getHandicapRange(game.getStr("ratio_re")), awayOddsJson);
             }
 
             // 全场大小
-            if (game.containsKey("ior_ROUH") && 0 != game.getInt("ior_ROUH")) {
+            if (game.containsKey("ior_ROUH") && 0 != game.getDouble("ior_ROUH")) {
                 JSONObject homeOverSizeOddsJson = new JSONObject();
                 homeOverSizeOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 homeOverSizeOddsJson.putOpt("odds", calculateOddsValue(oddsFormatType, game.getDouble("ior_ROUC"))); // 投注赔率
-                homeOverSizeOddsJson.putOpt("oddFType", XinBaoOddsFormatType.RM.getCurrencyCode());
+                homeOverSizeOddsJson.putOpt("oddFType", oddsFormatType);
                 homeOverSizeOddsJson.putOpt("gtype", game.getStr("gtype"));
                 homeOverSizeOddsJson.putOpt("wtype", "ROU");
                 homeOverSizeOddsJson.putOpt("rtype", "ROUC");
@@ -192,7 +227,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 JSONObject awayOverSizeOddsJson = new JSONObject();
                 awayOverSizeOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 awayOverSizeOddsJson.putOpt("odds", calculateOddsValue(oddsFormatType, game.getDouble("ior_ROUH"))); // 投注赔率
-                awayOverSizeOddsJson.putOpt("oddFType", XinBaoOddsFormatType.RM.getCurrencyCode());
+                awayOverSizeOddsJson.putOpt("oddFType", oddsFormatType);
                 awayOverSizeOddsJson.putOpt("gtype", game.getStr("gtype"));
                 awayOverSizeOddsJson.putOpt("wtype", "ROU");
                 awayOverSizeOddsJson.putOpt("rtype", "ROUH");
@@ -205,7 +240,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
             }
 
             // 全场胜平负
-            if (game.containsKey("ior_RMH") && 0 != game.getInt("ior_RMH")) {
+            if (game.containsKey("ior_RMH") && 0 != game.getDouble("ior_RMH")) {
                 JSONObject homeOddsJson = new JSONObject();
                 homeOddsJson.putOpt("id", game.getStr("gid"));          // 投注id
                 homeOddsJson.putOpt("odds", game.getStr("ior_RMH"));      // 投注赔率
@@ -222,28 +257,50 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
             }
 
             // 半场让球
-            if (game.containsKey("ior_HREH") && 0 != game.getInt("ior_HREH")) {
+            if (game.containsKey("ior_HREH") && 0 != game.getDouble("ior_HREH")) {
                 JSONObject homeOddsJson = new JSONObject();
                 homeOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 homeOddsJson.putOpt("odds", calculateOddsValue(oddsFormatType, game.getDouble("ior_HREH"))); // 投注赔率
-                homeOddsJson.putOpt("oddFType", XinBaoOddsFormatType.RM.getCurrencyCode());
+                homeOddsJson.putOpt("oddFType", oddsFormatType);
                 homeOddsJson.putOpt("gtype", game.getStr("gtype"));
                 homeOddsJson.putOpt("wtype", "HRE");
                 homeOddsJson.putOpt("rtype", "HREH");
                 homeOddsJson.putOpt("choseTeam", "H");
                 homeOddsJson.putOpt("con", getMiddleValue(game.getStr("ratio_hre")));
-                homeOddsJson.putOpt("ratio", getRatio(game.getStr("ratio_re"), "主队"));
+                int ratioHome = getRatio(game.getStr("ratio_re"), "主队");
+                homeOddsJson.putOpt("ratio", ratioHome);
+                if (StringUtils.isBlank(wallHome.get())) {
+                    if (ratioHome > 0) {
+                        // 上盘
+                        wallHome.set("hanging");
+                    } else if (ratioHome < 0) {
+                        // 下盘
+                        wallHome.set("foot");
+                    }
+                }
+                homeOddsJson.putOpt("wall", wallHome.get());   // hanging=上盘,foot=下盘
 
                 JSONObject awayOddsJson = new JSONObject();
                 awayOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 awayOddsJson.putOpt("odds", calculateOddsValue(oddsFormatType, game.getDouble("ior_HREC"))); // 投注赔率
-                awayOddsJson.putOpt("oddFType", XinBaoOddsFormatType.RM.getCurrencyCode());
+                awayOddsJson.putOpt("oddFType", oddsFormatType);
                 awayOddsJson.putOpt("gtype", game.getStr("gtype"));
                 awayOddsJson.putOpt("wtype", "HRE");
                 awayOddsJson.putOpt("rtype", "HREC");
                 awayOddsJson.putOpt("choseTeam", "C");
                 awayOddsJson.putOpt("con", -Math.abs(getMiddleValue(game.getStr("ratio_hre"))));
-                awayOddsJson.putOpt("ratio", getRatio(game.getStr("ratio_re"), "客队"));
+                int ratioAway = getRatio(game.getStr("ratio_re"), "客队");
+                awayOddsJson.putOpt("ratio", ratioAway);
+                if (StringUtils.isBlank(wallAway.get())) {
+                    if (ratioAway > 0) {
+                        // 上盘
+                        wallAway.set("hanging");
+                    } else if (ratioAway < 0) {
+                        // 下盘
+                        wallAway.set("foot");
+                    }
+                }
+                awayOddsJson.putOpt("wall", wallAway.get());   // hanging=上盘,foot=下盘
 
                 firstHalfHomeLetBall.putOpt(getHandicapRange(game.getStr("ratio_hre")), homeOddsJson);
                 firstHalfAwayLetBall.putOpt(getHandicapRange(game.getStr("ratio_hre")), awayOddsJson);
@@ -252,7 +309,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
             }
 
             // 半场大小
-            if (game.containsKey("ior_HROUH") && 0 != game.getInt("ior_HROUH")) {
+            if (game.containsKey("ior_HROUH") && 0 != game.getDouble("ior_HROUH")) {
                 JSONObject homeOddsJson = new JSONObject();
                 homeOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
                 homeOddsJson.putOpt("odds", calculateOddsValue(oddsFormatType, game.getDouble("ior_HROUC"))); // 投注赔率
@@ -280,7 +337,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
             }
 
             // 半场胜平负
-            if (game.containsKey("ior_HRMH") && 0 != game.getInt("ior_HRMH")) {
+            if (game.containsKey("ior_HRMH") && 0 != game.getDouble("ior_HRMH")) {
                 JSONObject homeOddsJson = new JSONObject();
                 homeOddsJson.putOpt("id", game.getStr("gid"));          // 投注id
                 homeOddsJson.putOpt("odds", game.getStr("ior_HRMH"));      // 投注赔率

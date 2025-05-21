@@ -8,10 +8,13 @@ import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.core.factory.ApiHandler;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
+
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 智博网站 - 赛事列表-带赔率 API具体实现
@@ -177,6 +180,8 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                             // 客队
                             JSONObject eventAwayJson = new JSONObject();
 
+                            AtomicReference<String> wallHome = new AtomicReference<>();
+                            AtomicReference<String> wallAway = new AtomicReference<>();
                             if (course.containsKey("0")) {
                                 /** 全场 start */
                                 // 让球盘赔率
@@ -188,6 +193,7 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
 
                                 JSONObject letHomeJson = new JSONObject();
                                 JSONObject letAwayJson = new JSONObject();
+
                                 int positionLetBall = 0;
                                 for (Object letBall : letBallJson) {
                                     JSONArray letBallJsonArr = (JSONArray) letBall;
@@ -211,6 +217,18 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                         homeOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + homeOddsId + "|0");  // 投注id
                                     }
                                     homeOddsJson.putOpt("odds", letBallJsonArr.getStr(3));                    // 投注赔率
+                                    double handicapHome = letBallJsonArr.getDouble(0);
+                                    if (StringUtils.isBlank(wallHome.get())) {
+                                        if (handicapHome < 0) {
+                                            // 让球，上盘
+                                            wallHome.set("hanging");
+                                        } else if (handicapHome > 0) {
+                                            // 被让球，下盘
+                                            wallHome.set("foot");
+                                        }
+                                    }
+                                    homeOddsJson.putOpt("wall", wallHome.get());    // hanging=上盘,foot=下盘
+
                                     JSONObject awayOddsJson = new JSONObject();
                                     String awayOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+awayOddsIdIndex1+"|"+awayOddsIdIndex2+"|"+awayOddsIdIndex3+"|"+awayOddsIdIndex4+"|" + letBallJsonArr.getStr(1);           // 客队投注id
                                     awayOddsJson.putOpt("id", awayOddsId);  // 投注id
@@ -220,8 +238,21 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                         awayOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + awayOddsId + "|1");  // 投注id
                                     }
                                     awayOddsJson.putOpt("odds", letBallJsonArr.getStr(4));                    // 投注赔率
-                                    letHomeJson.putOpt(letBallJsonArr.getStr(2), homeOddsJson);
-                                    letAwayJson.putOpt(letBallJsonArr.getStr(2), awayOddsJson);
+                                    double handicapAway = letBallJsonArr.getDouble(1);
+                                    if (StringUtils.isBlank(wallAway.get())) {
+                                        if (handicapAway < 0) {
+                                            // 让球，上盘
+                                            wallAway.set("hanging");
+                                        } else if (handicapAway > 0) {
+                                            // 被让球，下盘
+                                            wallAway.set("foot");
+                                        }
+                                    }
+                                    awayOddsJson.putOpt("wall", wallAway.get());    // hanging=上盘,foot=下盘
+
+                                    String letKey = "0.0".equals(letBallJsonArr.getStr(2)) ? "0" : letBallJsonArr.getStr(2);
+                                    letHomeJson.putOpt(letKey, homeOddsJson);
+                                    letAwayJson.putOpt(letKey, awayOddsJson);
                                     positionLetBall++;
                                 };
                                 JSONObject sizeHomeJson = new JSONObject();
@@ -258,8 +289,9 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                         awayOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|" + awayOddsId + "|1");  // 投注id
                                     }
                                     awayOddsJson.putOpt("odds", sizeBallJsonArr.getStr(3));                         // 投注赔率
-                                    sizeHomeJson.putOpt(sizeBallJsonArr.getStr(0), homeOddsJson);
-                                    sizeAwayJson.putOpt(sizeBallJsonArr.getStr(0), awayOddsJson);
+                                    String sizeKey = "0.0".equals(sizeBallJsonArr.getStr(0)) ? "0" : sizeBallJsonArr.getStr(0);
+                                    sizeHomeJson.putOpt(sizeKey, homeOddsJson);
+                                    sizeAwayJson.putOpt(sizeKey, awayOddsJson);
                                     positionSizeBall++;
                                 }
                                 /** 全场 end */
@@ -318,6 +350,17 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                         homeOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + homeOddsId + "|0");  // 投注id
                                     }
                                     homeOddsJson.putOpt("odds", letBallJsonArr.getStr(3)); // 投注赔率
+                                    double handicapHome = letBallJsonArr.getDouble(0);
+                                    if (StringUtils.isBlank(wallAway.get())) {
+                                        if (handicapHome < 0) {
+                                            // 让球，上盘
+                                            wallAway.set("hanging");
+                                        } else if (handicapHome > 0) {
+                                            // 被让球，下盘
+                                            wallAway.set("foot");
+                                        }
+                                    }
+                                    homeOddsJson.putOpt("wall", wallAway.get());    // hanging=上盘,foot=下盘
                                     JSONObject awayOddsJson = new JSONObject();
                                     String awayOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+awayOddsIdIndex1+"|"+awayOddsIdIndex2+"|"+awayOddsIdIndex3+"|"+awayOddsIdIndex4+"|" + letBallJsonArr.getStr(1);           // 客队投注id
                                     awayOddsJson.putOpt("id", awayOddsId);                              // 投注id
@@ -327,8 +370,21 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                         awayOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + awayOddsId + "|1");  // 投注id
                                     }
                                     awayOddsJson.putOpt("odds", letBallJsonArr.getStr(4)); // 投注赔率
-                                    firstHalfLetHomeJson.putOpt(letBallJsonArr.getStr(2), homeOddsJson);
-                                    firstHalfLetAwayJson.putOpt(letBallJsonArr.getStr(2), awayOddsJson);
+                                    double handicapAway = letBallJsonArr.getDouble(1);
+                                    if (StringUtils.isBlank(wallAway.get())) {
+                                        if (handicapAway < 0) {
+                                            // 让球，上盘
+                                            wallAway.set("hanging");
+                                        } else if (handicapAway > 0) {
+                                            // 被让球，下盘
+                                            wallAway.set("foot");
+                                        }
+                                    }
+                                    awayOddsJson.putOpt("wall", wallAway.get());    // hanging=上盘,foot=下盘
+
+                                    String letKey = "0.0".equals(letBallJsonArr.getStr(2)) ? "0" : letBallJsonArr.getStr(2);
+                                    firstHalfLetHomeJson.putOpt(letKey, homeOddsJson);
+                                    firstHalfLetAwayJson.putOpt(letKey, awayOddsJson);
                                     positionLetBall++;
                                 };
                                 JSONObject firstHalfSizeHomeJson = new JSONObject();
@@ -365,8 +421,9 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                         homeOddsJson.putOpt("selectionId", sizeBallJsonArr.getStr(4) + "|" + awayOddsId + "|1");  // 投注id
                                     }
                                     awayOddsJson.putOpt("odds", sizeBallJsonArr.getStr(3)); // 投注赔率
-                                    firstHalfSizeHomeJson.putOpt(sizeBallJsonArr.getStr(0), homeOddsJson);
-                                    firstHalfSizeAwayJson.putOpt(sizeBallJsonArr.getStr(0), awayOddsJson);
+                                    String sizeKey = "0.0".equals(sizeBallJsonArr.getStr(0)) ? "0" : sizeBallJsonArr.getStr(0);
+                                    firstHalfSizeHomeJson.putOpt(sizeKey, homeOddsJson);
+                                    firstHalfSizeAwayJson.putOpt(sizeKey, awayOddsJson);
                                     positionSizeBall++;
                                 }
                                 /** 上半场 end */

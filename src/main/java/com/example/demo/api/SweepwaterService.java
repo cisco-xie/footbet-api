@@ -13,6 +13,7 @@ import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.model.dto.bet.SweepwaterBetDTO;
 import com.example.demo.model.dto.settings.OddsScanDTO;
+import com.example.demo.model.dto.settings.TypeFilterDTO;
 import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
 import com.example.demo.model.vo.WebsiteVO;
 import com.example.demo.model.vo.dict.BindLeagueVO;
@@ -25,6 +26,7 @@ import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Function;
@@ -51,6 +53,8 @@ public class SweepwaterService {
 
     @Resource
     private SettingsService settingsService;
+    @Resource
+    private SettingsBetService settingsBetService;
 
     @Lazy
     @Resource
@@ -115,6 +119,7 @@ public class SweepwaterService {
         }
 
         OddsScanDTO oddsScan = settingsService.getOddsScan(username);
+        TypeFilterDTO typeFilter = settingsBetService.getTypeFilter(username);
         List<WebsiteVO> websites = websiteService.getWebsites(username);
         // 过滤掉未启用的网站
         websites.removeIf(website -> website.getEnable() == 0);
@@ -202,6 +207,7 @@ public class SweepwaterService {
                                 List<SweepwaterDTO> results = aggregateEventOdds(
                                         username,
                                         oddsScan,
+                                        typeFilter,
                                         websiteMap.get(websiteIdA), websiteMap.get(websiteIdB),
                                         eventAJson, eventBJson,
                                         event.getNameA(), event.getNameB(),
@@ -285,7 +291,7 @@ public class SweepwaterService {
         return null; // 如果没有找到，返回null
     }
 
-    public List<SweepwaterDTO> aggregateEventOdds(String username, OddsScanDTO oddsScanDTO, WebsiteVO websiteA, WebsiteVO websiteB, JSONObject eventAJson, JSONObject eventBJson, String bindTeamNameA, String bindTeamNameB, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, boolean isHomeA, boolean isHomeB) {
+    public List<SweepwaterDTO> aggregateEventOdds(String username, OddsScanDTO oddsScanDTO, TypeFilterDTO typeFilter, WebsiteVO websiteA, WebsiteVO websiteB, JSONObject eventAJson, JSONObject eventBJson, String bindTeamNameA, String bindTeamNameB, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, boolean isHomeA, boolean isHomeB) {
         List<SweepwaterDTO> results = new ArrayList<>();
         // 遍历第一个 JSON 的事件列表
         JSONArray eventsA = eventAJson.getJSONArray("events");
@@ -307,6 +313,37 @@ public class SweepwaterService {
                     // 关闭小球,客队是小球,直接清空大小球信息
                     fullCourtA.putOpt("overSize", new JSONObject());
                 }
+                if (websiteA.getHangingWall() == 0) {
+                    // 关闭上盘
+                    JSONObject letBall = fullCourtA.getJSONObject("letBall");
+                    if (letBall != null && !letBall.isEmpty()) {
+                        for (Object v : letBall.values()) {
+                            JSONObject letBallInfo = JSONUtil.parseObj(v);
+                            if (letBallInfo.containsKey("wall") && "hanging".equals(letBallInfo.getStr("wall"))) {
+                                fullCourtA.putOpt("letBall", new JSONObject());
+                            }
+                        }
+                    }
+                }
+                if (websiteA.getFootWall() == 0) {
+                    // 关闭下盘
+                    JSONObject letBall = fullCourtA.getJSONObject("letBall");
+                    if (letBall != null && !letBall.isEmpty()) {
+                        for (Object v : letBall.values()) {
+                            JSONObject letBallInfo = JSONUtil.parseObj(v);
+                            if (letBallInfo.containsKey("wall") && "foot".equals(letBallInfo.getStr("wall"))) {
+                                fullCourtA.putOpt("letBall", new JSONObject());
+                            }
+                        }
+                    }
+                }
+                if (typeFilter.getFlatPlate() == 1) {
+                    // 软件设置-投注相关-盘口类型过滤选项  不做·让球盘·平手盘
+                    JSONObject letBall = fullCourtA.getJSONObject("letBall");
+                    if (letBall != null && !letBall.isEmpty()) {
+                        letBall.remove("0");
+                    }
+                }
             }
             if (websiteA.getFirstHalf() == 1) {
                 // 开启上半场
@@ -318,6 +355,37 @@ public class SweepwaterService {
                 if (websiteA.getSmallBall() == 0 && !isHomeA) {
                     // 关闭小球,客队是小球,直接清空大小球信息
                     firstHalfA.putOpt("overSize", new JSONObject());
+                }
+                if (websiteA.getHangingWall() == 0) {
+                    // 关闭上盘
+                    JSONObject letBall = firstHalfA.getJSONObject("letBall");
+                    if (letBall != null && !letBall.isEmpty()) {
+                        for (Object v : letBall.values()) {
+                            JSONObject letBallInfo = JSONUtil.parseObj(v);
+                            if (letBallInfo.containsKey("wall") && "hanging".equals(letBallInfo.getStr("wall"))) {
+                                firstHalfA.putOpt("letBall", new JSONObject());
+                            }
+                        }
+                    }
+                }
+                if (websiteA.getFootWall() == 0) {
+                    // 关闭下盘
+                    JSONObject letBall = firstHalfA.getJSONObject("letBall");
+                    if (letBall != null && !letBall.isEmpty()) {
+                        for (Object v : letBall.values()) {
+                            JSONObject letBallInfo = JSONUtil.parseObj(v);
+                            if (letBallInfo.containsKey("wall") && "foot".equals(letBallInfo.getStr("wall"))) {
+                                firstHalfA.putOpt("letBall", new JSONObject());
+                            }
+                        }
+                    }
+                }
+                if (typeFilter.getFlatPlate() == 1) {
+                    // 软件设置-投注相关-盘口类型过滤选项  不做·让球盘·平手盘
+                    JSONObject letBall = firstHalfA.getJSONObject("letBall");
+                    if (letBall != null && !letBall.isEmpty()) {
+                        letBall.remove("0");
+                    }
                 }
             }
 
@@ -339,6 +407,37 @@ public class SweepwaterService {
                         // 关闭小球,客队是小球,直接清空大小球信息
                         fullCourtB.putOpt("overSize", new JSONObject());
                     }
+                    if (websiteB.getHangingWall() == 0) {
+                        // 关闭上盘
+                        JSONObject letBall = fullCourtB.getJSONObject("letBall");
+                        if (letBall != null && !letBall.isEmpty()) {
+                            for (Object v : letBall.values()) {
+                                JSONObject letBallInfo = JSONUtil.parseObj(v);
+                                if (letBallInfo.containsKey("wall") && "hanging".equals(letBallInfo.getStr("wall"))) {
+                                    fullCourtB.putOpt("letBall", new JSONObject());
+                                }
+                            }
+                        }
+                    }
+                    if (websiteB.getFootWall() == 0) {
+                        // 关闭下盘
+                        JSONObject letBall = fullCourtB.getJSONObject("letBall");
+                        if (letBall != null && !letBall.isEmpty()) {
+                            for (Object v : letBall.values()) {
+                                JSONObject letBallInfo = JSONUtil.parseObj(v);
+                                if (letBallInfo.containsKey("wall") && "foot".equals(letBallInfo.getStr("wall"))) {
+                                    fullCourtB.putOpt("letBall", new JSONObject());
+                                }
+                            }
+                        }
+                    }
+                    if (typeFilter.getFlatPlate() == 1) {
+                        // 软件设置-投注相关-盘口类型过滤选项  不做·让球盘·平手盘
+                        JSONObject letBall = fullCourtB.getJSONObject("letBall");
+                        if (letBall != null && !letBall.isEmpty()) {
+                            letBall.remove("0");
+                        }
+                    }
                 }
                 if (websiteB.getFirstHalf() == 1) {
                     // 开启上半场
@@ -350,6 +449,37 @@ public class SweepwaterService {
                     if (websiteB.getSmallBall() == 0 && !isHomeB) {
                         // 关闭小球,客队是小球,直接清空大小球信息
                         firstHalfB.putOpt("overSize", new JSONObject());
+                    }
+                    if (websiteB.getHangingWall() == 0) {
+                        // 关闭上盘
+                        JSONObject letBall = firstHalfB.getJSONObject("letBall");
+                        if (letBall != null && !letBall.isEmpty()) {
+                            for (Object v : letBall.values()) {
+                                JSONObject letBallInfo = JSONUtil.parseObj(v);
+                                if (letBallInfo.containsKey("wall") && "hanging".equals(letBallInfo.getStr("wall"))) {
+                                    firstHalfB.putOpt("letBall", new JSONObject());
+                                }
+                            }
+                        }
+                    }
+                    if (websiteB.getFootWall() == 0) {
+                        // 关闭下盘
+                        JSONObject letBall = firstHalfB.getJSONObject("letBall");
+                        if (letBall != null && !letBall.isEmpty()) {
+                            for (Object v : letBall.values()) {
+                                JSONObject letBallInfo = JSONUtil.parseObj(v);
+                                if (letBallInfo.containsKey("wall") && "foot".equals(letBallInfo.getStr("wall"))) {
+                                    firstHalfB.putOpt("letBall", new JSONObject());
+                                }
+                            }
+                        }
+                    }
+                    if (typeFilter.getFlatPlate() == 1) {
+                        // 软件设置-投注相关-盘口类型过滤选项  不做·让球盘·平手盘
+                        JSONObject letBall = firstHalfB.getJSONObject("letBall");
+                        if (letBall != null && !letBall.isEmpty()) {
+                            letBall.remove("0");
+                        }
                     }
                 }
 
@@ -484,6 +614,8 @@ public class SweepwaterService {
         sweepwaterDTO.setConB(conB);
         sweepwaterDTO.setRatioA(ratioA);
         sweepwaterDTO.setRatioB(ratioB);
+
+        sweepwaterDTO.setCreateTime(LocalDateTime.now());
 
         return sweepwaterDTO;
     }

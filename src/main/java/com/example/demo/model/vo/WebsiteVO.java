@@ -6,7 +6,6 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Set;
 
 @Data
 public class WebsiteVO {
@@ -23,10 +22,10 @@ public class WebsiteVO {
     private Integer simplex = 0;
     @Schema(description = "是否滚球（0否1是）")
     private Integer rollingBall = 1;
-    @Schema(description = "上盘（0否1是）-让球盘的让球一方代表上盘")
+    @Schema(description = "上盘（0否1是）-让球盘的让球一方(负的ratio是让球方 如-2.5)代表上盘")
     private Integer hangingWall = 0;
-    @Schema(description = "下盘（0否1是）-让球盘的被让球一方代表上盘")
-    private Integer footwall = 0;
+    @Schema(description = "下盘（0否1是）-让球盘的被让球一方(正的ratio是被让球方 如2.5)代表下盘")
+    private Integer footWall = 0;
     @Schema(description = "大球（0否1是）")
     private Integer bigBall = 0;
     @Schema(description = "小球（0否1是）")

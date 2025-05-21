@@ -6,10 +6,10 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
-import com.example.demo.common.enmu.ZhiBoOddsFormatType;
 import com.example.demo.common.enmu.ZhiBoSchedulesType;
 import com.example.demo.common.enmu.ZhiBoSportsType;
 import com.example.demo.core.factory.ApiHandler;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -241,6 +241,9 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
         JSONObject targetHome = isFirstHalf ? firstHalfHome : fullHome;
         JSONObject targetAway = isFirstHalf ? firstHalfAway : fullAway;
 
+        AtomicReference<String> wallHome = new AtomicReference<>();
+        AtomicReference<String> wallAway = new AtomicReference<>();
+
         lines.forEach(line -> {
             JSONObject lineJson = (JSONObject) line;
             lineJson.getJSONArray("marketSelections").forEach(selection -> {
@@ -254,8 +257,28 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                     oddsJson.putOpt("odds", odds);
                     oddsJson.putOpt("decimalOdds", sel.getStr("decimalOdds"));
                     if (homeIndicator.equals(sel.getStr("indicator"))) {
+                        if (StringUtils.isBlank(wallHome.get())) {
+                            if (handicap < 0) {
+                                // 让球，上盘
+                                wallHome.set("hanging");
+                            } else if (handicap > 0) {
+                                // 被让球，下盘
+                                wallHome.set("foot");
+                            }
+                        }
+                        oddsJson.putOpt("wall", wallHome.get());
                         targetHome.putOpt(key, oddsJson);
                     } else {
+                        if (StringUtils.isBlank(wallAway.get())) {
+                            if (handicap < 0) {
+                                // 让球，上盘
+                                wallAway.set("hanging");
+                            } else if (handicap > 0) {
+                                // 被让球，下盘
+                                wallAway.set("foot");
+                            }
+                        }
+                        oddsJson.putOpt("wall", wallAway.get());
                         targetAway.putOpt(key, oddsJson);
                     }
                 }

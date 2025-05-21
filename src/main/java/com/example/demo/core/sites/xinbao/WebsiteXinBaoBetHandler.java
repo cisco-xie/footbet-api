@@ -110,20 +110,13 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
         JSONObject responseJson;
 
         // 3. 判断是否为 JSON 格式
-        if (responseBody.startsWith("{")) {
-            try {
-                responseJson = JSONUtil.parseObj(responseBody);
-            } catch (Exception e) {
-                log.error("[新2][投注失败][JSON解析异常][body={}]", responseBody, e);
-                return new JSONObject()
-                        .putOpt("success", false)
-                        .putOpt("msg", "投注返回格式错误（JSON 解析失败）");
-            }
-        } else {
-            log.error("[新2][投注失败][响应非JSON][body={}]", responseBody);
+        try {
+            responseJson = JSONUtil.parseObj(responseBody);
+        } catch (Exception e) {
+            log.error("[新2][投注失败][JSON解析异常][body={}]", responseBody, e);
             return new JSONObject()
                     .putOpt("success", false)
-                    .putOpt("msg", "投注返回格式错误（应为 JSON）");
+                    .putOpt("msg", "投注返回格式错误（JSON 解析失败）");
         }
 
         // 4. 日志输出
