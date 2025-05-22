@@ -18,6 +18,7 @@ import com.example.demo.model.dto.settings.BetAmountDTO;
 import com.example.demo.model.dto.settings.IntervalDTO;
 import com.example.demo.model.dto.settings.LimitDTO;
 import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
+import com.example.demo.model.vo.WebsiteVO;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +52,8 @@ public class BetService {
     private SettingsBetService settingsBetService;
     @Resource
     private SettingsService settingsService;
+    @Resource
+    private WebsiteService websiteService;
 
     /**
      * 获取投注记录
@@ -135,33 +138,51 @@ public class BetService {
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
 
-
+        List<WebsiteVO> websites = websiteService.getWebsites(username);
         for (SweepwaterDTO sweepwaterDTO : sweepwaters) {
             SweepwaterBetDTO dto = BeanUtil.copyProperties(sweepwaterDTO, SweepwaterBetDTO.class);
+            int rollingOrderA = websites.stream().filter(w -> w.getId().equals(dto.getWebsiteIdA())).findFirst().orElseThrow().getRollingOrder();
+            int rollingOrderB = websites.stream().filter(w -> w.getId().equals(dto.getWebsiteIdB())).findFirst().orElseThrow().getRollingOrder();
 
-            // ① 并行提交 A、B
-            CompletableFuture<Boolean> betA = CompletableFuture.supplyAsync(() ->
-                            tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true,  dto, limitDTO, intervalDTO, amountDTO),
-                    betExecutor
-            );
-            CompletableFuture<Boolean> betB = CompletableFuture.supplyAsync(() ->
-                            tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO),
-                    betExecutor
-            );
+            boolean successA = false;
+            boolean successB = false;
 
-            // ② 等待 A、B 都完成（串行于下一个 sweepwater）
-            boolean anySuccess;
             try {
-                CompletableFuture.allOf(betA, betB).join();
-                anySuccess = betA.join() || betB.join();
-            } catch (CompletionException e) {
-                log.error("sweepwater={} A/B 投注异常", dto.getId(), e);
-                anySuccess = false;
+                if (rollingOrderA == rollingOrderB) {
+                    // 并行执行
+                    CompletableFuture<Boolean> betA = CompletableFuture.supplyAsync(() ->
+                                    tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO),
+                            betExecutor
+                    );
+                    CompletableFuture<Boolean> betB = CompletableFuture.supplyAsync(() ->
+                                    tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO),
+                            betExecutor
+                    );
+                    CompletableFuture.allOf(betA, betB).join();
+                    successA = betA.join();
+                    successB = betB.join();
+                } else if (rollingOrderA < rollingOrderB) {
+                    // A 优先
+                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO);
+                    if (successA) {
+                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO);
+                    }
+                } else {
+                    // B 优先
+                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO);
+                    if (successB) {
+                        successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("sweepwater={} 投注异常", dto.getId(), e);
             }
 
-            // ③ 标记 & 缓存
+            // 设置已投注
             sweepwaterService.setIsBet(username, dto.getId());
-            if (anySuccess) {
+
+            // 有一个成功则缓存
+            if (successA || successB) {
                 String key = KeyUtil.genKey(
                         RedisConstants.PLATFORM_BET_PREFIX,
                         username,
@@ -172,7 +193,7 @@ public class BetService {
             }
         }
 
-        // **确保 executorAdminUserService 正确关闭**
+        // 最后关闭线程池
         PriorityTaskExecutor.shutdownExecutor(betExecutor);
 
         log.info("投注结束，总花费:{}毫秒", timerTotal.interval());

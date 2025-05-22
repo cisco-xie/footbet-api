@@ -2,8 +2,6 @@ package com.example.demo.model.dto.sweepwater;
 
 import lombok.Data;
 
-import java.time.LocalDateTime;
-
 @Data
 public class SweepwaterDTO {
     private String id;
@@ -55,5 +53,5 @@ public class SweepwaterDTO {
     private String ratioB;          // 新2网站的投注专属参数
 
     private String water;           // 水位
-    private LocalDateTime createTime; // 创建时间
+    private String createTime;      // 创建时间
 }

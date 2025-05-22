@@ -62,4 +62,5 @@ public class SweepwaterBetDTO {
     private String ratioB;          // 新2网站的投注专属参数
 
     private String water;           // 水位
+    private String createTime;      // 创建时间
 }

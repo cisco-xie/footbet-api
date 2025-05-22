@@ -130,6 +130,7 @@ public class WebsitePingBoBetHandler implements ApiHandler {
         int sucNum = 0;
         int failedNum = 0;
         int num = 0;
+        boolean success = true;
         if (!responseJson.isNull("response")) {
             JSONArray responseArray = responseJson.getJSONArray("response");
             num = responseArray.size();
@@ -139,15 +140,18 @@ public class WebsitePingBoBetHandler implements ApiHandler {
                 if (!"ACCEPTED".equals(itemStatus) && !"PENDING_ACCEPTANCE".equals(itemStatus)) {
                     // 投注失败
                     failedNum++;
+                    success = false;
                     log.info("[平博][投注][失败][{}]", resObj);
                     continue;
                 }
                 sucNum++;
                 log.info("[平博][投注][成功][{}]", resObj);
             };
+        } else {
+            success = false;
         }
         log.info("[平博][投注][投注结束][共投注{}个][投注成功{}个][投注失败{}个]", num, sucNum, failedNum);
-        responseJson.putOpt("success", true);
+        responseJson.putOpt("success", success);
         responseJson.putOpt("msg", "投注结束");
         return responseJson;
     }

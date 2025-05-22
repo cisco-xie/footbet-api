@@ -1,7 +1,9 @@
 package com.example.demo.api;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.core.date.TimeInterval;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.json.JSONArray;
@@ -615,7 +617,7 @@ public class SweepwaterService {
         sweepwaterDTO.setRatioA(ratioA);
         sweepwaterDTO.setRatioB(ratioB);
 
-        sweepwaterDTO.setCreateTime(LocalDateTime.now());
+        sweepwaterDTO.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
 
         return sweepwaterDTO;
     }

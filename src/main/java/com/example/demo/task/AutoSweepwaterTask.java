@@ -37,7 +37,7 @@ public class AutoSweepwaterTask {
     private BetService betService;
 
     // 上一次任务完成后再延迟 5 秒执行
-    @Scheduled(fixedDelay = 5000)
+    @Scheduled(fixedDelay = 3000)
     public void autoSweepwater() {
         long startTime = System.currentTimeMillis();
         try {
