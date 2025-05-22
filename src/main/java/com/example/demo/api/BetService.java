@@ -141,8 +141,17 @@ public class BetService {
         List<WebsiteVO> websites = websiteService.getWebsites(username);
         for (SweepwaterDTO sweepwaterDTO : sweepwaters) {
             SweepwaterBetDTO dto = BeanUtil.copyProperties(sweepwaterDTO, SweepwaterBetDTO.class);
-            int rollingOrderA = websites.stream().filter(w -> w.getId().equals(dto.getWebsiteIdA())).findFirst().orElseThrow().getRollingOrder();
-            int rollingOrderB = websites.stream().filter(w -> w.getId().equals(dto.getWebsiteIdB())).findFirst().orElseThrow().getRollingOrder();
+            int rollingOrderA = websites.stream()
+                    .filter(w -> w.getId().equals(dto.getWebsiteIdA()))
+                    .map(WebsiteVO::getRollingOrder)
+                    .findFirst()
+                    .orElse(0);
+
+            int rollingOrderB = websites.stream()
+                    .filter(w -> w.getId().equals(dto.getWebsiteIdB()))
+                    .map(WebsiteVO::getRollingOrder)
+                    .findFirst()
+                    .orElse(0);
 
             boolean successA = false;
             boolean successB = false;
