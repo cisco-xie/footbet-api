@@ -98,10 +98,10 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
         // 解析响应
         Document docResult = XmlUtil.readXML(response.body());
         JSONObject responseJson = new JSONObject(response.body());
-        if (responseJson.getJSONObject("serverresponse").getInt("msg") != 100) {
+        if (!"100".equals(responseJson.getJSONObject("serverresponse").getStr("msg"))) {
             responseJson.putOpt("success", false);
             responseJson.putOpt("msg", responseJson.getJSONObject("serverresponse").getStr("code_message"));
-            if (responseJson.getJSONObject("serverresponse").getInt("msg") == 109) {
+            if ("109".equals(responseJson.getJSONObject("serverresponse").getStr("msg"))) {
                 responseJson.putOpt("success", false);
                 responseJson.putOpt("msg", "需要去盘口重新设置登录账号");
             }
