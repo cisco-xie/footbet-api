@@ -152,11 +152,13 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                     } else if (period.contains("1H")) {
                         // 上半场
                         session = "1H";
-                        period = period.replace("1H", "").replace("'", "").trim();
+                        period = period.replace("1H", "").replaceAll("<[^>]*>", "").replaceAll("[^0-9]", " ").replace("'", "").trim();
                         reTime = Integer.parseInt(period);
                     } else if (period.contains("2H")) {
                         // 下半场（即全场）
                         session = "2H";
+                        period = period.replace("2H", "").replaceAll("<[^>]*>", "").replaceAll("[^0-9]", " ").replace("'", "").trim();
+                        reTime = Integer.parseInt(period) + 45;
                     }
                     homeTeam.putOpt("id", eventJsonOld.getStr("id"));
                     homeTeam.putOpt("name", homeTeamStr);

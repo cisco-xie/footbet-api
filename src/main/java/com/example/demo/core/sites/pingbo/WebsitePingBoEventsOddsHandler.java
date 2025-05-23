@@ -172,7 +172,6 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                             JSONArray teamArray = JSONUtil.parseArray(team);
                             // 因为teamArray长度会变动，无法直接通过固定下标获取到比赛时长，所以通过遍历取校验获取
                             for (int i = 0; i < teamArray.size(); i++) {
-                                System.out.println("Index " + i + ": " + teamArray.get(i));
                                 String value = teamArray.getStr(i).trim();
                                 if ("1H".equals(value) || "2H".equals(value) || "HT".equals(value)) {
                                     session = value;

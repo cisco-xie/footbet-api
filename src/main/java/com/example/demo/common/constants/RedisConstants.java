@@ -86,4 +86,8 @@ public class RedisConstants {
      * 投注间隔限制 前缀
      */
     public static final String PLATFORM_BET_INTERVAL_PREFIX = "platform:bet:interval";
+    /**
+     * 投注前扫水的赔率 前缀
+     */
+    public static final String PLATFORM_BET_ODDS_PREFIX = "platform:bet:odds";
 }
