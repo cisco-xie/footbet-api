@@ -62,6 +62,7 @@ public enum SystemError implements ErrCode {
     ODDSRANGE_1300(1300, "当前网站已设定"),
     ODDSRANGE_1301(1301, "赔率区间设置错误"),
     TIMEFRAME_1311(1311, "时间范围区间设置错误"),
+    TIMEFRAME_1312(1312, "当前赛程类型已设置"),
 
     BIND_1320(1320, "绑定球队不能为空"),
 

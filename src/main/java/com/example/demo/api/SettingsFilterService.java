@@ -16,6 +16,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
 @Slf4j
 @Component
@@ -119,6 +121,14 @@ public class SettingsFilterService {
     public void saveTimeFrames(String username, TimeFrameVO timeFrameVO) {
         if (timeFrameVO.getTimeFormSec() > timeFrameVO.getTimeToSec()) {
             throw new BusinessException(SystemError.TIMEFRAME_1311);
+        }
+        List<TimeFrameDTO> timeFrames = getTimeFrames(username);
+
+        Optional<TimeFrameDTO> timeFrame = timeFrames.stream()
+                .filter(w -> Objects.equals(w.getBallType(), timeFrameVO.getBallType()) && Objects.equals(w.getCourseType(), timeFrameVO.getCourseType()))
+                .findFirst();
+        if (timeFrame.isPresent()) {
+            throw new BusinessException(SystemError.TIMEFRAME_1312);
         }
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_FILTER_TIMEFRAME_PREFIX, username);
         // 获取 Redis 中的列表

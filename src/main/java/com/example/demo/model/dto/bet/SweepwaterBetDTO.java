@@ -28,6 +28,8 @@ public class SweepwaterBetDTO {
     private String odds;
     private String oddsA;
     private String oddsB;
+    private Boolean lastOddsTimeA;  // 是否是最新赔率
+    private Boolean lastOddsTimeB;  // 是否是最新赔率
     private Integer isBet;          // 是否进行过投注
     private String betTimeA;        // 投注时间
     private String betTimeB;        // 投注时间

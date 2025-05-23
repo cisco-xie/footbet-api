@@ -16,6 +16,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 智博网站 - 赛事列表-带赔率 API具体实现
@@ -146,19 +148,24 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                     String session = "";
                     String period = eventJsonOld.getStr("period");
                     int reTime = 0;
-                    if (period.contains("HT")) {
-                        // 中场休息
-                        session = "HT";
-                    } else if (period.contains("1H")) {
-                        // 上半场
-                        session = "1H";
-                        period = period.replace("1H", "").replaceAll("<[^>]*>", "").replaceAll("[^0-9]", " ").replace("'", "").trim();
-                        reTime = Integer.parseInt(period);
-                    } else if (period.contains("2H")) {
-                        // 下半场（即全场）
-                        session = "2H";
-                        period = period.replace("2H", "").replaceAll("<[^>]*>", "").replaceAll("[^0-9]", " ").replace("'", "").trim();
-                        reTime = Integer.parseInt(period) + 45;
+                    if (StringUtils.isNotBlank(period)) {
+                        if (period.contains("HT")) {
+                            // 中场休息
+                            session = "HT";
+                        } else if (period.contains("1H")) {
+                            // 上半场
+                            session = "1H";
+                            // 提取 “1H ” 之后的部分并去掉 HTML 标签
+                            String cleaned = period.replaceAll(".*?1H", "").replaceAll("<[^>]+>", "").replaceAll("'", "").trim(); // 得到 "45+2"
+                            String minute = cleaned.split("\\+")[0].trim(); // 取 "+" 前的部分
+                            reTime = Integer.parseInt(minute); // 得到分钟
+                        } else if (period.contains("2H")) {
+                            // 下半场（即全场）
+                            session = "2H";
+                            String cleaned = period.replaceAll(".*?2H", "").replaceAll("<[^>]+>", "").replaceAll("'", "").trim(); // 得到 "45+2"
+                            String minute = cleaned.split("\\+")[0].trim(); // 取 "+" 前的部分
+                            reTime = Integer.parseInt(minute); // 得到分钟
+                        }
                     }
                     homeTeam.putOpt("id", eventJsonOld.getStr("id"));
                     homeTeam.putOpt("name", homeTeamStr);
