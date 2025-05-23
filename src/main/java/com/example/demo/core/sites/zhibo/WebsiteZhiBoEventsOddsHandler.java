@@ -143,15 +143,34 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                             .putOpt("win", firstHalfWinAwayJson)
                             .putOpt("draw", firstHalfDrawAwayJson);
 
+                    String session = "";
+                    String period = eventJsonOld.getStr("period");
+                    int reTime = 0;
+                    if (period.contains("HT")) {
+                        // 中场休息
+                        session = "HT";
+                    } else if (period.contains("1H")) {
+                        // 上半场
+                        session = "1H";
+                        period = period.replace("1H", "").replace("'", "").trim();
+                        reTime = Integer.parseInt(period);
+                    } else if (period.contains("2H")) {
+                        // 下半场（即全场）
+                        session = "2H";
+                    }
                     homeTeam.putOpt("id", eventJsonOld.getStr("id"));
                     homeTeam.putOpt("name", homeTeamStr);
                     homeTeam.putOpt("isHome", true);
+                    homeTeam.putOpt("session", session);
+                    homeTeam.putOpt("reTime", reTime);
                     homeTeam.putOpt("score", eventJsonOld.getStr("score"));
                     homeTeam.putOpt("fullCourt", fullHomeCourt);
                     homeTeam.putOpt("firstHalf", firstHalfHomeCourt);
 
                     awayTeam.putOpt("id", eventJsonOld.getStr("id"));
                     awayTeam.putOpt("name", awayTeamStr);
+                    awayTeam.putOpt("session", session);
+                    awayTeam.putOpt("reTime", reTime);
                     awayTeam.putOpt("isHome", false);
                     awayTeam.putOpt("score", eventJsonOld.getStr("score"));
                     awayTeam.putOpt("fullCourt", fullAwayCourt);
