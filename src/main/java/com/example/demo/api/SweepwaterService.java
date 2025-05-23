@@ -14,10 +14,7 @@ import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.model.dto.bet.SweepwaterBetDTO;
-import com.example.demo.model.dto.settings.OddsRangeDTO;
-import com.example.demo.model.dto.settings.OddsScanDTO;
-import com.example.demo.model.dto.settings.ProfitDTO;
-import com.example.demo.model.dto.settings.TypeFilterDTO;
+import com.example.demo.model.dto.settings.*;
 import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
 import com.example.demo.model.vo.WebsiteVO;
 import com.example.demo.model.vo.dict.BindLeagueVO;
@@ -128,6 +125,7 @@ public class SweepwaterService {
         ProfitDTO profit = settingsService.getProfit(username);
         TypeFilterDTO typeFilter = settingsBetService.getTypeFilter(username);
         List<OddsRangeDTO> oddsRanges = settingsFilterService.getOddsRanges(username);
+        List<TimeFrameDTO> timeFrames = settingsFilterService.getTimeFrames(username);
         List<WebsiteVO> websites = websiteService.getWebsites(username);
         // 过滤掉未启用的网站
         websites.removeIf(website -> website.getEnable() == 0);
@@ -217,6 +215,7 @@ public class SweepwaterService {
                                         oddsScan,
                                         profit,
                                         oddsRanges,
+                                        timeFrames,
                                         typeFilter,
                                         websiteMap.get(websiteIdA), websiteMap.get(websiteIdB),
                                         eventAJson, eventBJson,
@@ -301,7 +300,7 @@ public class SweepwaterService {
         return null; // 如果没有找到，返回null
     }
 
-    public List<SweepwaterDTO> aggregateEventOdds(String username, OddsScanDTO oddsScan, ProfitDTO profit, List<OddsRangeDTO> oddsRanges, TypeFilterDTO typeFilter, WebsiteVO websiteA, WebsiteVO websiteB, JSONObject eventAJson, JSONObject eventBJson, String bindTeamNameA, String bindTeamNameB, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, boolean isHomeA, boolean isHomeB) {
+    public List<SweepwaterDTO> aggregateEventOdds(String username, OddsScanDTO oddsScan, ProfitDTO profit, List<OddsRangeDTO> oddsRanges, List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter, WebsiteVO websiteA, WebsiteVO websiteB, JSONObject eventAJson, JSONObject eventBJson, String bindTeamNameA, String bindTeamNameB, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, boolean isHomeA, boolean isHomeB) {
         List<SweepwaterDTO> results = new ArrayList<>();
         // 遍历第一个 JSON 的事件列表
         JSONArray eventsA = eventAJson.getJSONArray("events");
@@ -310,6 +309,39 @@ public class SweepwaterService {
             JSONObject aJson = (JSONObject) eventA;
             String nameA = aJson.getStr("name");
             String scoreA = aJson.getStr("score");
+            int reTimeA = aJson.getInt("reTime");        // 比赛时长
+            String sessionA = aJson.getStr("session");      // 赛事阶段
+            // 限制赛事时间范围 start
+            if ("HT".equalsIgnoreCase(sessionA)) {
+                // 场间休息
+            } else if ("1H".equalsIgnoreCase(sessionA)) {
+                // 上半场
+                Optional<TimeFrameDTO> timeFrameDTOA = timeFrames.stream()
+                        .filter(w -> w.getBallType() == 1 && w.getCourseType() == 1)
+                        .findFirst();
+                if (timeFrameDTOA.isPresent()) {
+                    TimeFrameDTO timeFrameA = timeFrameDTOA.get();
+                    // 使用 oddsGreaterA
+                    if (reTimeA < timeFrameA.getTimeFormSec() || reTimeA > timeFrameA.getTimeToSec()) {
+                        log.info("当前赛事时间:{}不在[{}-{}]范围内", reTimeA, timeFrameA.getTimeFormSec(), timeFrameA.getTimeToSec());
+                        continue;
+                    }
+                }
+            } else if ("2H".equalsIgnoreCase(sessionA)) {
+                // 下半场（即全场）
+                Optional<TimeFrameDTO> timeFrameDTOA = timeFrames.stream()
+                        .filter(w -> w.getBallType() == 1 && w.getCourseType() == 2)
+                        .findFirst();
+                if (timeFrameDTOA.isPresent()) {
+                    TimeFrameDTO timeFrameA = timeFrameDTOA.get();
+                    // 使用 oddsGreaterA
+                    if (reTimeA < timeFrameA.getTimeFormSec() || reTimeA > timeFrameA.getTimeToSec()) {
+                        log.info("当前赛事时间:{}不在[{}-{}]范围内", reTimeA, timeFrameA.getTimeFormSec(), timeFrameA.getTimeToSec());
+                        continue;
+                    }
+                }
+            }
+            // 限制赛事时间范围 end
             JSONObject fullCourtA = new JSONObject();
             JSONObject firstHalfA = new JSONObject();
             if (websiteA.getFullCourt() == 1) {
@@ -404,6 +436,39 @@ public class SweepwaterService {
                 JSONObject bJson = (JSONObject) event2;
                 String nameB = bJson.getStr("name");
                 String scoreB = bJson.getStr("score");
+                int reTimeB = bJson.getInt("reTime");        // 比赛时长
+                String sessionB = bJson.getStr("session");      // 赛事阶段
+                // 限制赛事时间范围 start
+                if ("HT".equalsIgnoreCase(sessionB)) {
+                    // 场间休息
+                } else if ("1H".equalsIgnoreCase(sessionB)) {
+                    // 上半场
+                    Optional<TimeFrameDTO> timeFrameDTOB = timeFrames.stream()
+                            .filter(w -> w.getBallType() == 1 && w.getCourseType() == 1)
+                            .findFirst();
+                    if (timeFrameDTOB.isPresent()) {
+                        TimeFrameDTO timeFrameB = timeFrameDTOB.get();
+                        // 使用 oddsGreaterA
+                        if (reTimeB < timeFrameB.getTimeFormSec() || reTimeB > timeFrameB.getTimeToSec()) {
+                            log.info("当前赛事时间:{}不在[{}-{}]范围内", reTimeB, timeFrameB.getTimeFormSec(), timeFrameB.getTimeToSec());
+                            continue;
+                        }
+                    }
+                } else if ("2H".equalsIgnoreCase(sessionB)) {
+                    // 下半场（即全场）
+                    Optional<TimeFrameDTO> timeFrameDTOB = timeFrames.stream()
+                            .filter(w -> w.getBallType() == 1 && w.getCourseType() == 2)
+                            .findFirst();
+                    if (timeFrameDTOB.isPresent()) {
+                        TimeFrameDTO timeFrameB = timeFrameDTOB.get();
+                        // 使用 oddsGreaterA
+                        if (reTimeB < timeFrameB.getTimeFormSec() || reTimeB > timeFrameB.getTimeToSec()) {
+                            log.info("当前赛事时间:{}不在[{}-{}]范围内", reTimeB, timeFrameB.getTimeFormSec(), timeFrameB.getTimeToSec());
+                            continue;
+                        }
+                    }
+                }
+                // 限制赛事时间范围 end
                 JSONObject fullCourtB = new JSONObject();
                 JSONObject firstHalfB = new JSONObject();
                 if (websiteB.getFullCourt() == 1) {
@@ -511,6 +576,12 @@ public class SweepwaterService {
                                       String nameA, String nameB, JSONObject eventAJson, JSONObject eventBJson,
                                       String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB,
                                       String eventIdA, String eventIdB, List<SweepwaterDTO> results, String scoreA, String scoreB) {
+        Optional<OddsRangeDTO> optionalOddsA = oddsRanges.stream()
+                .filter(w -> w.getWebsiteId().equals(websiteIdA))
+                .findFirst();
+        Optional<OddsRangeDTO> optionalOddsB = oddsRanges.stream()
+                .filter(w -> w.getWebsiteId().equals(websiteIdA))
+                .findFirst();
         for (String key : fullCourtA.keySet()) {
             if (fullCourtB.containsKey(key)) {
                 if (("win".equals(key) || "draw".equals(key))) {
@@ -518,10 +589,6 @@ public class SweepwaterService {
                         JSONObject valueAJson = fullCourtA.getJSONObject(key);
                         if (valueAJson.containsKey("odds") && StringUtils.isNotBlank(valueAJson.getStr("odds"))) {
                             double valueA = valueAJson.getDouble("odds");
-                            Optional<OddsRangeDTO> optionalOddsA = oddsRanges.stream()
-                                    .filter(w -> w.getWebsiteId().equals(websiteIdA))
-                                    .findFirst();
-
                             if (optionalOddsA.isPresent()) {
                                 OddsRangeDTO oddsGreaterA = optionalOddsA.get();
                                 // 使用 oddsGreaterA
@@ -535,10 +602,6 @@ public class SweepwaterService {
                                 JSONObject valueBJson = fullCourtB.getJSONObject(key);
                                 if (valueBJson.containsKey("odds") && StringUtils.isNotBlank(valueBJson.getStr("odds"))) {
                                     double valueB = valueBJson.getDouble("odds");
-                                    Optional<OddsRangeDTO> optionalOddsB = oddsRanges.stream()
-                                            .filter(w -> w.getWebsiteId().equals(websiteIdA))
-                                            .findFirst();
-
                                     if (optionalOddsB.isPresent()) {
                                         OddsRangeDTO oddsGreaterB = optionalOddsB.get();
                                         // 使用 oddsGreaterB
@@ -575,11 +638,28 @@ public class SweepwaterService {
                         JSONObject valueAJson = letBallA.getJSONObject(subKey);
                         if (valueAJson.containsKey("odds") && StringUtils.isNotBlank(valueAJson.getStr("odds"))) {
                             double valueA = valueAJson.getDouble("odds");
+                            if (optionalOddsA.isPresent()) {
+                                OddsRangeDTO oddsGreaterA = optionalOddsA.get();
+                                // 使用 oddsGreaterA
+                                if (valueA < oddsGreaterA.getOddsGreater() || valueA > oddsGreaterA.getOddsLess()) {
+                                    log.info("当前赔率赔率:{}不在[{}-{}]范围内", valueA, oddsGreaterA.getOddsGreater(), oddsGreaterA.getOddsLess());
+                                    continue;
+                                }
+                            }
                             String decimalOddsA = valueAJson.containsKey("decimalOdds") ? valueAJson.getStr("decimalOdds") : null;
                             if (letBallB.containsKey(subKey)) {
                                 JSONObject valueBJson = letBallB.getJSONObject(subKey);
                                 if (valueBJson.containsKey("odds") && StringUtils.isNotBlank(valueBJson.getStr("odds"))) {
                                     double valueB = valueBJson.getDouble("odds");
+                                    if (optionalOddsB.isPresent()) {
+                                        OddsRangeDTO oddsGreaterB = optionalOddsB.get();
+                                        // 使用 oddsGreaterB
+                                        if (valueB < oddsGreaterB.getOddsGreater() || valueB > oddsGreaterB.getOddsLess()) {
+                                            log.info("当前赔率赔率:{}不在[{}-{}]范围内", valueB, oddsGreaterB.getOddsGreater(), oddsGreaterB.getOddsLess());
+                                            continue;
+                                        }
+                                    }
+
                                     double value = valueA + valueB + 2;
                                     String decimalOddsB = valueBJson.containsKey("decimalOdds") ? valueBJson.getStr("decimalOdds") : null;
                                     // 判断赔率是否在指定区间内

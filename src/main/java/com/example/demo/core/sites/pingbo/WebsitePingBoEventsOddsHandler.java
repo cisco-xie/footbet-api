@@ -166,8 +166,40 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                     if (!teams.isEmpty()) {
                         JSONArray teamsJson = new JSONArray();
                         teams.forEach(team -> {
+                            String session = "";
+                            int reTime = 0;
+                            int reTimeIndex = 0;    // 比赛时长索引下标
+                            JSONArray teamArray = JSONUtil.parseArray(team);
+                            // 因为teamArray长度会变动，无法直接通过固定下标获取到比赛时长，所以通过遍历取校验获取
+                            for (int i = 0; i < teamArray.size(); i++) {
+                                System.out.println("Index " + i + ": " + teamArray.get(i));
+                                String value = teamArray.getStr(i).trim();
+                                if ("1H".equals(value) || "2H".equals(value) || "HT".equals(value)) {
+                                    session = value;
+                                    // 时长下标是在场次上一个
+                                    reTimeIndex = i - 1;
+                                    break;
+                                }
+                            }
+
                             // 解析当前场次
-                            JSONObject course = JSONUtil.parseArray(team).getJSONObject(8);
+                            JSONObject course = teamArray.getJSONObject(8);
+                            // 开赛时长
+                            String timeStr = "";
+                            Object rawValue = teamArray.get(reTimeIndex);
+                            if (rawValue != null) {
+                                timeStr = rawValue.toString().replace("'", "");
+                            }
+                            reTime = StringUtils.isBlank(timeStr) ? 0 : Integer.parseInt(timeStr);
+                            if ("HT".equalsIgnoreCase(session)) {
+                                // 场间休息
+                            } else if ("1H".equalsIgnoreCase(session)) {
+                                // 上半场
+                            } else if ("2H".equalsIgnoreCase(session)) {
+                                // 下半场（即全场）
+                                // 下半场时长需要加上上半场45分钟(固定加45分钟，不用管上半场有没有附加赛之类的)
+                                reTime += 45;
+                            }
                             // 全场
                             JSONObject fullHomeCourt = new JSONObject();
                             JSONObject fullAwayCourt = new JSONObject();
@@ -454,6 +486,8 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
 
                             eventHomeJson.putOpt("id", JSONUtil.parseArray(team).getStr(0));
                             eventHomeJson.putOpt("name", JSONUtil.parseArray(team).getStr(1));
+                            eventHomeJson.putOpt("session", session);
+                            eventHomeJson.putOpt("reTime", reTime);
                             eventHomeJson.putOpt("isHome", true);
                             eventHomeJson.putOpt("score", scoreStr);
                             eventHomeJson.putOpt("fullCourt", fullHomeCourt);
@@ -461,6 +495,8 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
 
                             eventAwayJson.putOpt("id", JSONUtil.parseArray(team).getStr(0));
                             eventAwayJson.putOpt("name", JSONUtil.parseArray(team).getStr(2));
+                            eventAwayJson.putOpt("session", session);
+                            eventAwayJson.putOpt("reTime", reTime);
                             eventAwayJson.putOpt("isHome", false);
                             eventAwayJson.putOpt("score", scoreStr);
                             eventAwayJson.putOpt("fullCourt", fullAwayCourt);

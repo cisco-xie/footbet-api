@@ -10,6 +10,7 @@ import com.example.demo.api.WebsiteService;
 import com.example.demo.common.constants.Constants;
 import com.example.demo.common.enmu.XinBaoOddsFormatType;
 import com.example.demo.core.factory.ApiHandler;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -25,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * 新2网站 - 赛事详情赔率 API具体实现
  */
+@Slf4j
 @Component
 public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
 
@@ -149,18 +151,43 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
         JSONObject firstHalfAwayLetBall = new JSONObject();
         JSONObject homeFirstHomeOverSize = new JSONObject();
         JSONObject homeFirstAwayOverSize = new JSONObject();
-        // 记录每个队伍的最小盘口值（负数则为下盘）
-        Map<String, Double> teamMinRatioMap = new HashMap<>();
-        // 是否记录主队的上下盘
-        AtomicBoolean wallHomeTake = new AtomicBoolean(false);
-        // 是否记录客队的上下盘
-        AtomicBoolean wallAwayTake = new AtomicBoolean(false);
+        // 是否已获取主队的上下盘
         AtomicReference<String> wallHome = new AtomicReference<>();
+        // 是否已获取客队的上下盘
         AtomicReference<String> wallAway = new AtomicReference<>();
 
         // 遍历所有比赛
         games.forEach(gameObj -> {
             JSONObject game = (JSONObject) gameObj;
+            String session = game.getStr("re_time");
+            int reTime = 0;
+            String half = ""; // 上半场/下半场/中场休息标记
+
+            if (session != null && !session.isEmpty()) {
+                String[] parts = session.split("\\^");
+                if (parts.length > 0) {
+                    half = parts[0]; // 提取 "1H"、"2H" 或 "HT"
+                }
+
+                if ("1H".equals(half) || "2H".equals(half)) {
+                    if (parts.length > 1 && parts[1].contains(":")) {
+                        String[] timeParts = parts[1].split(":");
+                        String minuteStr = timeParts[0].replaceAll("\\D", ""); // 防止有非数字
+                        if (!minuteStr.isEmpty()) {
+                            try {
+                                reTime = Integer.parseInt(minuteStr);
+                            } catch (NumberFormatException e) {
+                                // 日志记录也可以加上
+                                log.error("新二网站获取比赛时长解析异常:", e);
+                            }
+                        }
+                    }
+                }
+            }
+            homeTeam.putOpt("session", half);
+            homeTeam.putOpt("reTime", reTime);
+            awayTeam.putOpt("session", half);
+            awayTeam.putOpt("reTime", reTime);
             // 全场让球
             if (game.containsKey("ior_REH") && 0 != game.getDouble("ior_REH")) {
                 JSONObject homeOddsJson = new JSONObject();
