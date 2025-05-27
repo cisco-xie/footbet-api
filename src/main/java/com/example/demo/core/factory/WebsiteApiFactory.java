@@ -5,6 +5,7 @@ package com.example.demo.core.factory;
  */
 public interface WebsiteApiFactory {
     boolean supports(String siteId);        // 判断是否支持该 siteId
+    ApiHandler changePwd();                 // 修改密码
     ApiHandler getLoginHandler();           // 登录
     ApiHandler getInfoHandler();            // 账号详情
     ApiHandler getEventsHandler();          // 赛事列表
@@ -13,7 +14,7 @@ public interface WebsiteApiFactory {
     ApiHandler getBetUnsettledHandler();    // 投注列表-未结算
     ApiHandler preferences();               // 偏好设置
     ApiHandler bet();                       // 投注
-    ApiHandler betPreview();                 // 投注预览
+    ApiHandler betPreview();                // 投注预览
 //    ApiHandler getMatchListHandler();  // 获取比赛列表
 //    ApiHandler getOddsHandler();       // 获取赔率
 //    ApiHandler getBetHandler();        // 下注

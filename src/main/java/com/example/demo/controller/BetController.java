@@ -33,7 +33,7 @@ import java.util.List;
 
 
 @Slf4j
-@Tag(name = "扫水列表")
+@Tag(name = "投注列表")
 @RequestMapping("/api")
 @RestController
 public class BetController extends BaseController {
@@ -41,11 +41,26 @@ public class BetController extends BaseController {
     @Resource
     private BetService betService;
 
-    @Operation(summary = "获取扫水列表")
-    @GetMapping("/bets")
-    public Result<List<SweepwaterBetDTO>> getBets(@RequestParam(value = "teamName", required = false)  String teamName, @RequestParam(value = "startDate", required = false) String startDate) {
+    @Operation(summary = "获取实时进单列表")
+    @GetMapping("/bets/realtime")
+    public Result<List<SweepwaterBetDTO>> getBetsReal(@RequestParam(value = "teamName", required = false)  String teamName) {
+        AdminLoginDTO admin = getUser();
+        return Result.success(betService.getRealTimeBets(admin.getUsername(), teamName));
+    }
+
+    @Operation(summary = "获取历史进单列表")
+    @GetMapping("/bets/history")
+    public Result<List<SweepwaterBetDTO>> getBetsHistory(@RequestParam(value = "teamName", required = false)  String teamName, @RequestParam(value = "startDate", required = false)  String startDate) {
         AdminLoginDTO admin = getUser();
         return Result.success(betService.getBets(admin.getUsername(), teamName, startDate));
+    }
+
+    @Operation(summary = "清空实时进单列表")
+    @GetMapping("/bets/clear")
+    public Result clear() {
+        AdminLoginDTO admin = getUser();
+        betService.betClear(admin.getUsername());
+        return Result.success();
     }
 
 }

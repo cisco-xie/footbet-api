@@ -82,7 +82,7 @@ public class WebsiteZhiBoBetPreviewHandler implements ApiHandler {
             return res;
         }
         result.putOpt("success", true);
-        result.putOpt("data", betTicket);
+        result.putOpt("data", responseJson);
         result.putOpt("msg", "获取赛事成功");
         return result;
     }

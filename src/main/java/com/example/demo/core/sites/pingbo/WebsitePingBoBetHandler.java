@@ -113,6 +113,7 @@ public class WebsitePingBoBetHandler implements ApiHandler {
                 return res;
             }
             res.putOpt("code", response.getStatus());
+            res.putOpt("betInfo", params.getJSONObject("betInfo"));
             res.putOpt("success", false);
             res.putOpt("msg", "投注失败");
             return res;
@@ -124,6 +125,7 @@ public class WebsitePingBoBetHandler implements ApiHandler {
         if (responseJson.containsKey("errorCode")) {
             responseJson.putOpt("code", response.getStatus());
             responseJson.putOpt("success", false);
+            responseJson.putOpt("betInfo", params.getJSONObject("betInfo"));
             responseJson.putOpt("msg", responseJson.getStr("errorMessage"));
             return responseJson;
         }
@@ -152,6 +154,7 @@ public class WebsitePingBoBetHandler implements ApiHandler {
         }
         log.info("[平博][投注][投注结束][共投注{}个][投注成功{}个][投注失败{}个]", num, sucNum, failedNum);
         responseJson.putOpt("success", success);
+        responseJson.putOpt("betInfo", params.getJSONObject("betInfo"));
         responseJson.putOpt("msg", "投注结束");
         return responseJson;
     }

@@ -56,6 +56,64 @@ public class BetService {
     private WebsiteService websiteService;
 
     /**
+     * 清空实时投注
+     * @param username
+     */
+    public void betClear(String username) {
+        String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, "realtime", "*", "*");
+        businessPlatformRedissonClient.getKeys().deleteByPattern(pattern);
+    }
+
+    /**
+     * 获取实时投注记录
+     * @param username
+     * @return
+     */
+    public List<SweepwaterBetDTO> getRealTimeBets(String username, String teamName) {
+        String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
+        String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, "realtime", date, "*");
+
+        Iterable<String> keys = businessPlatformRedissonClient.getKeys().getKeysByPattern(pattern);
+        if (!keys.iterator().hasNext()) {
+            return Collections.emptyList();
+        }
+
+        RBatch batch = businessPlatformRedissonClient.createBatch();
+        List<RFuture<String>> futures = new ArrayList<>();
+        for (String key : keys) {
+            RBucketAsync<String> bucket = batch.getBucket(key);
+            futures.add(bucket.getAsync());
+        }
+
+        batch.execute();
+
+        List<SweepwaterBetDTO> result = new ArrayList<>();
+        for (RFuture<String> future : futures) {
+            try {
+                String json = future.toCompletableFuture().join();
+                if (json != null) {
+                    result.add(JSONUtil.toBean(json, SweepwaterBetDTO.class));
+                }
+            } catch (Exception e) {
+                log.warn("读取投注单缓存失败", e);
+            }
+        }
+
+        // ✅ 筛选 队伍 数据
+        return result.stream()
+                .filter(dto -> {
+                    if (StringUtils.isBlank(teamName)) {
+                        return true; // teamName 为空，直接不过滤
+                    }
+                    String team = dto.getTeam();
+                    return (team != null && team.contains(teamName));
+                })
+                // 排序:id倒叙
+                .sorted(Comparator.comparing(SweepwaterBetDTO::getId).reversed())
+                .collect(Collectors.toList());
+    }
+
+    /**
      * 获取投注记录
      * @param username
      * @param date
@@ -153,17 +211,17 @@ public class BetService {
                     .findFirst()
                     .orElse(0);
 
-            boolean successA = false;
-            boolean successB = false;
+            JSONObject successA = new JSONObject();
+            JSONObject successB = new JSONObject();
 
             try {
                 if (rollingOrderA == rollingOrderB) {
                     // 并行执行
-                    CompletableFuture<Boolean> betA = CompletableFuture.supplyAsync(() ->
+                    CompletableFuture<JSONObject> betA = CompletableFuture.supplyAsync(() ->
                                     tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO),
                             betExecutor
                     );
-                    CompletableFuture<Boolean> betB = CompletableFuture.supplyAsync(() ->
+                    CompletableFuture<JSONObject> betB = CompletableFuture.supplyAsync(() ->
                                     tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO),
                             betExecutor
                     );
@@ -173,13 +231,13 @@ public class BetService {
                 } else if (rollingOrderA < rollingOrderB) {
                     // A 优先
                     successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO);
-                    if (successA) {
+                    if (successA.getBool("success")) {
                         successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO);
                     }
                 } else {
                     // B 优先
                     successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO);
-                    if (successB) {
+                    if (successB.getBool("success")) {
                         successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO);
                     }
                 }
@@ -190,8 +248,14 @@ public class BetService {
             // 设置已投注
             sweepwaterService.setIsBet(username, dto.getId());
 
-            // 有一个成功则缓存
-            if (successA || successB) {
+            dto.setBetSuccessA(successA.getBool("success"));
+            dto.setBetSuccessB(successB.getBool("success"));
+            dto.setBetInfoA(successA.getJSONObject("betInfo"));
+            dto.setBetInfoB(successB.getJSONObject("betInfo"));
+            
+            // 有一个执行了投注则缓存
+            if (successA.getBool("isBet") || successB.getBool("isBet")) {
+                // 保存投注信息作为历史记录
                 String key = KeyUtil.genKey(
                         RedisConstants.PLATFORM_BET_PREFIX,
                         username,
@@ -199,6 +263,16 @@ public class BetService {
                         dto.getId()
                 );
                 businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(dto));
+
+                // 保存投注信息作为实时记录
+                /*String realTimeKey = KeyUtil.genKey(
+                        RedisConstants.PLATFORM_BET_PREFIX,
+                        username,
+                        "realtime",
+                        LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
+                        dto.getId()
+                );
+                businessPlatformRedissonClient.getBucket(realTimeKey).set(JSONUtil.toJsonStr(dto));*/
             }
         }
 
@@ -253,7 +327,7 @@ public class BetService {
      * @param amountDTO
      * @return
      */
-    private boolean tryBet(String username,
+    private JSONObject tryBet(String username,
                            String eventId,
                            String websiteId,
                            boolean isA,
@@ -261,28 +335,33 @@ public class BetService {
                            LimitDTO limitDTO,
                            IntervalDTO intervalDTO,
                            BetAmountDTO amountDTO) {
-
-        // 校验投注间隔
+        JSONObject result = new JSONObject();
+        String score = isA ? dto.getScoreA() : dto.getScoreB();
+        // 校验投注间隔key
         String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, eventId);
-        Object lastBetTimeObj = businessPlatformRedissonClient.getBucket(intervalKey).get();
+        // 投注次数限制key
+        String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventId);
+        // 这里是校验间隔时间和投注次数，暂时注释掉，移动到扫水的时候校验限制
+        /*Object lastBetTimeObj = businessPlatformRedissonClient.getBucket(intervalKey).get();
         if (lastBetTimeObj != null) {
             long lastBetTime = Long.parseLong(lastBetTimeObj.toString());
             if (System.currentTimeMillis() - lastBetTime < intervalDTO.getBetSuccessSec() * 1000L) {
                 log.info("用户 {} 投注间隔未到，eventId={}, 当前时间={}, 上次投注时间={}",
                         username, eventId, LocalDateTime.now(), Instant.ofEpochMilli(lastBetTime));
-                return false;
+                result.putOpt("isBet", false);      // 是否进行了投注操作
+                result.putOpt("success", false);
+                return result;
             }
         }
 
-        // 投注次数限制
-        String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventId);
-        String score = isA ? dto.getScoreA() : dto.getScoreB();
         // 校验投注次数限制
-        // 投注前锁定额度（确保不会超过）
+        // 投注前锁定次数（确保不会超过）
         if (!tryReserveBetLimit(limitKey, score, limitDTO)) {
             log.info("用户 {} 当前比分 {} 投注次数超限，eventId={}", username, score, eventId);
-            return false;
-        }
+            result.putOpt("isBet", false);
+            result.putOpt("success", false);
+            return result;
+        }*/
 
         // 构建投注参数并调用投注接口
         JSONObject params = buildBetParams(dto, amountDTO.getAmount(), isA);
@@ -297,11 +376,24 @@ public class BetService {
             } else {
                 dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
             }
-            return true;
+            result.putOpt("isBet", true);
+            result.putOpt("success", true);
+            result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
+            return result;
+        } else if (betResult != null && !parseBetSuccess(betResult, dto, isA)) {
+            // 撤销预占额度
+            rollbackBetLimit(limitKey, score);
+            result.putOpt("isBet", true);
+            result.putOpt("success", false);
+            result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
+            return result;
         } else {
             // 撤销预占额度
             rollbackBetLimit(limitKey, score);
-            return false;
+            result.putOpt("isBet", true);
+            result.putOpt("success", false);
+            result.putOpt("betInfo", betResult);
+            return result;
         }
 
     }
@@ -500,7 +592,7 @@ public class BetService {
             String keyA = bet.getWebsiteIdA() + "_" + bet.getBetAccountIdA();
             String keyB = bet.getWebsiteIdB() + "_" + bet.getBetAccountIdB();
             // 网站A
-            if (!StringUtils.isBlank(bet.getBetAccountIdA()) && bet.getBetInfoA() == null) {
+            if (!StringUtils.isBlank(bet.getBetAccountIdA()) && bet.getBetSuccessA() && bet.getBetInfoA() == null) {
                 futures.add(CompletableFuture.runAsync(() -> {
                     unsettleds.computeIfAbsent(keyA, key -> {
                         Object unsettledA = handicapApi.unsettled(username, bet.getWebsiteIdA(), bet.getBetAccountIdA());
@@ -515,7 +607,7 @@ public class BetService {
             }
 
             // 网站B
-            if (!StringUtils.isBlank(bet.getBetAccountIdB()) && bet.getBetInfoB() == null) {
+            if (!StringUtils.isBlank(bet.getBetAccountIdB()) && bet.getBetSuccessB() && bet.getBetInfoB() == null) {
                 futures.add(CompletableFuture.runAsync(() -> {
                     unsettleds.computeIfAbsent(keyB, key -> {
                         Object unsettledB = handicapApi.unsettled(username, bet.getWebsiteIdB(), bet.getBetAccountIdB());
@@ -579,6 +671,15 @@ public class BetService {
                         bet.getId()
                 );
                 batch.getBucket(key).setAsync(JSONUtil.toJsonStr(bet));
+
+                String realKey = KeyUtil.genKey(
+                        RedisConstants.PLATFORM_BET_PREFIX,
+                        username,
+                        "realtime",
+                        LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
+                        bet.getId()
+                );
+                batch.getBucket(realKey).setAsync(JSONUtil.toJsonStr(bet));
             }
         }
         // 一次性执行所有 Redis 写入

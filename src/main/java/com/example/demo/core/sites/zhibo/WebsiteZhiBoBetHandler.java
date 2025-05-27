@@ -64,6 +64,7 @@ public class WebsiteZhiBoBetHandler implements ApiHandler {
                 res.putOpt("msg", "账户登录失效");
                 return res;
             }
+            res.putOpt("betInfo", params.getJSONObject("betInfo"));
             res.putOpt("msg", "投注失败");
             return res;
         }
@@ -74,6 +75,7 @@ public class WebsiteZhiBoBetHandler implements ApiHandler {
         if (0 != responseJson.getInt("responseCode")) {
             JSONObject res = new JSONObject();
             res.putOpt("success", false);
+            res.putOpt("betInfo", params.getJSONObject("betInfo"));
             res.putOpt("msg", "投注失败:"+responseJson.getStr("responseMessage"));
             return res;
         }

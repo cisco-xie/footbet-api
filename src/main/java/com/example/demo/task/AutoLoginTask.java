@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -56,6 +57,9 @@ public class AutoLoginTask {
             // 存储所有 CompletableFuture
             List<CompletableFuture<Void>> adminFutures = new ArrayList<>();
 
+            // ✅ 定义本地内存的 retryMap，仅在当前方法内生效（不持久）
+            ConcurrentHashMap<String, Integer> retryMap = new ConcurrentHashMap<>();
+
             for (AdminLoginDTO adminUser : adminUsers) {
                 for (WebsiteType type : WebsiteType.values()) {
                     CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
@@ -87,7 +91,7 @@ public class AutoLoginTask {
                                             accountService.logoutByWebsiteAndAccountId(adminUser.getUsername(), type.getId(), userConfig.getId());
                                             if (userConfig.getAutoLogin() == 1) {
                                                 // 当前账号token无效，调用盘口api登录
-                                                handicapApi.processAccountLogin(userConfig, adminUser.getUsername(), type.getId());
+                                                handicapApi.processAccountLogin(userConfig, adminUser.getUsername(), type.getId(), retryMap);
                                             }
                                         }
                                     }, executorAccountService))

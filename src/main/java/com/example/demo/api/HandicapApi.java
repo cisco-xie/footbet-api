@@ -2,6 +2,7 @@ package com.example.demo.api;
 
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.date.TimeInterval;
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
@@ -52,6 +53,9 @@ public class HandicapApi {
         List<AdminLoginDTO> users = adminService.getEnableUsers();
         ConcurrentHashMap<String, ExecutorService> userExecutorMap = new ConcurrentHashMap<>();
 
+        // ✅ 定义本地内存的 retryMap，仅在当前方法内生效（不持久）
+        ConcurrentHashMap<String, Integer> retryMap = new ConcurrentHashMap<>();
+
         for (AdminLoginDTO user : users) {
             ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2);
             userExecutorMap.put(user.getUsername(), executorService);
@@ -78,7 +82,9 @@ public class HandicapApi {
 
                 try {
                     List<CompletableFuture<Void>> futures = enabledAccounts.stream()
-                            .map(account -> CompletableFuture.runAsync(() -> processAccountLogin(account, user.getUsername(), website.getId()), executorService))
+                            .map(account -> CompletableFuture.runAsync(() ->
+                                    processAccountLogin(account, user.getUsername(), website.getId(), retryMap),
+                                    executorService))
                             .toList();
 
                     CompletableFuture<Void> allTasks = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
@@ -112,6 +118,10 @@ public class HandicapApi {
         if (accounts.isEmpty()) {
             return;
         }
+
+        // ✅ 定义本地内存的 retryMap，仅在当前方法内生效（不持久）
+        ConcurrentHashMap<String, Integer> retryMap = new ConcurrentHashMap<>();
+
         int cpuCoreCount = Runtime.getRuntime().availableProcessors();
         int threadPoolUserSize = Math.min(accounts.size(), cpuCoreCount * 2);
         ExecutorService executorLoginService = new ThreadPoolExecutor(
@@ -125,7 +135,10 @@ public class HandicapApi {
 
         try {
             List<CompletableFuture<Void>> futures = accounts.stream()
-                    .map(account -> CompletableFuture.runAsync(() -> processAccountLogin(account, username, websiteId), executorLoginService))
+                    .map(account -> CompletableFuture.runAsync(() ->
+                            // ✅ 将 retryMap 传入 processAccountLogin 方法
+                            processAccountLogin(account, username, websiteId, retryMap),
+                            executorLoginService))
                     .toList();
             // 等待所有平台用户的任务完成
             CompletableFuture<Void> allTasks = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
@@ -146,20 +159,30 @@ public class HandicapApi {
      */
     public void singleLogin(String username, String websiteId, String accountId) {
         ConfigAccountVO account = accountService.getAccountById(username, websiteId, accountId);
+        Map<String, Integer> retryMap = new HashMap<>();
         if (account == null) {
             throw new BusinessException(SystemError.USER_1017);
         }
 
         try {
-            processAccountLogin(account, username, websiteId);
+            processAccountLogin(account, username, websiteId, retryMap);
         } catch (Exception e) {
             log.error("执行单个登入任务时出现异常", e);
         }
     }
 
     // 运行登录工厂
-    public void processAccountLogin(ConfigAccountVO account, String username, String websiteId) {
+    public void processAccountLogin(ConfigAccountVO account, String username, String websiteId, Map<String, Integer> retryMap) {
         TimeInterval timer = DateUtil.timer();
+        String key = websiteId + ":" + username;
+
+        // 当前失败次数
+        int retryCount = retryMap.getOrDefault(key, 0);
+        if (retryCount >= 1) {
+            log.warn("登录失败次数达到上限（仅本次任务内），username={}, websiteId={}", username, websiteId);
+            return;
+        }
+
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
         ApiHandler apiHandler = factory.getLoginHandler();
         if (apiHandler == null) {
@@ -182,8 +205,61 @@ public class HandicapApi {
         account.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
         accountService.saveAccount(username, websiteId, account);
         if (result.getBool("success")) {
+            retryMap.remove(key); // 成功则清除失败记录
             // 登录成功就执行获取额度
             balanceByAccount(username, websiteId, account);
+        } else {
+            Integer code = result.getInt("code");
+            if (code != null && code == 106) {
+                retryCount++;
+                retryMap.put(key, retryCount);
+
+                log.warn("登录失败，第{}次（本次流程内），username={}, websiteId={}", retryCount, username, websiteId);
+
+                if (retryCount >= 1) {
+                    log.warn("登录失败达到上限，不再尝试。username={}, websiteId={}", username, websiteId);
+                    return;
+                }
+
+                // 登录成功就执行获取额度
+                changePwd(username, account, websiteId, result.getJSONObject("serverresponse").getStr("uid"), result.getJSONObject("serverresponse").getStr("username"), retryMap);
+            }
+        }
+    }
+
+    // 运行修改密码工厂
+    public void changePwd(String username, ConfigAccountVO accountVO, String websiteId, String uid, String account, Map<String, Integer> retryMap) {
+        TimeInterval timer = DateUtil.timer();
+        // 修改密码
+        String password = RandomUtil.randomString(6) + RandomUtil.randomNumbers(2);
+        WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+        ApiHandler apiHandler = factory.changePwd();
+        if (apiHandler == null) {
+            return;
+        }
+        JSONObject params = new JSONObject();
+        params.putOpt("adminUsername", username);
+        params.putOpt("websiteId", websiteId);
+        // 根据不同站点传入不同的参数
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            log.warn("暂不支持平博网站自动修改密码：{}", websiteId);
+            return;
+        } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+            log.warn("暂不支持智博网站自动修改密码：{}", websiteId);
+            return;
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+            params.putOpt("uid", uid);
+            params.putOpt("username", account);
+            params.putOpt("newPassword", password);
+            params.putOpt("chgPassword", password);
+        }
+        JSONObject result = apiHandler.execute(params);
+        accountVO.setPassword(password);
+        accountVO.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
+        accountService.saveAccount(username, websiteId, accountVO);
+        if (result.getBool("success")) {
+            // 修改成功就执行登录
+            processAccountLogin(accountVO, username, websiteId, retryMap);
         }
     }
 
@@ -791,11 +867,21 @@ public class HandicapApi {
                         JSONArray selections = new JSONArray();
                         for (Object obj : data) {
                             JSONObject objJson = JSONUtil.parseObj(obj);
+                            JSONObject betInfo = new JSONObject();
                             JSONObject selection = new JSONObject();
                             selection.putOpt("stake", odds.getStr("stake"));
                             selection.putOpt("odds", objJson.getStr("odds"));
                             selection.putOpt("oddsId", objJson.getStr("oddsId"));
                             selection.putOpt("selectionId", objJson.getStr("selectionId"));
+                            // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
+                            betInfo.putOpt("league", objJson.getStr("league"));
+                            betInfo.putOpt("team", objJson.getStr("homeTeam") + " -vs- " + objJson.getStr("awayTeam"));
+                            betInfo.putOpt("marketTypeName", "");
+                            betInfo.putOpt("marketName", objJson.getStr("selection"));
+                            betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap") + " @ " + objJson.getStr("odds"));
+                            betInfo.putOpt("handicap", objJson.getStr("handicap"));
+                            betInfo.putOpt("amount", odds.getStr("stake"));
+                            selection.putOpt("betInfo", betInfo);
                             selections.add(selection);
                         }
                         params.putOpt("selections", selections);
@@ -809,29 +895,68 @@ public class HandicapApi {
                     JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
                     if (betPreviewJson.getBool("success")) {
                         JSONObject data = betPreviewJson.getJSONObject("data");
-                        params.putOpt("odds", data.getStr("odds"));
-                        params.putOpt("decimalOdds", data.getStr("decimalOdds"));
-                        params.putOpt("handicap", data.getStr("handicap"));
-                        params.putOpt("score", data.getStr("score"));
-                        params.putOpt("oddsFormatId", data.getStr("oddsFormatId"));
-                        params.putOpt("marketSelectionId", data.getStr("marketSelectionId"));
+                        JSONObject betTicket = data.getJSONObject("betTicket");
+                        JSONObject betInfo = new JSONObject();
+                        params.putOpt("odds", betTicket.getStr("odds"));
+                        params.putOpt("decimalOdds", betTicket.getStr("decimalOdds"));
+                        params.putOpt("handicap", betTicket.getStr("handicap"));
+                        params.putOpt("score", betTicket.getStr("score"));
+                        params.putOpt("oddsFormatId", betTicket.getStr("oddsFormatId"));
+                        params.putOpt("marketSelectionId", betTicket.getStr("marketSelectionId"));
+                        // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
+                        betInfo.putOpt("league", data.getStr("leagueName"));
+                        betInfo.putOpt("team", data.getStr("eventName"));
+                        betInfo.putOpt("marketTypeName", data.getStr("marketTypeName"));
+                        betInfo.putOpt("marketName", data.getStr("name"));
+                        betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap") + " @ "  + betTicket.getStr("odds"));
+                        betInfo.putOpt("handicap", data.getStr("handicap"));
+                        betInfo.putOpt("amount", odds.getStr("stake"));
+                        params.putOpt("betInfo", betInfo);
                     }
                 }
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
                 Object betPreview = betPreview(username, websiteId, odds);
                 if (betPreview != null) {
+                    JSONObject betInfo = new JSONObject();
                     JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+                    JSONObject serverresponse = betPreviewJson.getJSONObject("serverresponse");
                     params.putOpt("gid", odds.getStr("gid"));
                     params.putOpt("golds", odds.getStr("golds"));
                     params.putOpt("gtype", odds.getStr("gtype"));
                     params.putOpt("wtype", odds.getStr("wtype"));
                     params.putOpt("rtype", odds.getStr("rtype"));
                     params.putOpt("choseTeam", odds.getStr("choseTeam"));
-                    params.putOpt("ioratio", betPreviewJson.getJSONObject("serverresponse").getStr("ioratio"));
-                    params.putOpt("con", betPreviewJson.getJSONObject("serverresponse").getStr("con"));
-                    params.putOpt("ratio", betPreviewJson.getJSONObject("serverresponse").getStr("ratio"));
+                    params.putOpt("ioratio", serverresponse.getStr("ioratio"));
+                    params.putOpt("con", serverresponse.getStr("con"));
+                    params.putOpt("ratio", serverresponse.getStr("ratio"));
                     params.putOpt("autoOdd", odds.getStr("autoOdd"));
+
+                    // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
+                    String fastCheck = serverresponse.getStr("fast_check");
+                    String marketName = "";
+                    String marketTypeName = "";
+                    if (fastCheck.contains("REH")) {
+                        marketName = serverresponse.getStr("team_name_h");
+                        marketTypeName = "让球盘";
+                    } else if (fastCheck.contains("REC")) {
+                        marketName = serverresponse.getStr("team_name_c");
+                        marketTypeName = "让球盘";
+                    } else if (fastCheck.contains("ROUC")) {
+                        marketName = "大盘";
+                        marketTypeName = "大小盘";
+                    } else if (fastCheck.contains("ROUH")) {
+                        marketName = "小盘";
+                        marketTypeName = "大小盘";
+                    }
+                    betInfo.putOpt("league", serverresponse.getStr("league_name"));
+                    betInfo.putOpt("team", serverresponse.getStr("team_name_h") + " -vs- " + serverresponse.getStr("team_name_c"));
+                    betInfo.putOpt("marketTypeName", marketTypeName);
+                    betInfo.putOpt("marketName", marketName);
+                    betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread") + " @ " + serverresponse.getStr("ioratio"));
+                    betInfo.putOpt("handicap", serverresponse.getStr("spread"));
+                    betInfo.putOpt("amount", odds.getStr("golds"));
+                    params.putOpt("betInfo", betInfo);
 
                     // 转换赔率类型
                     String oddsFormatType;
@@ -852,12 +977,15 @@ public class HandicapApi {
             if (result == null) {
                 return null;
             }
-            if (result.getBool("success")) {
+            /*if (result.getBool("success")) {
                 // 保存记录投注账号id
                 result.putOpt("account", account.getAccount());
                 result.putOpt("accountId", account.getId());
                 return result;
-            }
+            }*/
+            result.putOpt("account", account.getAccount());
+            result.putOpt("accountId", account.getId());
+            return result;
         }
         return null;
     }

@@ -3,8 +3,6 @@ package com.example.demo.core.factory;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.enmu.WebsiteType;
-import com.example.demo.core.sites.pingbo.WebsitePingBoEventsHandler;
-import com.example.demo.core.sites.xinbao.WebsiteXinBaoBetUnsettledHandler;
 import com.example.demo.core.sites.zhibo.*;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
@@ -23,6 +21,11 @@ public class WebsiteZhiBoFactory implements WebsiteApiFactory {
     @Override
     public boolean supports(String siteId) {
         return WebsiteType.ZHIBO.getId().equalsIgnoreCase(siteId);
+    }
+
+    @Override
+    public ApiHandler changePwd() {
+        return null;    //        return new WebsiteZhiBoChangePwdHandler(websiteService, apiUrlService); // 返回具体的修改密码处理类
     }
 
     @Override

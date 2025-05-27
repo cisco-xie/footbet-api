@@ -31,6 +31,8 @@ public class SweepwaterBetDTO {
     private Boolean lastOddsTimeA;  // 是否是最新赔率
     private Boolean lastOddsTimeB;  // 是否是最新赔率
     private Integer isBet;          // 是否进行过投注
+    private Boolean betSuccessA;    // 网站A是否投注成功
+    private Boolean betSuccessB;    // 网站B是否投注成功
     private String betTimeA;        // 投注时间
     private String betTimeB;        // 投注时间
     private String betAccountIdA;   // 进行投注的盘口账号id

@@ -24,6 +24,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RBucket;
+import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
@@ -126,6 +127,8 @@ public class SweepwaterService {
 
         OddsScanDTO oddsScan = settingsService.getOddsScan(username);
         ProfitDTO profit = settingsService.getProfit(username);
+        IntervalDTO interval = settingsBetService.getInterval(username);
+        LimitDTO limit = settingsBetService.getLimit(username);
         TypeFilterDTO typeFilter = settingsBetService.getTypeFilter(username);
         List<OddsRangeDTO> oddsRanges = settingsFilterService.getOddsRanges(username);
         List<TimeFrameDTO> timeFrames = settingsFilterService.getTimeFrames(username);
@@ -217,6 +220,8 @@ public class SweepwaterService {
                                         username,
                                         oddsScan,
                                         profit,
+                                        interval,
+                                        limit,
                                         oddsRanges,
                                         timeFrames,
                                         typeFilter,
@@ -303,7 +308,7 @@ public class SweepwaterService {
         return null; // 如果没有找到，返回null
     }
 
-    public List<SweepwaterDTO> aggregateEventOdds(String username, OddsScanDTO oddsScan, ProfitDTO profit, List<OddsRangeDTO> oddsRanges, List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter, WebsiteVO websiteA, WebsiteVO websiteB, JSONObject eventAJson, JSONObject eventBJson, String bindTeamNameA, String bindTeamNameB, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, boolean isHomeA, boolean isHomeB) {
+    public List<SweepwaterDTO> aggregateEventOdds(String username, OddsScanDTO oddsScan, ProfitDTO profit, IntervalDTO interval, LimitDTO limit, List<OddsRangeDTO> oddsRanges, List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter, WebsiteVO websiteA, WebsiteVO websiteB, JSONObject eventAJson, JSONObject eventBJson, String bindTeamNameA, String bindTeamNameB, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, boolean isHomeA, boolean isHomeB) {
         List<SweepwaterDTO> results = new ArrayList<>();
         // 遍历第一个 JSON 的事件列表
         JSONArray eventsA = eventAJson.getJSONArray("events");
@@ -565,8 +570,8 @@ public class SweepwaterService {
                 if (nameA.equals(bindTeamNameA) && !nameB.equals(bindTeamNameB) ||
                         nameA.equals(bindTeamNameB) && !nameB.equals(bindTeamNameA)) {
                     // 合并 fullCourt 和 firstHalf 数据
-                    processFullCourtOdds(username, oddsScan, profit, oddsRanges, fullCourtA, fullCourtB, "fullCourt", nameA, nameB, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, results, scoreA, scoreB);
-                    processFullCourtOdds(username, oddsScan, profit, oddsRanges, firstHalfA, firstHalfB, "firstHalf", nameA, nameB, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, results, scoreA, scoreB);
+                    processFullCourtOdds(username, oddsScan, profit, interval, limit, oddsRanges, fullCourtA, fullCourtB, "fullCourt", nameA, nameB, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, results, scoreA, scoreB);
+                    processFullCourtOdds(username, oddsScan, profit, interval, limit, oddsRanges, firstHalfA, firstHalfB, "firstHalf", nameA, nameB, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, results, scoreA, scoreB);
                 }
             }
         }
@@ -574,7 +579,7 @@ public class SweepwaterService {
     }
 
     // 提取的处理逻辑
-    private void processFullCourtOdds(String username, OddsScanDTO oddsScan, ProfitDTO profit, List<OddsRangeDTO> oddsRanges,
+    private void processFullCourtOdds(String username, OddsScanDTO oddsScan, ProfitDTO profit, IntervalDTO interval, LimitDTO limit, List<OddsRangeDTO> oddsRanges,
                                       JSONObject fullCourtA, JSONObject fullCourtB, String courtType,
                                       String nameA, String nameB, JSONObject eventAJson, JSONObject eventBJson,
                                       String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB,
@@ -585,12 +590,35 @@ public class SweepwaterService {
         Optional<OddsRangeDTO> optionalOddsB = oddsRanges.stream()
                 .filter(w -> w.getWebsiteId().equals(websiteIdA))
                 .findFirst();
+
         for (String key : fullCourtA.keySet()) {
             if (fullCourtB.containsKey(key)) {
                 if (("win".equals(key) || "draw".equals(key))) {
                     if (!fullCourtA.isNull(key) && StringUtils.isNotBlank(fullCourtA.getStr(key))) {
                         JSONObject valueAJson = fullCourtA.getJSONObject(key);
                         if (valueAJson.containsKey("odds") && StringUtils.isNotBlank(valueAJson.getStr("odds"))) {
+
+                            // 校验投注间隔
+                            String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, valueAJson.getStr("id"));
+                            Object lastBetTimeObj = businessPlatformRedissonClient.getBucket(intervalKey).get();
+                            if (lastBetTimeObj != null) {
+                                long lastBetTime = Long.parseLong(lastBetTimeObj.toString());
+                                if (System.currentTimeMillis() - lastBetTime < interval.getBetSuccessSec() * 1000L) {
+                                    log.info("用户 {} 投注间隔未到，eventId={}, 当前时间={}, 上次投注时间={}",
+                                            username, valueAJson.getStr("id"), LocalDateTime.now(), Instant.ofEpochMilli(lastBetTime));
+                                    continue;
+                                }
+                            }
+
+                            // 投注次数限制
+                            String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, valueAJson.getStr("id"));
+                            // 校验投注次数限制
+                            // 投注前锁定额度（确保不会超过）
+                            if (!tryReserveBetLimit(limitKey, scoreA, limit)) {
+                                log.info("用户 {} 当前比分 {} 投注次数超限，eventId={}", username, scoreA, valueAJson.getStr("id"));
+                                continue;
+                            }
+
                             double valueA = valueAJson.getDouble("odds");
                             if (optionalOddsA.isPresent()) {
                                 OddsRangeDTO oddsGreaterA = optionalOddsA.get();
@@ -604,6 +632,28 @@ public class SweepwaterService {
                             if (fullCourtB.containsKey(key) && !fullCourtB.getJSONObject(key).isEmpty()) {
                                 JSONObject valueBJson = fullCourtB.getJSONObject(key);
                                 if (valueBJson.containsKey("odds") && StringUtils.isNotBlank(valueBJson.getStr("odds"))) {
+
+                                    // 校验投注间隔
+                                    String intervalKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, valueBJson.getStr("id"));
+                                    Object lastBetTimeObjB = businessPlatformRedissonClient.getBucket(intervalKeyB).get();
+                                    if (lastBetTimeObjB != null) {
+                                        long lastBetTime = Long.parseLong(lastBetTimeObjB.toString());
+                                        if (System.currentTimeMillis() - lastBetTime < interval.getBetSuccessSec() * 1000L) {
+                                            log.info("用户 {} 投注间隔未到，eventId={}, 当前时间={}, 上次投注时间={}",
+                                                    username, valueBJson.getStr("id"), LocalDateTime.now(), Instant.ofEpochMilli(lastBetTime));
+                                            continue;
+                                        }
+                                    }
+
+                                    // 投注次数限制
+                                    String limitKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, valueBJson.getStr("id"));
+                                    // 校验投注次数限制
+                                    // 投注前锁定额度（确保不会超过）
+                                    if (!tryReserveBetLimit(limitKeyB, scoreB, limit)) {
+                                        log.info("用户 {} 当前比分 {} 投注次数超限，eventId={}", username, scoreA, valueBJson.getStr("id"));
+                                        continue;
+                                    }
+
                                     double valueB = valueBJson.getDouble("odds");
                                     if (optionalOddsB.isPresent()) {
                                         OddsRangeDTO oddsGreaterB = optionalOddsB.get();
@@ -887,6 +937,85 @@ public class SweepwaterService {
         sweepwaterDTO.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
 
         return sweepwaterDTO;
+    }
+
+    /**
+     * 校验比分限制和总投注限制
+     * 下注前检查 + 锁定额度
+     * @param limitKey
+     * @param score
+     * @param limit
+     * @return
+     */
+    private boolean tryReserveBetLimit(String limitKey, String score, LimitDTO limit) {
+        String lockKey = "lock:betlimit:" + limitKey;
+        RLock lock = businessPlatformRedissonClient.getLock(lockKey);
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(2, 5, TimeUnit.SECONDS);
+            if (!locked) {
+                log.warn("获取比分限制锁失败，limitKey={}", limitKey);
+                return false;
+            }
+
+            RBucket<Object> bucket = businessPlatformRedissonClient.getBucket(limitKey);
+            JSONObject counterJson = Optional.ofNullable(bucket.get())
+                    .map(JSONUtil::parseObj)
+                    .orElse(new JSONObject());
+
+            int scoreCount = counterJson.getInt(score, 0);
+            int totalCount = counterJson.values().stream()
+                    .filter(val -> val instanceof Integer)
+                    .mapToInt(val -> (Integer) val)
+                    .sum();
+
+            if (scoreCount >= limit.getBetLimitScore() || totalCount >= limit.getBetLimitGame()) {
+                return false;
+            }
+
+            // 预占额度
+            counterJson.putOpt(score, scoreCount + 1);
+            bucket.set(counterJson, Duration.ofHours(24));
+            return true;
+
+        } catch (Exception e) {
+            log.error("预占比分限制失败，limitKey={}, score={}", limitKey, score, e);
+            return false;
+        } finally {
+            if (locked) {
+                lock.unlock();
+            }
+        }
+    }
+
+    public void setFilter(String username, JSONObject valueAJson, JSONObject valueBJson,
+                          OddsScanDTO oddsScan, ProfitDTO profit, List<OddsRangeDTO> oddsRanges, List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter,
+                          String websiteIdA, String websiteIdB) {
+        Optional<OddsRangeDTO> optionalOddsA = oddsRanges.stream()
+                .filter(w -> w.getWebsiteId().equals(websiteIdA))
+                .findFirst();
+        Optional<OddsRangeDTO> optionalOddsB = oddsRanges.stream()
+                .filter(w -> w.getWebsiteId().equals(websiteIdA))
+                .findFirst();
+
+        double valueA = valueAJson.getDouble("odds");
+        if (optionalOddsA.isPresent()) {
+            OddsRangeDTO oddsGreaterA = optionalOddsA.get();
+            // 使用 oddsGreaterB
+            if (valueA < oddsGreaterA.getOddsGreater() || valueA > oddsGreaterA.getOddsLess()) {
+                log.info("当前赔率赔率:{}不在[{}-{}]范围内", valueA, oddsGreaterA.getOddsGreater(), oddsGreaterA.getOddsLess());
+                return;
+            }
+        }
+        double valueB = valueBJson.getDouble("odds");
+        if (optionalOddsB.isPresent()) {
+            OddsRangeDTO oddsGreaterB = optionalOddsB.get();
+            // 使用 oddsGreaterB
+            if (valueB < oddsGreaterB.getOddsGreater() || valueB > oddsGreaterB.getOddsLess()) {
+                log.info("当前赔率赔率:{}不在[{}-{}]范围内", valueB, oddsGreaterB.getOddsGreater(), oddsGreaterB.getOddsLess());
+                return;
+            }
+        }
     }
 
     /**

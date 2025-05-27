@@ -102,8 +102,14 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
             responseJson.putOpt("success", false);
             responseJson.putOpt("msg", responseJson.getJSONObject("serverresponse").getStr("code_message"));
             if ("109".equals(responseJson.getJSONObject("serverresponse").getStr("msg"))) {
+                responseJson.putOpt("code", 109);
                 responseJson.putOpt("success", false);
                 responseJson.putOpt("msg", "需要去盘口重新设置登录账号");
+            }
+            if ("106".equals(responseJson.getJSONObject("serverresponse").getStr("msg"))) {
+                responseJson.putOpt("code", 106);
+                responseJson.putOpt("success", false);
+                responseJson.putOpt("msg", "需要去盘口重新设置登录账号密码");
             }
             return responseJson;
         }

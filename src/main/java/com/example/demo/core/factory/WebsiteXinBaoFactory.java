@@ -24,6 +24,11 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler changePwd() {
+        return new WebsiteXinBaoChangePwdHandler(websiteService, apiUrlService);    // 返回具体的修改密码处理类
+    }
+
+    @Override
     public ApiHandler getLoginHandler() {
         return new WebsiteXinBaoLoginHandler(websiteService, apiUrlService); // 返回具体的登录处理类
     }

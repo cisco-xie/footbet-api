@@ -27,6 +27,11 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler changePwd() {
+        return null;        //        return new WebsitePingBoChangePwdHandler(websiteService, apiUrlService); // 返回具体的修改密码处理类
+    }
+
+    @Override
     public ApiHandler getLoginHandler() {
         return new WebsitePingBoLoginHandler(websiteService, apiUrlService); // 返回具体的登录处理类
     }

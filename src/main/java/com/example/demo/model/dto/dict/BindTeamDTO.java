@@ -8,7 +8,9 @@ public class BindTeamDTO {
     private String idA;
     private String nameA;
     private String ecidA;
+    private Boolean isHomeA;
     private String idB;
     private String nameB;
     private String ecidB;
+    private Boolean isHomeB;
 }
