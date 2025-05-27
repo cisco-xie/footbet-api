@@ -24,6 +24,16 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler checkUsername() {
+        return new WebsiteXinBaoCheckUsernameHandler(websiteService, apiUrlService);    // 返回具体的检查用户名处理类
+    }
+
+    @Override
+    public ApiHandler changeUsername() {
+        return new WebsiteXinBaoChangeUsernameHandler(websiteService, apiUrlService);    // 返回具体的修改用户名处理类
+    }
+
+    @Override
     public ApiHandler changePwd() {
         return new WebsiteXinBaoChangePwdHandler(websiteService, apiUrlService);    // 返回具体的修改密码处理类
     }

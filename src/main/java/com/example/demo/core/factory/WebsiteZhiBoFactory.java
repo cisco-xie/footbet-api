@@ -24,6 +24,16 @@ public class WebsiteZhiBoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler checkUsername() {
+        return null;
+    }
+
+    @Override
+    public ApiHandler changeUsername() {
+        return null;
+    }
+
+    @Override
     public ApiHandler changePwd() {
         return null;    //        return new WebsiteZhiBoChangePwdHandler(websiteService, apiUrlService); // 返回具体的修改密码处理类
     }

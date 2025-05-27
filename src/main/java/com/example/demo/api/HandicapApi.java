@@ -178,7 +178,7 @@ public class HandicapApi {
 
         // 当前失败次数
         int retryCount = retryMap.getOrDefault(key, 0);
-        if (retryCount >= 1) {
+        if (retryCount >= 2) {
             log.warn("登录失败次数达到上限（仅本次任务内），username={}, websiteId={}", username, websiteId);
             return;
         }
@@ -211,18 +211,33 @@ public class HandicapApi {
         } else {
             Integer code = result.getInt("code");
             if (code != null && code == 106) {
+                // 修改密码
                 retryCount++;
                 retryMap.put(key, retryCount);
 
                 log.warn("登录失败，第{}次（本次流程内），username={}, websiteId={}", retryCount, username, websiteId);
 
-                if (retryCount >= 1) {
+                if (retryCount >= 2) {
                     log.warn("登录失败达到上限，不再尝试。username={}, websiteId={}", username, websiteId);
                     return;
                 }
 
-                // 登录成功就执行获取额度
+                // 执行修改密码
                 changePwd(username, account, websiteId, result.getJSONObject("serverresponse").getStr("uid"), result.getJSONObject("serverresponse").getStr("username"), retryMap);
+            } else if (code != null && code == 109) {
+                // 修改账户名
+                retryCount++;
+                retryMap.put(key, retryCount);
+
+                log.warn("登录失败，第{}次（本次流程内），username={}, websiteId={}", retryCount, username, websiteId);
+
+                if (retryCount >= 2) {
+                    log.warn("登录失败达到上限，不再尝试。username={}, websiteId={}", username, websiteId);
+                    return;
+                }
+
+                // 执行检测修改账户名
+                checkUsername(username, account, websiteId, result.getJSONObject("serverresponse").getStr("uid"), result.getJSONObject("serverresponse").getStr("username"), retryMap);
             }
         }
     }
@@ -258,6 +273,87 @@ public class HandicapApi {
         accountVO.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
         accountService.saveAccount(username, websiteId, accountVO);
         if (result.getBool("success")) {
+            // 修改成功就执行登录
+            processAccountLogin(accountVO, username, websiteId, retryMap);
+        }
+    }
+
+    // 运行检测账户名工厂
+    public void checkUsername(String username, ConfigAccountVO accountVO, String websiteId, String uid, String account, Map<String, Integer> retryMap) {
+        TimeInterval timer = DateUtil.timer();
+        WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+        ApiHandler apiHandler = factory.checkUsername();
+        if (apiHandler == null) {
+            return;
+        }
+
+        String chkName = account + "1"; // 初始尝试名
+        JSONObject params = new JSONObject();
+        params.putOpt("adminUsername", username);
+        params.putOpt("websiteId", websiteId);
+
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            log.warn("暂不支持平博网站自动修改账户名：{}", websiteId);
+            return;
+        } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+            log.warn("暂不支持智博网站自动修改账户名：{}", websiteId);
+            return;
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+            params.putOpt("uid", uid);
+            params.putOpt("username", account);
+            params.putOpt("chkName", chkName);
+        }
+
+        JSONObject result = apiHandler.execute(params);
+
+        if (result != null && result.getBool("success")) {
+            // 检测成功就执行修改账户名
+            changeUsername(username, accountVO, websiteId, uid, account, chkName, retryMap);
+        } else {
+            // 检测失败，尝试使用新用户名重试
+            String randomSuffix = RandomUtil.randomNumbers(3);
+            String newChkName = account + randomSuffix;
+            log.warn("首次检测用户名失败，尝试使用新用户名：{}", newChkName);
+
+            params.putOpt("chkName", newChkName);
+            result = apiHandler.execute(params);
+
+            if (result != null && result.getBool("success")) {
+                changeUsername(username, accountVO, websiteId, uid, account, newChkName, retryMap);
+            } else {
+                log.warn("检测用户名失败，放弃修改。account={}, 尝试用户名={}", account, newChkName);
+            }
+        }
+    }
+
+    // 运行修改账户名工厂
+    public void changeUsername(String username, ConfigAccountVO accountVO, String websiteId, String uid, String account, String chkName, Map<String, Integer> retryMap) {
+        TimeInterval timer = DateUtil.timer();
+        WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+        ApiHandler apiHandler = factory.changeUsername();
+        if (apiHandler == null) {
+            return;
+        }
+        JSONObject params = new JSONObject();
+        params.putOpt("adminUsername", username);
+        params.putOpt("websiteId", websiteId);
+        // 根据不同站点传入不同的参数
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            log.warn("暂不支持平博网站自动修改密码：{}", websiteId);
+            return;
+        } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+            log.warn("暂不支持智博网站自动修改密码：{}", websiteId);
+            return;
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+            params.putOpt("uid", uid);
+            params.putOpt("username", account);
+            params.putOpt("chkName", chkName);
+        }
+        JSONObject result = apiHandler.execute(params);
+        if (result != null && result.getBool("success")) {
+            accountVO.setAccount(chkName);
+            accountVO.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
+            accountService.saveAccount(username, websiteId, accountVO);
             // 修改成功就执行登录
             processAccountLogin(accountVO, username, websiteId, retryMap);
         }
@@ -859,7 +955,7 @@ public class HandicapApi {
                 params.putOpt("oddsFormatType", oddsFormatType);
                 if (betPreview != null) {
                     JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
-                    if (betPreviewJson.getBool("success")) {
+                    // if (betPreviewJson.getBool("success")) {
                         JSONArray data = betPreviewJson.getJSONArray("data");
                         if (data == null || data.isEmpty()) {
                             return null;
@@ -885,7 +981,7 @@ public class HandicapApi {
                             selections.add(selection);
                         }
                         params.putOpt("selections", selections);
-                    }
+                    // }
                 }
             } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                 params.putOpt("token", "Bearer " + account.getToken().getStr("token"));

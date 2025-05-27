@@ -123,25 +123,26 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
 
         // 4. 过滤掉无效项（ODDS_CHANGE / UNAVAILABLE）
         JSONArray filteredArray = new JSONArray();
+        boolean success = true;
         for (Object obj : responseArray) {
             JSONObject resObj = JSONUtil.parseObj(obj);
             String itemStatus = resObj.getStr("status");
 
             if ("ODDS_CHANGE".equals(itemStatus)) {
                 log.info("[平博][投注预览][赔率已变更][{}]", resObj);
-                continue;
+                success = false;
             }
             if ("UNAVAILABLE".equals(itemStatus)) {
                 log.info("[平博][投注预览][注单暂时无效][{}]", resObj);
-                continue;
+                success = false;
             }
             if ("PROCESSED_WITH_ERROR".equals(itemStatus)) {
                 if ("BELOW_MIN_BET_AMOUNT".equals(resObj.getStr("errorCode"))) {
                     log.info("[平博][投注预览][低于最低限额][{}]", resObj);
-                    continue;
+                    success = false;
                 }
                 log.info("[平博][投注预览][注单内容处理错误][{}]", resObj);
-                continue;
+                success = false;
             }
 
             filteredArray.add(resObj);
@@ -149,7 +150,7 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
 
         // 5. 构造最终结果
         result.putOpt("code", 200);
-        result.putOpt("success", true);
+        result.putOpt("success", success);
         result.putOpt("data", filteredArray);
         result.putOpt("msg", "投注预览成功");
 

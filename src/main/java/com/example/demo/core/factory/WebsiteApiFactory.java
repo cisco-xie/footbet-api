@@ -5,6 +5,8 @@ package com.example.demo.core.factory;
  */
 public interface WebsiteApiFactory {
     boolean supports(String siteId);        // 判断是否支持该 siteId
+    ApiHandler checkUsername();             // 检测账户名是否通过
+    ApiHandler changeUsername();            // 修改账户名
     ApiHandler changePwd();                 // 修改密码
     ApiHandler getLoginHandler();           // 登录
     ApiHandler getInfoHandler();            // 账号详情
