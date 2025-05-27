@@ -989,7 +989,7 @@ public class HandicapApi {
                 Object betPreview = betPreview(username, websiteId, odds);
                 if (betPreview != null) {
                     JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
-                    if (betPreviewJson.getBool("success")) {
+                    //if (betPreviewJson.getBool("success")) {
                         JSONObject data = betPreviewJson.getJSONObject("data");
                         JSONObject betTicket = data.getJSONObject("betTicket");
                         JSONObject betInfo = new JSONObject();
@@ -1008,7 +1008,7 @@ public class HandicapApi {
                         betInfo.putOpt("handicap", data.getStr("handicap"));
                         betInfo.putOpt("amount", odds.getStr("stake"));
                         params.putOpt("betInfo", betInfo);
-                    }
+                    //}
                 }
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
