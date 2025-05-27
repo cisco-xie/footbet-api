@@ -47,6 +47,21 @@ public class BindDictController extends BaseController {
     @Resource
     private SweepwaterService sweepwaterService;
 
+    @Operation(summary = "获取默认联赛文件数据")
+    @GetMapping("/competitions")
+    public Result getDefaultCompetitions() {
+        getUser();
+        return Result.success(bindDictService.getDefaultCompetitions());
+    }
+
+    @Operation(summary = "获取默认球队文件数据")
+    @GetMapping("/teams")
+    public Result getDefaultTeams() {
+        getUser();
+        // 调用服务层方法获取网站列表
+        return Result.success(bindDictService.getDefaultTeams());
+    }
+
     @Operation(summary = "绑定字典")
     @PostMapping("/bind")
     public Result add(@RequestBody List<BindLeagueVO> bindLeagueVOS) {

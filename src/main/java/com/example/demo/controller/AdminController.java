@@ -22,6 +22,7 @@ import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.AdminLoginVO;
 import com.example.demo.model.vo.AdminUserBetVO;
+import com.example.demo.model.vo.AdminUserVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
@@ -63,6 +64,43 @@ public class AdminController extends BaseController {
     @Operation(summary = "获取期数")
     @GetMapping("/refresh")
     public Result refreshRedis() {
+        return Result.success();
+    }
+
+    @Operation(summary = "获取后台用户列表")
+    @GetMapping("/admin/user")
+    public Result adminUser(@RequestParam(value = "group", required = false) String group) {
+        return Result.success(adminService.getUsers(group));
+    }
+
+    @Operation(summary = "获取后台用户小组列表")
+    @GetMapping("/admin/group")
+    @ResponseBody
+    public Result group() {
+        return Result.success(adminService.getGroup());
+    }
+
+    @Operation(summary = "创建后台用户小组")
+    @PostMapping("/admin/group")
+    @ResponseBody
+    public Result group(@RequestParam String group) {
+        adminService.addGroup(group);
+        return Result.success();
+    }
+
+    @Operation(summary = "创建后台用户")
+    @PostMapping("/admin/user")
+    @ResponseBody
+    public Result adminUser(@RequestBody AdminUserVO admin) {
+        adminService.add(admin.getUsers());
+        return Result.success();
+    }
+
+    @Operation(summary = "删除后台用户")
+    @DeleteMapping("/admin/user/{username}")
+    @ResponseBody
+    public Result adminUserDel(@PathVariable("username") String username) {
+        adminService.delUser(username);
         return Result.success();
     }
 

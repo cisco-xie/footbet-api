@@ -1,6 +1,8 @@
 package com.example.demo.api;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.io.resource.ResourceUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import cn.hutool.jwt.JWTUtil;
 import com.example.demo.common.constants.RedisConstants;
@@ -125,6 +127,84 @@ public class AdminService {
                 })
                 .filter(user -> user.getStatus() == 1) // 筛选出开启状态的用户
                 .collect(Collectors.toList());
+    }
+
+    public List<String> getGroup() {
+        // 匹配所有平台用户的 Redis Key
+        String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_ADMIN_GROUP_PREFIX, "*");
+        // 使用 Redisson 执行扫描所有平台用户操作
+        RKeys keys = businessPlatformRedissonClient.getKeys();
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
+        List<String> groupList = new ArrayList<>();
+        // 遍历所有匹配的键
+        while (iterableKeys.hasNext()) {
+            String[] parts = iterableKeys.next().split(":");
+            // 检查数组长度，确保索引存在
+            if (parts.length > 2) {
+                groupList.add(parts[2]);
+            }
+        }
+        return groupList;
+    }
+
+    public void addGroup(String group) {
+        businessPlatformRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.PLATFORM_ADMIN_GROUP_PREFIX, group)).set(1);
+    }
+
+
+    public void add(List<AdminLoginVO> admins) {
+        // 读取配置文件
+        String settingStr = ResourceUtil.readUtf8Str("setting/default-user-setting.json");
+        JSONObject settings = JSONUtil.parseObj(settingStr);
+        JSONObject limit = settings.getJSONObject("limit");
+        JSONObject interval = settings.getJSONObject("interval");
+        JSONObject optimizing = settings.getJSONObject("optimizing");
+        JSONObject typeFilter = settings.getJSONObject("typefilter");
+        JSONObject amount = settings.getJSONObject("amount");
+        JSONObject oddsScan = settings.getJSONObject("oddsscan");
+        JSONObject profit = settings.getJSONObject("profit");
+        for (AdminLoginVO admin : admins) {
+            if (null == admin.getUsername()) {
+                continue;
+            }
+            List<String> roles = new ArrayList<>();
+            if (null == admin.getRoles() || admin.getRoles().isEmpty()) {
+                // 默认普通用户角色
+                roles = List.of("common");
+            } else {
+                roles = List.of(admin.getRoles());
+            }
+            String key = KeyUtil.genKey(RedisConstants.PLATFORM_USER_PREFIX, admin.getUsername());
+            AdminLoginDTO adminLoginDTO = new AdminLoginDTO();
+            adminLoginDTO.setUsername(admin.getUsername());
+            adminLoginDTO.setNickname(admin.getUsername());
+            adminLoginDTO.setPassword(admin.getPassword());
+            adminLoginDTO.setPlatform(3);
+            adminLoginDTO.setGroup(admin.getGroup());
+            adminLoginDTO.setExpires("2030/10/30 00:00:00");
+            adminLoginDTO.setRoles(roles);
+            adminLoginDTO.setPermissions(List.of("*:*:*"));
+            businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(adminLoginDTO));
+            // 配置默认软件设置信息
+            String oddsScanKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_ODDSSCAN_PREFIX, admin.getUsername());
+            businessPlatformRedissonClient.getBucket(oddsScanKey).set(oddsScan);
+            String profitKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_PROFIT_PREFIX, admin.getUsername());
+            businessPlatformRedissonClient.getBucket(profitKey).set(profit);
+            String amountKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_AMOUNT_PREFIX, admin.getUsername());
+            businessPlatformRedissonClient.getBucket(amountKey).set(amount);
+            String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_BET_LIMIT_PREFIX, admin.getUsername());
+            businessPlatformRedissonClient.getBucket(limitKey).set(limit);
+            String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_BET_INTERVAL_PREFIX, admin.getUsername());
+            businessPlatformRedissonClient.getBucket(intervalKey).set(interval);
+            String typeFilterKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_BET_TYPEFILTER_PREFIX, admin.getUsername());
+            businessPlatformRedissonClient.getBucket(typeFilterKey).set(typeFilter);
+            String optimizingKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_BET_OPTIMIZING_PREFIX, admin.getUsername());
+            businessPlatformRedissonClient.getBucket(optimizingKey).set(optimizing);
+        }
+    }
+
+    public void delUser(String username) {
+        businessPlatformRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.PLATFORM_USER_PREFIX, username)).delete();
     }
 
 }

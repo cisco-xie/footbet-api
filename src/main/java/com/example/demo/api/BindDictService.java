@@ -1,7 +1,10 @@
 package com.example.demo.api;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.io.resource.ResourceUtil;
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.SystemError;
@@ -29,6 +32,33 @@ public class BindDictService {
 
     @Resource(name = "businessPlatformRedissonClient")
     private RedissonClient businessPlatformRedissonClient;
+
+    private JSONArray defaultCompetitions;
+    private JSONArray defaultTeams;
+
+    /**
+     * 获取默认联赛文件数据
+     * @return
+     */
+    public JSONArray getDefaultCompetitions() {
+        if (defaultCompetitions == null) {
+            String competitionsStr = ResourceUtil.readUtf8Str("data/competitions.json");
+            defaultCompetitions = JSONUtil.parseObj(competitionsStr).getJSONArray("results");
+        }
+        return defaultCompetitions;
+    }
+
+    /**
+     * 获取默认球队文件数据
+     * @return
+     */
+    public JSONArray getDefaultTeams() {
+        if (defaultTeams == null) {
+            String teamsStr = ResourceUtil.readUtf8Str("data/teams.json");
+            defaultTeams = JSONUtil.parseObj(teamsStr).getJSONArray("results");
+        }
+        return defaultTeams;
+    }
 
     /**
      * 获取所有已绑定的球队字典

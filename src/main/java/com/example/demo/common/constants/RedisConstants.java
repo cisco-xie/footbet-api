@@ -7,6 +7,11 @@ public class RedisConstants {
     public static final String PLATFORM_USER_PREFIX = "platform:user";
 
     /**
+     * 平台账号小组前缀
+     */
+    public static final String PLATFORM_ADMIN_GROUP_PREFIX = "platform:group";
+
+    /**
      * 网站列表前缀
      */
     public static final String PLATFORM_WEBSITE_ALL_PREFIX = "platform:website:all";

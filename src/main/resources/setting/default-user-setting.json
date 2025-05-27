@@ -1,0 +1,31 @@
+{
+  "interval": {
+    "betSuccessSec": 60
+  },
+  "limit": {
+    "betLimitGame": 4,
+    "betLimitScore": 3
+  },
+  "optimizing": {
+    "contrastNum": 1
+  },
+  "typefilter": {
+    "flatPlate": 1
+  },
+  "amount": {
+    "type": 1,
+    "amount": 200
+  },
+  "oddsscan": {
+    "waterLevelFrom": 1.85,
+    "waterLevelTo": 2.1,
+    "contrastNum": 2,
+    "failedNum": 4
+  },
+  "profit": {
+    "singleLetBall": 0.09,
+    "rollingLetBall": 1.86,
+    "singleSize": 0.11,
+    "rollingSize": 1.88
+  }
+}
