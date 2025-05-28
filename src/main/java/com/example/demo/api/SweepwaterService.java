@@ -10,7 +10,9 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
+import com.example.demo.common.enmu.PingBoOddsFormatType;
 import com.example.demo.common.enmu.WebsiteType;
+import com.example.demo.common.enmu.XinBaoOddsFormatType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.model.dto.bet.SweepwaterBetDTO;
@@ -29,6 +31,7 @@ import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -599,7 +602,7 @@ public class SweepwaterService {
                         if (valueAJson.containsKey("odds") && StringUtils.isNotBlank(valueAJson.getStr("odds"))) {
 
                             // 校验投注间隔
-                            String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, valueAJson.getStr("id"));
+                            /*String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, valueAJson.getStr("id"));
                             Object lastBetTimeObj = businessPlatformRedissonClient.getBucket(intervalKey).get();
                             if (lastBetTimeObj != null) {
                                 long lastBetTime = Long.parseLong(lastBetTimeObj.toString());
@@ -617,7 +620,7 @@ public class SweepwaterService {
                             if (!tryReserveBetLimit(limitKey, scoreA, limit)) {
                                 log.info("用户 {} 当前比分 {} 投注次数超限，eventId={}", username, scoreA, valueAJson.getStr("id"));
                                 continue;
-                            }
+                            }*/
 
                             double valueA = valueAJson.getDouble("odds");
                             if (optionalOddsA.isPresent()) {
@@ -634,7 +637,7 @@ public class SweepwaterService {
                                 if (valueBJson.containsKey("odds") && StringUtils.isNotBlank(valueBJson.getStr("odds"))) {
 
                                     // 校验投注间隔
-                                    String intervalKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, valueBJson.getStr("id"));
+                                    /*String intervalKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, valueBJson.getStr("id"));
                                     Object lastBetTimeObjB = businessPlatformRedissonClient.getBucket(intervalKeyB).get();
                                     if (lastBetTimeObjB != null) {
                                         long lastBetTime = Long.parseLong(lastBetTimeObjB.toString());
@@ -652,7 +655,7 @@ public class SweepwaterService {
                                     if (!tryReserveBetLimit(limitKeyB, scoreB, limit)) {
                                         log.info("用户 {} 当前比分 {} 投注次数超限，eventId={}", username, scoreA, valueBJson.getStr("id"));
                                         continue;
-                                    }
+                                    }*/
 
                                     double valueB = valueBJson.getDouble("odds");
                                     if (optionalOddsB.isPresent()) {
@@ -739,6 +742,15 @@ public class SweepwaterService {
                                         SweepwaterDTO sweepwaterDTO = createSweepwaterDTO(valueAJson.getStr("id"), valueBJson.getStr("id"), valueAJson.getStr("selectionId"), valueBJson.getStr("selectionId"), courtType, "draw", eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, nameA, nameB, null, valueA, valueB, value, lastTimeA, lastTimeB, decimalOddsA, decimalOddsB, scoreA, scoreB,
                                                 valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio")
                                         );
+                                        /*JSONObject betInfoA = new JSONObject();
+                                        JSONObject betInfoB = new JSONObject();
+                                        // 构建投注参数并调用投注接口
+                                        JSONObject paramsA = buildBetParams(sweepwaterDTO, true);
+                                        JSONObject paramsB = buildBetParams(sweepwaterDTO, false);
+                                        // 投注预览获取投注信息
+                                        Object betResultA = handicapApi.betPreview(username, websiteIdA, paramsA);
+                                        Object betResultB = handicapApi.betPreview(username, websiteIdB, paramsB);*/
+
                                         results.add(sweepwaterDTO);
                                         // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                         tryBet(username, sweepwaterDTO);
@@ -878,6 +890,144 @@ public class SweepwaterService {
             }
         }
     }
+/*
+
+    public JSONObject buildBetInfo(String username, String websiteId, JSONObject params) {
+        JSONObject betInfo = new JSONObject();
+        WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
+        Integer oddsType = websiteVO.getOddsType();
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            Object betPreview = handicapApi.betPreview(username, websiteId, params);
+            // 转换赔率类型
+            int oddsFormatType = 0;
+            if (oddsType == 1) {
+                // 平台设置的马来盘
+                oddsFormatType = PingBoOddsFormatType.RM.getId();
+            } else if (oddsType == 2) {
+                // 平台设置的香港盘
+                oddsFormatType = PingBoOddsFormatType.HKC.getId();
+            } else {
+                // 默认马来盘
+                oddsFormatType = PingBoOddsFormatType.RM.getId();
+            }
+            params.putOpt("oddsFormatType", oddsFormatType);
+            if (betPreview != null) {
+                JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+                JSONArray data = betPreviewJson.getJSONArray("data");
+                if (data == null || data.isEmpty()) {
+                    return null;
+                }
+                JSONArray selections = new JSONArray();
+                for (Object obj : data) {
+                    JSONObject objJson = JSONUtil.parseObj(obj);
+                    // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
+                    betInfo.putOpt("league", objJson.getStr("league"));
+                    betInfo.putOpt("team", objJson.getStr("homeTeam") + " -vs- " + objJson.getStr("awayTeam"));
+                    betInfo.putOpt("marketTypeName", "");
+                    betInfo.putOpt("marketName", objJson.getStr("selection"));
+                    betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap") + " @ " + objJson.getStr("odds"));
+                    betInfo.putOpt("handicap", objJson.getStr("handicap"));
+                    betInfo.putOpt("amount", odds.getStr("stake"));
+                }
+            }
+        } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+            params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+            params.putOpt("stake", odds.getStr("stake"));
+            Object betPreview = betPreview(username, websiteId, odds);
+            if (betPreview != null) {
+                JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+                JSONObject data = betPreviewJson.getJSONObject("data");
+                JSONObject betTicket = data.getJSONObject("betTicket");
+                // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
+                betInfo.putOpt("league", data.getStr("leagueName"));
+                betInfo.putOpt("team", data.getStr("eventName"));
+                betInfo.putOpt("marketTypeName", data.getStr("marketTypeName"));
+                betInfo.putOpt("marketName", data.getStr("name"));
+                betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap") + " @ "  + betTicket.getStr("odds"));
+                betInfo.putOpt("handicap", data.getStr("handicap"));
+                betInfo.putOpt("amount", odds.getStr("stake"));
+                params.putOpt("betInfo", betInfo);
+            }
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+            params.putAll(account.getToken().getJSONObject("serverresponse"));
+            Object betPreview = betPreview(username, websiteId, odds);
+            if (betPreview != null) {
+                JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+                JSONObject serverresponse = betPreviewJson.getJSONObject("serverresponse");
+                // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
+                String fastCheck = serverresponse.getStr("fast_check");
+                String marketName = "";
+                String marketTypeName = "";
+                if (fastCheck.contains("REH")) {
+                    marketName = serverresponse.getStr("team_name_h");
+                    marketTypeName = "让球盘";
+                } else if (fastCheck.contains("REC")) {
+                    marketName = serverresponse.getStr("team_name_c");
+                    marketTypeName = "让球盘";
+                } else if (fastCheck.contains("ROUC")) {
+                    marketName = "大盘";
+                    marketTypeName = "大小盘";
+                } else if (fastCheck.contains("ROUH")) {
+                    marketName = "小盘";
+                    marketTypeName = "大小盘";
+                }
+                betInfo.putOpt("league", serverresponse.getStr("league_name"));
+                betInfo.putOpt("team", serverresponse.getStr("team_name_h") + " -vs- " + serverresponse.getStr("team_name_c"));
+                betInfo.putOpt("marketTypeName", marketTypeName);
+                betInfo.putOpt("marketName", marketName);
+                betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread") + " @ " + serverresponse.getStr("ioratio"));
+                betInfo.putOpt("handicap", serverresponse.getStr("spread"));
+                betInfo.putOpt("amount", odds.getStr("golds"));
+                // 转换赔率类型
+                String oddsFormatType;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
+            }
+        }
+    }
+    */
+/**
+     * 构建投注参数
+     *//*
+
+    private JSONObject buildBetParams(SweepwaterDTO sweepwaterDTO, boolean isA) {
+        JSONObject params = new JSONObject();
+        String websiteId = isA ? sweepwaterDTO.getWebsiteIdA() : sweepwaterDTO.getWebsiteIdB();
+
+        if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+            params.putOpt("marketSelectionId", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
+            params.putOpt("odds", isA ? sweepwaterDTO.getOddsA() : sweepwaterDTO.getOddsB());
+            params.putOpt("decimalOdds", isA ? sweepwaterDTO.getDecimalOddsA() : sweepwaterDTO.getDecimalOddsB());
+            params.putOpt("handicap", isA ? sweepwaterDTO.getHandicapA() : sweepwaterDTO.getHandicapB());
+            params.putOpt("score", isA ? sweepwaterDTO.getScoreA() : sweepwaterDTO.getScoreB());
+        } else if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            params.putOpt("odds", isA ? sweepwaterDTO.getOddsA() : sweepwaterDTO.getOddsB());
+            params.putOpt("oddsId", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
+            params.putOpt("selectionId", isA ? sweepwaterDTO.getSelectionIdA() : sweepwaterDTO.getSelectionIdB());
+        } else {
+            params.putOpt("gid", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
+            params.putOpt("oddFType", isA ? sweepwaterDTO.getStrongA() : sweepwaterDTO.getStrongB());
+            params.putOpt("gtype", isA ? sweepwaterDTO.getGTypeA() : sweepwaterDTO.getGTypeB());
+            params.putOpt("wtype", isA ? sweepwaterDTO.getWTypeA() : sweepwaterDTO.getWTypeB());
+            params.putOpt("rtype", isA ? sweepwaterDTO.getRTypeA() : sweepwaterDTO.getRTypeB());
+            params.putOpt("choseTeam", isA ? sweepwaterDTO.getChoseTeamA() : sweepwaterDTO.getChoseTeamB());
+            params.putOpt("ioratio", isA ? sweepwaterDTO.getOddsA() : sweepwaterDTO.getOddsB());
+            params.putOpt("con", isA ? sweepwaterDTO.getConA() : sweepwaterDTO.getConB());
+            params.putOpt("ratio", isA ? sweepwaterDTO.getRatioA() : sweepwaterDTO.getRatioB());
+            params.putOpt("autoOdd", "Y");
+        }
+        return params;
+    }
+*/
 
     // 创建 SweepwaterDTO 对象的简化方法
     private static SweepwaterDTO createSweepwaterDTO(String oddsIdA, String oddsIdB, String selectionIdA, String selectionIdB, String courtType, String handicapType, JSONObject eventAJson, JSONObject eventBJson,

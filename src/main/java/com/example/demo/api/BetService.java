@@ -250,8 +250,8 @@ public class BetService {
 
             dto.setBetSuccessA(successA.getBool("success"));
             dto.setBetSuccessB(successB.getBool("success"));
-            dto.setBetInfoA(successA.getJSONObject("betInfo"));
-            dto.setBetInfoB(successB.getJSONObject("betInfo"));
+//            dto.setBetInfoA(successA.getJSONObject("betInfo"));
+//            dto.setBetInfoB(successB.getJSONObject("betInfo"));
             
             // 有一个执行了投注则缓存
             if (successA.getBool("isBet") || successB.getBool("isBet")) {
@@ -265,14 +265,14 @@ public class BetService {
                 businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(dto));
 
                 // 保存投注信息作为实时记录
-                /*String realTimeKey = KeyUtil.genKey(
+                String realTimeKey = KeyUtil.genKey(
                         RedisConstants.PLATFORM_BET_PREFIX,
                         username,
                         "realtime",
                         LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
                         dto.getId()
                 );
-                businessPlatformRedissonClient.getBucket(realTimeKey).set(JSONUtil.toJsonStr(dto));*/
+                businessPlatformRedissonClient.getBucket(realTimeKey).set(JSONUtil.toJsonStr(dto));
             }
         }
 
@@ -337,12 +337,31 @@ public class BetService {
                            BetAmountDTO amountDTO) {
         JSONObject result = new JSONObject();
         String score = isA ? dto.getScoreA() : dto.getScoreB();
+        // 构建投注参数并调用投注接口
+        JSONObject params = buildBetParams(dto, amountDTO.getAmount(), isA);
+
+        // 投注
+        JSONObject betPreview = buildBetInfo(username, websiteId, params);
+        if (betPreview == null) {
+            log.info("用户 {} 投注预览失败，eventId={}", username, eventId);
+            result.putOpt("isBet", false);
+            result.putOpt("success", false);
+            return result;
+        } else {
+            log.info("用户 {} 投注预览成功，eventId={}", username, eventId);
+            if (isA) {
+                dto.setBetInfoA(betPreview.getJSONObject("betInfo"));
+            } else {
+                dto.setBetInfoB(betPreview.getJSONObject("betInfo"));
+            }
+        }
+
         // 校验投注间隔key
         String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, eventId);
         // 投注次数限制key
         String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventId);
         // 这里是校验间隔时间和投注次数，暂时注释掉，移动到扫水的时候校验限制
-        /*Object lastBetTimeObj = businessPlatformRedissonClient.getBucket(intervalKey).get();
+        Object lastBetTimeObj = businessPlatformRedissonClient.getBucket(intervalKey).get();
         if (lastBetTimeObj != null) {
             long lastBetTime = Long.parseLong(lastBetTimeObj.toString());
             if (System.currentTimeMillis() - lastBetTime < intervalDTO.getBetSuccessSec() * 1000L) {
@@ -361,12 +380,10 @@ public class BetService {
             result.putOpt("isBet", false);
             result.putOpt("success", false);
             return result;
-        }*/
+        }
 
-        // 构建投注参数并调用投注接口
-        JSONObject params = buildBetParams(dto, amountDTO.getAmount(), isA);
         // 投注
-        Object betResult = handicapApi.bet(username, websiteId, params);
+        Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betPreview"));
 
         if (betResult != null && parseBetSuccess(betResult, dto, isA)) {
             // 设置投注时间记录
@@ -396,6 +413,82 @@ public class BetService {
             return result;
         }
 
+    }
+
+    /**
+     * 进行投注预览
+     * @param username
+     * @param websiteId
+     * @param params
+     * @return
+     */
+    public JSONObject buildBetInfo(String username, String websiteId, JSONObject params) {
+        JSONObject betPreviewResult = new JSONObject();
+        JSONObject betInfo = new JSONObject();
+        Object betPreview = handicapApi.betPreview(username, websiteId, params);
+        if (betPreview == null) {
+            return null;
+        }
+        betPreviewResult.putOpt("betPreview", JSONUtil.parseObj(betPreview));
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+            JSONArray data = betPreviewJson.getJSONArray("data");
+            if (data == null || data.isEmpty()) {
+                return null;
+            }
+            for (Object obj : data) {
+                JSONObject objJson = JSONUtil.parseObj(obj);
+                // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
+                betInfo.putOpt("league", objJson.getStr("league"));
+                betInfo.putOpt("team", objJson.getStr("homeTeam") + " -vs- " + objJson.getStr("awayTeam"));
+                betInfo.putOpt("marketTypeName", "");
+                betInfo.putOpt("marketName", objJson.getStr("selection"));
+                betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap") + " @ " + objJson.getStr("odds"));
+                betInfo.putOpt("handicap", objJson.getStr("handicap"));
+                betInfo.putOpt("amount", params.getStr("stake"));
+            }
+        } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+            JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+            JSONObject data = betPreviewJson.getJSONObject("data");
+            JSONObject betTicket = data.getJSONObject("betTicket");
+            // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
+            betInfo.putOpt("league", data.getStr("leagueName"));
+            betInfo.putOpt("team", data.getStr("eventName"));
+            betInfo.putOpt("marketTypeName", data.getStr("marketTypeName"));
+            betInfo.putOpt("marketName", data.getStr("name"));
+            betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap") + " @ "  + betTicket.getStr("odds"));
+            betInfo.putOpt("handicap", data.getStr("handicap"));
+            betInfo.putOpt("amount", params.getStr("stake"));
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+            JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+            JSONObject serverresponse = betPreviewJson.getJSONObject("serverresponse");
+            // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
+            String fastCheck = serverresponse.getStr("fast_check");
+            String marketName = "";
+            String marketTypeName = "";
+            if (fastCheck.contains("REH")) {
+                marketName = serverresponse.getStr("team_name_h");
+                marketTypeName = "让球盘";
+            } else if (fastCheck.contains("REC")) {
+                marketName = serverresponse.getStr("team_name_c");
+                marketTypeName = "让球盘";
+            } else if (fastCheck.contains("ROUC")) {
+                marketName = "大盘";
+                marketTypeName = "大小盘";
+            } else if (fastCheck.contains("ROUH")) {
+                marketName = "小盘";
+                marketTypeName = "大小盘";
+            }
+            betInfo.putOpt("league", serverresponse.getStr("league_name"));
+            betInfo.putOpt("team", serverresponse.getStr("team_name_h") + " -vs- " + serverresponse.getStr("team_name_c"));
+            betInfo.putOpt("marketTypeName", marketTypeName);
+            betInfo.putOpt("marketName", marketName);
+            betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread") + " @ " + serverresponse.getStr("ioratio"));
+            betInfo.putOpt("handicap", serverresponse.getStr("spread"));
+            betInfo.putOpt("amount", params.getStr("golds"));
+        }
+        betPreviewResult.putOpt("betInfo", betInfo);
+        return betPreviewResult;
     }
 
     /**
@@ -557,15 +650,15 @@ public class BetService {
     }
 
     /**
-     * 获取盘口未结投注单进行保存
+     * 获取盘口历史未结投注单进行保存
      * @param username
      */
-    public void unsettledBet(String username) {
+    public void unsettledBet(String username, boolean isRealTime) {
         // 计时开始
         TimeInterval timerTotal = DateUtil.timer();
 
         // 1. 获取当天所有投注记录
-        List<SweepwaterBetDTO> bets = getBets(username, null, null);
+        List<SweepwaterBetDTO> bets = isRealTime ? getRealTimeBets(username, null) : getBets(username, null, null);
         if (CollUtil.isEmpty(bets)) {
             log.info("没有投注记录，直接返回");
             return;
@@ -664,22 +757,24 @@ public class BetService {
                 }
             }
             if (updated) {
-                String key = KeyUtil.genKey(
-                        RedisConstants.PLATFORM_BET_PREFIX,
-                        username,
-                        LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
-                        bet.getId()
-                );
+                String key = null;
+                if (isRealTime) {
+                    key = KeyUtil.genKey(
+                            RedisConstants.PLATFORM_BET_PREFIX,
+                            username,
+                            LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
+                            bet.getId()
+                    );
+                } else {
+                    key = KeyUtil.genKey(
+                            RedisConstants.PLATFORM_BET_PREFIX,
+                            username,
+                            "realtime",
+                            LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
+                            bet.getId()
+                    );
+                }
                 batch.getBucket(key).setAsync(JSONUtil.toJsonStr(bet));
-
-                String realKey = KeyUtil.genKey(
-                        RedisConstants.PLATFORM_BET_PREFIX,
-                        username,
-                        "realtime",
-                        LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
-                        bet.getId()
-                );
-                batch.getBucket(realKey).setAsync(JSONUtil.toJsonStr(bet));
             }
         }
         // 一次性执行所有 Redis 写入

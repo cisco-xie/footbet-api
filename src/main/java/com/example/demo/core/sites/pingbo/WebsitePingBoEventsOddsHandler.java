@@ -7,7 +7,9 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.config.HttpProxyConfig;
 import com.example.demo.core.factory.ApiHandler;
+import com.example.demo.model.vo.ConfigAccountVO;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
@@ -522,7 +524,7 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
      * @return 结果
      */
     @Override
-    public JSONObject execute(JSONObject params) {
+    public JSONObject execute(ConfigAccountVO userConfig, JSONObject params) {
         // 获取 完整API 路径
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
@@ -548,7 +550,7 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
             sp = "";
         }
         // 构建请求
-        HttpEntity<String> request = buildRequest(params);
+        HttpEntity<String> requestBody = buildRequest(params);
 
         // 构造请求体
         String queryParams = String.format("btg=1&c=%s&cl=3&d=&ec=&ev=&g=QQ==&hle=%s&ic=false&inl=false&l=3&lang=&lg=&lv=&me=%s&mk=%s&more=%s&o=%s&ot=%s&pa=0&pimo=0,1,8,39,2,3,6,7,4,5&pn=-1&pv=1&sp=%s&tm=0&v=0&locale=zh_CN&_=%s&withCredentials=true",
@@ -567,10 +569,13 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
         String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, queryParams);
 
         // 发送请求
-        HttpResponse response = HttpRequest.get(fullUrl)
-                .addHeaders(request.getHeaders().toSingleValueMap())
-                .body(request.getBody())
-                .execute();
+        HttpResponse response = null;
+        HttpRequest request = HttpRequest.get(fullUrl)
+                .addHeaders(requestBody.getHeaders().toSingleValueMap())
+                .body(requestBody.getBody());
+        // 引入配置代理
+        HttpProxyConfig.configureProxy(request, userConfig);
+        response = request.execute();
 
         // 解析响应并返回
         return parseResponse(params, response);

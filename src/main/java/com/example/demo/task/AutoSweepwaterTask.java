@@ -63,8 +63,10 @@ public class AutoSweepwaterTask {
                     sweepwaterService.sweepwater(adminUser.getUsername());
                     // 执行下注
                     // betService.bet(adminUser.getUsername());
-                    // 获取盘口未结注单并加以保存
-                    betService.unsettledBet(adminUser.getUsername());
+                    // 获取盘口实时未结注单并加以保存
+                    betService.unsettledBet(adminUser.getUsername(), true);
+                    // 获取盘口历史未结注单并加以保存
+                    betService.unsettledBet(adminUser.getUsername(), false);
                 }, executorAdminUserService);
                 adminFutures.add(future);
             }

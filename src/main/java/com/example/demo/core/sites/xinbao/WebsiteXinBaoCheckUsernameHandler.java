@@ -7,7 +7,9 @@ import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.constants.Constants;
+import com.example.demo.config.HttpProxyConfig;
 import com.example.demo.core.factory.ApiHandler;
+import com.example.demo.model.vo.ConfigAccountVO;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -114,14 +116,14 @@ public class WebsiteXinBaoCheckUsernameHandler implements ApiHandler {
      * @return 结果
      */
     @Override
-    public JSONObject execute(JSONObject params) {
+    public JSONObject execute(ConfigAccountVO userConfig, JSONObject params) {
         // 获取 完整API 路径
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
         String apiUrl = apiUrlService.getApiUrl(siteId, "checkUsername");
         // 构建请求
-        HttpEntity<String> request = buildRequest(params);
+        HttpEntity<String> requestBody = buildRequest(params);
 
         // 构造请求体
         String queryParams = String.format("ver=%s",
@@ -136,10 +138,13 @@ public class WebsiteXinBaoCheckUsernameHandler implements ApiHandler {
         // log.info("即将发送请求:\n{}", curlCommand);
 
         // 发送请求
-        HttpResponse response = HttpRequest.post(fullUrl)
-                .addHeaders(request.getHeaders().toSingleValueMap())
-                .body(request.getBody())
-                .execute();
+        HttpResponse response = null;
+        HttpRequest request = HttpRequest.post(fullUrl)
+                .addHeaders(requestBody.getHeaders().toSingleValueMap())
+                .body(requestBody.getBody());
+        // 引入配置代理
+        HttpProxyConfig.configureProxy(request, userConfig);
+        response = request.execute();
 
         // 解析响应并返回
         return parseResponse(params, response);

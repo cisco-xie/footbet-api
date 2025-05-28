@@ -5,7 +5,9 @@ import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONObject;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.config.HttpProxyConfig;
 import com.example.demo.core.factory.ApiHandler;
+import com.example.demo.model.vo.ConfigAccountVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -74,7 +76,7 @@ public class WebsiteZhiBoLoginHandler implements ApiHandler {
      * @return 登录结果
      */
     @Override
-    public JSONObject execute(JSONObject params) {
+    public JSONObject execute(ConfigAccountVO userConfig, JSONObject params) {
         // 获取 完整API 路径
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
@@ -82,16 +84,19 @@ public class WebsiteZhiBoLoginHandler implements ApiHandler {
         String apiUrl = apiUrlService.getApiUrl(siteId, "login");
 
         // 构建请求
-        HttpEntity<String> request = buildRequest(params);
+        HttpEntity<String> requestBody = buildRequest(params);
 
         // 拼接完整的 URL
         String fullUrl = String.format("%s%s", baseUrl, apiUrl);
 
         // 发送请求
-        HttpResponse response = HttpRequest.post(fullUrl)
-                .addHeaders(request.getHeaders().toSingleValueMap())
-                .body(request.getBody())
-                .execute();
+        HttpResponse response = null;
+        HttpRequest request = HttpRequest.post(fullUrl)
+                .addHeaders(requestBody.getHeaders().toSingleValueMap())
+                .body(requestBody.getBody());
+        // 引入配置代理
+        HttpProxyConfig.configureProxy(request, userConfig);
+        response = request.execute();
 
         // 解析响应
         return parseResponse(params, response);

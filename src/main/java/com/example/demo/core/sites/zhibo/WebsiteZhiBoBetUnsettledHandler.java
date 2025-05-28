@@ -8,7 +8,9 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.config.HttpProxyConfig;
 import com.example.demo.core.factory.ApiHandler;
+import com.example.demo.model.vo.ConfigAccountVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -84,7 +86,7 @@ public class WebsiteZhiBoBetUnsettledHandler implements ApiHandler {
      * @return 结果
      */
     @Override
-    public JSONObject execute(JSONObject params) {
+    public JSONObject execute(ConfigAccountVO userConfig, JSONObject params) {
 
         // 获取 完整API 路径
         String username = params.getStr("adminUsername");
@@ -93,7 +95,7 @@ public class WebsiteZhiBoBetUnsettledHandler implements ApiHandler {
         String apiUrl = apiUrlService.getApiUrl(siteId, "unsettled");
         String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.SIMPLE_MONTH_PATTERN);
         // 构建请求
-        HttpEntity<String> request = buildRequest(params);
+        HttpEntity<String> requestBody = buildRequest(params);
 
         // 构造请求体
         String queryParams = String.format("_=%s",
@@ -104,9 +106,12 @@ public class WebsiteZhiBoBetUnsettledHandler implements ApiHandler {
         String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, date, queryParams);
 
         // 发送请求
-        HttpResponse response = HttpRequest.get(fullUrl)
-                .addHeaders(request.getHeaders().toSingleValueMap())
-                .execute();
+        HttpResponse response = null;
+        HttpRequest request = HttpRequest.get(fullUrl)
+                .addHeaders(requestBody.getHeaders().toSingleValueMap());
+        // 引入配置代理
+        HttpProxyConfig.configureProxy(request, userConfig);
+        response = request.execute();
 
         // 解析响应
         return parseResponse(params, response);

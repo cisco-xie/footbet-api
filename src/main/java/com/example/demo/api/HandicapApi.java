@@ -199,7 +199,7 @@ public class HandicapApi {
             params.putOpt("username", account.getAccount());
             params.putOpt("password", account.getPassword());
         }
-        JSONObject result = apiHandler.execute(params);
+        JSONObject result = apiHandler.execute(account, params);
         account.setIsTokenValid(result.getBool("success") ? 1 : 0);
         account.setToken(result);
         account.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
@@ -268,7 +268,7 @@ public class HandicapApi {
             params.putOpt("newPassword", password);
             params.putOpt("chgPassword", password);
         }
-        JSONObject result = apiHandler.execute(params);
+        JSONObject result = apiHandler.execute(accountVO, params);
         accountVO.setPassword(password);
         accountVO.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
         accountService.saveAccount(username, websiteId, accountVO);
@@ -304,7 +304,7 @@ public class HandicapApi {
             params.putOpt("chkName", chkName);
         }
 
-        JSONObject result = apiHandler.execute(params);
+        JSONObject result = apiHandler.execute(accountVO, params);
 
         if (result != null && result.getBool("success")) {
             // 检测成功就执行修改账户名
@@ -316,7 +316,7 @@ public class HandicapApi {
             log.warn("首次检测用户名失败，尝试使用新用户名：{}", newChkName);
 
             params.putOpt("chkName", newChkName);
-            result = apiHandler.execute(params);
+            result = apiHandler.execute(accountVO, params);
 
             if (result != null && result.getBool("success")) {
                 changeUsername(username, accountVO, websiteId, uid, account, newChkName, retryMap);
@@ -349,7 +349,7 @@ public class HandicapApi {
             params.putOpt("username", account);
             params.putOpt("chkName", chkName);
         }
-        JSONObject result = apiHandler.execute(params);
+        JSONObject result = apiHandler.execute(accountVO, params);
         if (result != null && result.getBool("success")) {
             accountVO.setAccount(chkName);
             accountVO.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
@@ -431,7 +431,7 @@ public class HandicapApi {
                     } else if (WebsiteType.XINBAO.getId().equals(website.getId())) {
                         params.putAll(account.getToken().getJSONObject("serverresponse"));
                     }
-                    JSONObject result = apiHandler.execute(params);
+                    JSONObject result = apiHandler.execute(account, params);
                     account.setBetCredit(result.getBigDecimal("betCredit"));
                     account.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
                     accountService.saveAccount(user.getUsername(), website.getId(), account);
@@ -469,7 +469,7 @@ public class HandicapApi {
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putAll(account.getToken().getJSONObject("serverresponse"));
         }
-        JSONObject result = apiHandler.execute(params);
+        JSONObject result = apiHandler.execute(account, params);
         account.setBetCredit(result.getBigDecimal("betCredit"));
         account.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
         accountService.saveAccount(username, websiteId, account);
@@ -534,7 +534,7 @@ public class HandicapApi {
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
             }
-            JSONObject result = apiHandler.execute(params);
+            JSONObject result = apiHandler.execute(account, params);
 
             if (result.getBool("success")) {
                 return result.get("leagues");
@@ -616,7 +616,7 @@ public class HandicapApi {
                 }
                 params.putOpt("oddsFormatType", oddsFormatType);
             }
-            JSONObject result = apiHandler.execute(params);
+            JSONObject result = apiHandler.execute(account, params);
 
             if (result.getBool("success")) {
                 return result.get("leagues");
@@ -656,7 +656,7 @@ public class HandicapApi {
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
             }
-            JSONObject result = apiHandler.execute(params);
+            JSONObject result = apiHandler.execute(account, params);
 
             if (result.getBool("success")) {
                 return result.get("leagues");
@@ -694,7 +694,7 @@ public class HandicapApi {
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putAll(account.getToken().getJSONObject("serverresponse"));
         }
-        JSONObject result = apiHandler.execute(params);
+        JSONObject result = apiHandler.execute(account, params);
 
         if (result.getBool("success")) {
             return result.get("data");
@@ -731,7 +731,7 @@ public class HandicapApi {
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putAll(account.getToken().getJSONObject("serverresponse"));
         }
-        JSONObject result = apiHandler.execute(params);
+        JSONObject result = apiHandler.execute(account, params);
 
         if (result.getBool("success")) {
             return result.get("data");
@@ -810,7 +810,7 @@ public class HandicapApi {
                 }
                 params.putOpt("oddsFormatType", oddsFormatType);
             }
-            JSONObject result = apiHandler.execute(params);
+            JSONObject result = apiHandler.execute(account, params);
 
             if (result.getBool("success")) {
                 return result;
@@ -900,7 +900,7 @@ public class HandicapApi {
                 }
                 params.putOpt("oddsFormatType", oddsFormatType);
             }
-            JSONObject result = apiHandler.execute(params);
+            JSONObject result = apiHandler.execute(account, params);
 
             if (result.getBool("success")) {
                 // 保存记录投注账号id
@@ -918,7 +918,7 @@ public class HandicapApi {
      * @param websiteId
      * @return
      */
-    public Object bet(String username, String websiteId, JSONObject odds) {
+    public Object bet(String username, String websiteId, JSONObject odds, JSONObject betPreviewJson) {
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
@@ -939,7 +939,7 @@ public class HandicapApi {
             // 根据不同站点传入不同的参数
             if (WebsiteType.PINGBO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("tokens"));
-                Object betPreview = betPreview(username, websiteId, odds);
+                // Object betPreview = betPreview(username, websiteId, odds);
                 // 转换赔率类型
                 int oddsFormatType = 0;
                 if (oddsType == 1) {
@@ -953,8 +953,8 @@ public class HandicapApi {
                     oddsFormatType = PingBoOddsFormatType.RM.getId();
                 }
                 params.putOpt("oddsFormatType", oddsFormatType);
-                if (betPreview != null) {
-                    JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+                // if (betPreview != null) {
+                    // JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
                     // if (betPreviewJson.getBool("success")) {
                         JSONArray data = betPreviewJson.getJSONArray("data");
                         if (data == null || data.isEmpty()) {
@@ -982,13 +982,13 @@ public class HandicapApi {
                         }
                         params.putOpt("selections", selections);
                     // }
-                }
+                // }
             } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                 params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
                 params.putOpt("stake", odds.getStr("stake"));
-                Object betPreview = betPreview(username, websiteId, odds);
-                if (betPreview != null) {
-                    JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+                // Object betPreview = betPreview(username, websiteId, odds);
+                // if (betPreview != null) {
+                    // JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
                     //if (betPreviewJson.getBool("success")) {
                         JSONObject data = betPreviewJson.getJSONObject("data");
                         JSONObject betTicket = data.getJSONObject("betTicket");
@@ -1009,13 +1009,13 @@ public class HandicapApi {
                         betInfo.putOpt("amount", odds.getStr("stake"));
                         params.putOpt("betInfo", betInfo);
                     //}
-                }
+                // }
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
-                Object betPreview = betPreview(username, websiteId, odds);
-                if (betPreview != null) {
+                // Object betPreview = betPreview(username, websiteId, odds);
+                // if (betPreview != null) {
                     JSONObject betInfo = new JSONObject();
-                    JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+                    // JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
                     JSONObject serverresponse = betPreviewJson.getJSONObject("serverresponse");
                     params.putOpt("gid", odds.getStr("gid"));
                     params.putOpt("golds", odds.getStr("golds"));
@@ -1068,10 +1068,11 @@ public class HandicapApi {
                     }
                     params.putOpt("oddsFormatType", oddsFormatType);
                 }
-            }
-            JSONObject result = apiHandler.execute(params);
+            // }
+            JSONObject result = apiHandler.execute(account, params);
             if (result == null) {
-                return null;
+                // 此账号投注失败进入下一个账号进行投注
+                continue;
             }
             /*if (result.getBool("success")) {
                 // 保存记录投注账号id
