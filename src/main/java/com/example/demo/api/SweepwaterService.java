@@ -241,11 +241,23 @@ public class SweepwaterService {
                                         bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(),
                                         event.getNameA(), event.getNameB(), ex);
                             }
-                        }, eventExecutor));
+                        }, eventExecutor).orTimeout(30, TimeUnit.SECONDS)
+                                .exceptionally(ex -> {
+                                    log.warn("事件任务异常，平台用户:{}，联赛:{}-{}，异常:{}", username,
+                                            bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(), ex.getMessage());
+                                    return null;
+                                }));
                     }
 
                     // 等待当前联赛所有事件处理完
-                    CompletableFuture.allOf(eventFutures.toArray(new CompletableFuture[0])).join();
+                    try {
+                        CompletableFuture.allOf(eventFutures.toArray(new CompletableFuture[0])).get(60, TimeUnit.SECONDS);
+                    } catch (TimeoutException te) {
+                        log.warn("联赛任务超时，平台用户:{}，联赛:{}-{}", username, bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB());
+                    } catch (Exception e) {
+                        log.error("联赛任务异常，平台用户:{}，联赛:{}-{}，异常:{}", username,
+                                bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(), e.getMessage(), e);
+                    }
 
                 }, executorLeagueService));
             }
@@ -253,9 +265,11 @@ public class SweepwaterService {
 
         // 等待所有联赛级任务执行完毕
         try {
-            CompletableFuture.allOf(leagueFutures.toArray(new CompletableFuture[0])).get();
+            CompletableFuture.allOf(leagueFutures.toArray(new CompletableFuture[0])).get(10, TimeUnit.MINUTES);
+        } catch (TimeoutException te) {
+            log.warn("扫水主流程执行超时，平台用户:{}", username);
         } catch (Exception e) {
-            log.error("扫水执行失败，平台用户:{}，异常信息:{}", username, e.getMessage(), e);
+            log.error("扫水主流程执行异常，平台用户:{}，异常信息:{}", username, e.getMessage(), e);
         } finally {
             PriorityTaskExecutor.shutdownExecutor(executorLeagueService);
             PriorityTaskExecutor.shutdownExecutor(eventExecutor);
