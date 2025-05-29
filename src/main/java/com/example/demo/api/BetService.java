@@ -13,6 +13,7 @@ import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.config.PriorityTaskExecutor;
+import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.dto.bet.SweepwaterBetDTO;
 import com.example.demo.model.dto.settings.BetAmountDTO;
 import com.example.demo.model.dto.settings.IntervalDTO;
@@ -44,6 +45,8 @@ public class BetService {
     @Resource(name = "businessPlatformRedissonClient")
     private RedissonClient businessPlatformRedissonClient;
 
+    @Resource
+    private AdminService adminService;
     @Resource
     private HandicapApi handicapApi;
     @Resource
@@ -180,6 +183,7 @@ public class BetService {
         LimitDTO limitDTO = settingsBetService.getLimit(username);
         IntervalDTO intervalDTO = settingsBetService.getInterval(username);
         BetAmountDTO amountDTO = settingsService.getBetAmout(username);
+        AdminLoginDTO admin = adminService.getAdmin(username);
         // CPU核数*4或者最大100线程
         int cpuCoreCount = Math.min(Runtime.getRuntime().availableProcessors() * 4, 100);
         // 核心线程数就是内部BindLeagueVO数量，最大线程数取个合理值
@@ -211,6 +215,41 @@ public class BetService {
                     .findFirst()
                     .orElse(0);
 
+            int simulateBetA = websites.stream()
+                    .filter(w -> w.getId().equals(dto.getWebsiteIdA()))
+                    .map(WebsiteVO::getSimulateBet)
+                    .findFirst()
+                    .orElse(0);
+
+            int simulateBetB = websites.stream()
+                    .filter(w -> w.getId().equals(dto.getWebsiteIdB()))
+                    .map(WebsiteVO::getSimulateBet)
+                    .findFirst()
+                    .orElse(0);
+
+            // 是否模拟投注
+            int simulateA;
+            if (admin.getSimulateBet() == 1) {
+                simulateA = 1;
+            } else {
+                if (simulateBetA == 1) {
+                    simulateA = 1;
+                } else {
+                    simulateA = 0;
+                }
+            }
+
+            // 是否模拟投注
+            int simulateB;
+            if (admin.getSimulateBet() == 1) {
+                simulateB = 1;
+            } else {
+                if (simulateBetB == 1) {
+                    simulateB = 1;
+                } else {
+                    simulateB = 0;
+                }
+            }
             JSONObject successA = new JSONObject();
             JSONObject successB = new JSONObject();
 
@@ -218,11 +257,11 @@ public class BetService {
                 if (rollingOrderA == rollingOrderB) {
                     // 并行执行
                     CompletableFuture<JSONObject> betA = CompletableFuture.supplyAsync(() ->
-                                    tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO),
+                                    tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO, simulateA),
                             betExecutor
                     );
                     CompletableFuture<JSONObject> betB = CompletableFuture.supplyAsync(() ->
-                                    tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO),
+                                    tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO, simulateB),
                             betExecutor
                     );
                     CompletableFuture.allOf(betA, betB).join();
@@ -230,15 +269,15 @@ public class BetService {
                     successB = betB.join();
                 } else if (rollingOrderA < rollingOrderB) {
                     // A 优先
-                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO);
+                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO, simulateA);
                     if (successA.getBool("success")) {
-                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO);
+                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO, simulateB);
                     }
                 } else {
                     // B 优先
-                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO);
+                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO, simulateA);
                     if (successB.getBool("success")) {
-                        successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO);
+                        successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO, simulateB);
                     }
                 }
             } catch (Exception e) {
@@ -325,6 +364,7 @@ public class BetService {
      * @param limitDTO
      * @param intervalDTO
      * @param amountDTO
+     * @param simulateBet   是否模拟投注
      * @return
      */
     private JSONObject tryBet(String username,
@@ -334,7 +374,8 @@ public class BetService {
                            SweepwaterBetDTO dto,
                            LimitDTO limitDTO,
                            IntervalDTO intervalDTO,
-                           BetAmountDTO amountDTO) {
+                           BetAmountDTO amountDTO,
+                           Integer simulateBet) {
         JSONObject result = new JSONObject();
         String score = isA ? dto.getScoreA() : dto.getScoreB();
         // 构建投注参数并调用投注接口
@@ -382,6 +423,12 @@ public class BetService {
             return result;
         }
 
+        if (simulateBet == 1) {
+            // 模拟投注
+            result.putOpt("isBet", false);
+            result.putOpt("success", false);
+            return result;
+        }
         // 投注
         Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betPreview"));
 
