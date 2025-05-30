@@ -425,7 +425,7 @@ public class BetService {
 
         if (simulateBet == 1) {
             // 模拟投注
-            result.putOpt("isBet", false);
+            result.putOpt("isBet", true);
             result.putOpt("success", false);
             return result;
         }
