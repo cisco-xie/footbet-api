@@ -902,12 +902,16 @@ public class HandicapApi {
             }
             JSONObject result = apiHandler.execute(account, params);
 
-            if (result.getBool("success")) {
+            // 保存记录投注账号id
+            result.putOpt("account", account.getAccount());
+            result.putOpt("accountId", account.getId());
+            return result;
+            /*if (result.getBool("success")) {
                 // 保存记录投注账号id
                 result.putOpt("account", account.getAccount());
                 result.putOpt("accountId", account.getId());
                 return result;
-            }
+            }*/
         }
         return null;
     }

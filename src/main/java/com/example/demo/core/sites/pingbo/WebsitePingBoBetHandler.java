@@ -106,7 +106,7 @@ public class WebsitePingBoBetHandler implements ApiHandler {
 
         // 检查响应状态
         if (response.getStatus() != 200) {
-            log.info("[平博][投注][失败][{}]", response.getStatus());
+            log.info("[平博][投注][失败]{}", response.getStatus());
             JSONObject res = new JSONObject();
             if (response.getStatus() == 403) {
                 res.putOpt("code", 403);
@@ -145,11 +145,11 @@ public class WebsitePingBoBetHandler implements ApiHandler {
                     // 投注失败
                     failedNum++;
                     success = false;
-                    log.info("[平博][投注][失败][{}]", resObj);
+                    log.info("[平博][投注][失败]{}", resObj);
                     continue;
                 }
                 sucNum++;
-                log.info("[平博][投注][成功][{}]", resObj);
+                log.info("[平博][投注][成功]{}", resObj);
             };
         } else {
             success = false;

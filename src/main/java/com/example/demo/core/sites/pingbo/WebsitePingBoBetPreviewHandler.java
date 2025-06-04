@@ -131,19 +131,19 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
             String itemStatus = resObj.getStr("status");
 
             if ("ODDS_CHANGE".equals(itemStatus)) {
-                log.info("[平博][投注预览][赔率已变更][{}]", resObj);
+                log.info("[平博][投注预览][赔率已变更]{}", resObj);
                 success = false;
             }
             if ("UNAVAILABLE".equals(itemStatus)) {
-                log.info("[平博][投注预览][注单暂时无效][{}]", resObj);
+                log.info("[平博][投注预览][注单暂时无效]{}", resObj);
                 success = false;
             }
             if ("PROCESSED_WITH_ERROR".equals(itemStatus)) {
                 if ("BELOW_MIN_BET_AMOUNT".equals(resObj.getStr("errorCode"))) {
-                    log.info("[平博][投注预览][低于最低限额][{}]", resObj);
+                    log.info("[平博][投注预览][低于最低限额]{}", resObj);
                     success = false;
                 }
-                log.info("[平博][投注预览][注单内容处理错误][{}]", resObj);
+                log.info("[平博][投注预览][注单内容处理错误]{}", resObj);
                 success = false;
             }
 

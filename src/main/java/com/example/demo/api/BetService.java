@@ -429,37 +429,56 @@ public class BetService {
             result.putOpt("success", false);
             return result;
         }
-        // 投注
-        Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betPreview"));
+        // 投注（带重试机制,重试10次）
+        int maxRetry = 10;
+        int attempt = 0;
+        boolean success = false;
 
-        if (betResult != null && parseBetSuccess(betResult, dto, isA)) {
-            // 设置投注时间记录
-            businessPlatformRedissonClient.getBucket(intervalKey).set(System.currentTimeMillis(), Duration.ofHours(24));
-            if (isA) {
-                dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-            } else {
-                dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+        while (attempt < maxRetry && !success) {
+            attempt++;
+            try {
+                // 投注
+                Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betPreview"));
+
+                if (betResult != null && parseBetSuccess(betResult, dto, isA)) {
+                    // 设置投注时间记录
+                    businessPlatformRedissonClient.getBucket(intervalKey).set(System.currentTimeMillis(), Duration.ofHours(24));
+                    if (isA) {
+                        dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                    } else {
+                        dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                    }
+                    result.putOpt("isBet", true);
+                    result.putOpt("success", true);
+                    result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
+                    success = true;
+                } else if (betResult != null) {
+                    result.putOpt("isBet", true);
+                    result.putOpt("success", false);
+                    result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
+                } else {
+                    result.putOpt("isBet", true);
+                    result.putOpt("success", false);
+                    result.putOpt("betInfo", null);
+                }
+            } catch (Exception e) {
+                log.warn("用户 {} 投注尝试第 {} 次失败：{}", username, attempt, e.getMessage(), e);
+                // 短暂等待再重试
+                /*try {
+                    Thread.sleep(300L);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }*/
             }
-            result.putOpt("isBet", true);
-            result.putOpt("success", true);
-            result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
-            return result;
-        } else if (betResult != null && !parseBetSuccess(betResult, dto, isA)) {
-            // 撤销预占额度
-            rollbackBetLimit(limitKey, score);
-            result.putOpt("isBet", true);
-            result.putOpt("success", false);
-            result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
-            return result;
-        } else {
-            // 撤销预占额度
-            rollbackBetLimit(limitKey, score);
-            result.putOpt("isBet", true);
-            result.putOpt("success", false);
-            result.putOpt("betInfo", betResult);
-            return result;
         }
 
+        if (!success) {
+            // 撤销预占额度
+            rollbackBetLimit(limitKey, score);
+            log.error("用户 {} 投注失败，已重试 {} 次，eventId={}", username, maxRetry, eventId);
+        }
+        return result;
     }
 
     /**
@@ -488,12 +507,12 @@ public class BetService {
             }
 
             betPreviewJson = JSONUtil.parseObj(betPreview);
-            Boolean success = betPreviewJson.getBool("success", false);
+            /*Boolean success = betPreviewJson.getBool("success", false);
             if (!success) {
                 attempt++;
                 log.info("[投注预览重试] 第 {} 次失败：success=false，返回信息：{}", attempt, betPreviewJson);
                 continue;
-            }
+            }*/
             // 成功跳出循环
             break;
         }
