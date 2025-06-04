@@ -472,20 +472,47 @@ public class BetService {
     public JSONObject buildBetInfo(String username, String websiteId, JSONObject params) {
         JSONObject betPreviewResult = new JSONObject();
         JSONObject betInfo = new JSONObject();
-        Object betPreview = handicapApi.betPreview(username, websiteId, params);
-        if (betPreview == null) {
+
+        // 重试10次
+        int maxRetry = 10;
+        int attempt = 0;
+        JSONObject betPreviewJson = null;
+
+        // 重试机制
+        while (attempt < maxRetry) {
+            Object betPreview = handicapApi.betPreview(username, websiteId, params);
+            if (betPreview == null) {
+                attempt++;
+                log.info("[投注预览重试] 第 {} 次失败：返回为 null", attempt);
+                continue;
+            }
+
+            betPreviewJson = JSONUtil.parseObj(betPreview);
+            Boolean success = betPreviewJson.getBool("success", false);
+            if (!success) {
+                attempt++;
+                log.info("[投注预览重试] 第 {} 次失败：success=false，返回信息：{}", attempt, betPreviewJson);
+                continue;
+            }
+            // 成功跳出循环
+            break;
+        }
+
+        // 如果超过重试次数仍失败
+        if (betPreviewJson == null) {
+            log.warn("投注预览重试10次依然失败");
             return null;
         }
-        betPreviewResult.putOpt("betPreview", JSONUtil.parseObj(betPreview));
+
+        betPreviewResult.putOpt("betPreview", betPreviewJson);
+
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
-            JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
             JSONArray data = betPreviewJson.getJSONArray("data");
             if (data == null || data.isEmpty()) {
                 return null;
             }
             for (Object obj : data) {
                 JSONObject objJson = JSONUtil.parseObj(obj);
-                // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
                 betInfo.putOpt("league", objJson.getStr("league"));
                 betInfo.putOpt("team", objJson.getStr("homeTeam") + " -vs- " + objJson.getStr("awayTeam"));
                 betInfo.putOpt("marketTypeName", "");
@@ -495,21 +522,17 @@ public class BetService {
                 betInfo.putOpt("amount", params.getStr("stake"));
             }
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
-            JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
             JSONObject data = betPreviewJson.getJSONObject("data");
             JSONObject betTicket = data.getJSONObject("betTicket");
-            // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
             betInfo.putOpt("league", data.getStr("leagueName"));
             betInfo.putOpt("team", data.getStr("eventName"));
             betInfo.putOpt("marketTypeName", data.getStr("marketTypeName"));
             betInfo.putOpt("marketName", data.getStr("name"));
-            betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap") + " @ "  + betTicket.getStr("odds"));
+            betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap") + " @ " + betTicket.getStr("odds"));
             betInfo.putOpt("handicap", data.getStr("handicap"));
             betInfo.putOpt("amount", params.getStr("stake"));
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
-            JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
             JSONObject serverresponse = betPreviewJson.getJSONObject("serverresponse");
-            // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
             String fastCheck = serverresponse.getStr("fast_check");
             String marketName = "";
             String marketTypeName = "";
@@ -534,9 +557,11 @@ public class BetService {
             betInfo.putOpt("handicap", serverresponse.getStr("spread"));
             betInfo.putOpt("amount", params.getStr("golds"));
         }
+
         betPreviewResult.putOpt("betInfo", betInfo);
         return betPreviewResult;
     }
+
 
     /**
      * 校验比分限制和总投注限制
