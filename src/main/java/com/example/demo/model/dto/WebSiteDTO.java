@@ -25,7 +25,7 @@ public class WebSiteDTO {
     @Schema(description = "上盘（0否1是）-让球盘的让球一方代表上盘")
     private Integer hangingWall;
     @Schema(description = "下盘（0否1是）-让球盘的被让球一方代表上盘")
-    private Integer footwall;
+    private Integer footWall;
     @Schema(description = "大球（0否1是）")
     private Integer bigBall;
     @Schema(description = "小球（0否1是）")
