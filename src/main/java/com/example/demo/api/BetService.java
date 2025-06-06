@@ -200,9 +200,13 @@ public class BetService {
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
 
+        // ✅ 单边投注控制
+        boolean isUnilateral = limitDTO.getUnilateralBet() != null && limitDTO.getUnilateralBet() == 1;
+
         List<WebsiteVO> websites = websiteService.getWebsites(username);
         for (SweepwaterDTO sweepwaterDTO : sweepwaters) {
             SweepwaterBetDTO dto = BeanUtil.copyProperties(sweepwaterDTO, SweepwaterBetDTO.class);
+            dto.setIsUnilateral(isUnilateral);
             int rollingOrderA = websites.stream()
                     .filter(w -> w.getId().equals(dto.getWebsiteIdA()))
                     .map(WebsiteVO::getRollingOrder)
@@ -252,16 +256,15 @@ public class BetService {
             }
             JSONObject successA = new JSONObject();
             JSONObject successB = new JSONObject();
-
             try {
                 if (rollingOrderA == rollingOrderB) {
                     // 并行执行
                     CompletableFuture<JSONObject> betA = CompletableFuture.supplyAsync(() ->
-                                    tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO, simulateA),
+                                    tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, simulateA),
                             betExecutor
                     );
                     CompletableFuture<JSONObject> betB = CompletableFuture.supplyAsync(() ->
-                                    tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO, simulateB),
+                                    tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, simulateB),
                             betExecutor
                     );
                     CompletableFuture.allOf(betA, betB).join();
@@ -269,15 +272,15 @@ public class BetService {
                     successB = betB.join();
                 } else if (rollingOrderA < rollingOrderB) {
                     // A 优先
-                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO, simulateA);
+                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, simulateA);
                     if (successA.getBool("success")) {
-                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO, simulateB);
+                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, simulateB);
                     }
                 } else {
                     // B 优先
-                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, dto, limitDTO, intervalDTO, amountDTO, simulateA);
+                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, simulateA);
                     if (successB.getBool("success")) {
-                        successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, intervalDTO, amountDTO, simulateB);
+                        successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, simulateB);
                     }
                 }
             } catch (Exception e) {
@@ -371,6 +374,7 @@ public class BetService {
                            String eventId,
                            String websiteId,
                            boolean isA,
+                           boolean isUnilateral,
                            SweepwaterBetDTO dto,
                            LimitDTO limitDTO,
                            IntervalDTO intervalDTO,
@@ -397,6 +401,11 @@ public class BetService {
             }
         }
 
+        boolean lastOddsTime = isA ? dto.getLastOddsTimeA() : dto.getLastOddsTimeB();
+        if (isUnilateral && !lastOddsTime) {
+            // 单边投注，当前网站赔率不是最新的，直接跳出不投注
+            return result;
+        }
         // 校验投注间隔key
         String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, eventId);
         // 投注次数限制key
@@ -444,9 +453,9 @@ public class BetService {
                     // 设置投注时间记录
                     businessPlatformRedissonClient.getBucket(intervalKey).set(System.currentTimeMillis(), Duration.ofHours(24));
                     if (isA) {
-                        dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                        dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                     } else {
-                        dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                        dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                     }
                     result.putOpt("isBet", true);
                     result.putOpt("success", true);
