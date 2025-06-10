@@ -8,6 +8,7 @@ public interface WebsiteApiFactory {
     ApiHandler checkUsername();             // 检测账户名是否通过
     ApiHandler changeUsername();            // 修改账户名
     ApiHandler changePwd();                 // 修改密码
+    ApiHandler accept();                    // 同意协议
     ApiHandler getLoginHandler();           // 登录
     ApiHandler getInfoHandler();            // 账号详情
     ApiHandler getEventsHandler();          // 赛事列表

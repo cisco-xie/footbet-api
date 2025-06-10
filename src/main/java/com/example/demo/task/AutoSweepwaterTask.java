@@ -7,6 +7,7 @@ import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.model.dto.AdminLoginDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 
 /**
@@ -36,9 +38,17 @@ public class AutoSweepwaterTask {
     @Resource
     private BetService betService;
 
+    private final AtomicBoolean running = new AtomicBoolean(false);
+
+    // @Async("sweepTaskExecutor") // ✅ 独立线程池执行
     // 上一次任务完成后再延迟 5 秒执行
-    @Scheduled(fixedDelay = 4000)
+    @Scheduled(fixedDelay = 1000)
     public void autoSweepwater() {
+        if (!running.compareAndSet(false, true)) {
+            log.warn("autoSweepwater 上次任务未完成，跳过本次");
+            return;
+        }
+
         long startTime = System.currentTimeMillis();
         try {
             log.info("开始执行 自动扫水...");
@@ -84,6 +94,7 @@ public class AutoSweepwaterTask {
             if (costTime > 20) {
                 log.warn("自动扫水 执行时间过长");
             }
+            running.set(false);
         }
     }
 }

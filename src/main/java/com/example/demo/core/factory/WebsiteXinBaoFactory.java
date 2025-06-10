@@ -39,6 +39,11 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler accept() {
+        return null;
+    }
+
+    @Override
     public ApiHandler getLoginHandler() {
         return new WebsiteXinBaoLoginHandler(websiteService, apiUrlService); // 返回具体的登录处理类
     }

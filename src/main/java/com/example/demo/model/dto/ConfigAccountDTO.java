@@ -20,7 +20,7 @@ public class ConfigAccountDTO {
     private Integer enable = 0;
     @Schema(description = "自动登录（0否1是）")
     private Integer autoLogin = 1;
-    @Schema(description = "用途(0通用 1刷水 2投注)")
+    @Schema(description = "用途(0通用 1扫水 2投注)")
     private Integer useType = 0;
     @Schema(description = "盘口账号")
     private String account;

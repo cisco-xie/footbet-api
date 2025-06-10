@@ -78,7 +78,19 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
 
         // 如果响应中包含错误信息，抛出异常或者其他处理
         if (responseJson.getInt("code") != 1) {
-            responseJson.putOpt("code", response.getStatus());
+            if (responseJson.getInt("code") == 2) {
+                // 首次登录需要修改密码
+                responseJson.putOpt("code", 106);
+                responseJson.putOpt("success", false);
+                responseJson.putOpt("msg", "账户昵称或密码错误");
+                return responseJson;
+            } else if (responseJson.getInt("code") == 3) {
+                // 需要同意协议
+                responseJson.putOpt("code", 110);
+                responseJson.putOpt("success", false);
+                responseJson.putOpt("msg", "账户需接受协议错误");
+                return responseJson;
+            }
             responseJson.putOpt("success", false);
             responseJson.putOpt("msg", "账户登录失败");
             return responseJson;
@@ -115,7 +127,8 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
         HttpResponse response = null;
         HttpRequest request = HttpRequest.post(fullUrl)
                 .addHeaders(requestBody.getHeaders().toSingleValueMap())
-                .body(requestBody.getBody());
+                .body(requestBody.getBody())
+                .timeout(5000);
         // 引入配置代理
         HttpProxyConfig.configureProxy(request, userConfig);
         response = request.execute();

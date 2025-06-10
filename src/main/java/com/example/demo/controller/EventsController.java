@@ -16,25 +16,19 @@
 
 package com.example.demo.controller;
 
-import cn.hutool.core.bean.BeanUtil;
 import com.example.demo.api.HandicapApi;
-import com.example.demo.api.WebsiteService;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
-import com.example.demo.model.dto.WebSiteDTO;
-import com.example.demo.model.vo.WebsiteVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 
 @Slf4j
-@Tag(name = "网站管理")
+@Tag(name = "赛事管理")
 @RequestMapping("/api")
 @RestController
 public class EventsController extends BaseController {
@@ -42,11 +36,11 @@ public class EventsController extends BaseController {
     @Resource
     private HandicapApi handicapApi;
 
-    @Operation(summary = "获取用户网站列表")
+    @Operation(summary = "获取网站赛事列表")
     @GetMapping("/events/{websiteId}")
     public Result getWebsites(@PathVariable String websiteId) {
         AdminLoginDTO admin = getUser();
-        // 调用服务层方法获取网站列表
+        // 调用服务层方法获取网站赛事列表
         return Result.success(handicapApi.events(admin.getUsername(), websiteId));
     }
 

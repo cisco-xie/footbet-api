@@ -11,6 +11,7 @@ import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.ConfigAccountVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -41,6 +42,7 @@ public class AutoLoginTask {
     @Resource
     private ConfigAccountService accountService;
 
+    // @Async("loginTaskExecutor") // ✅ 独立线程池执行
     // 上一次任务完成后再延迟 30 秒执行
     @Scheduled(fixedDelay = 30000)
     public void autoLogin() {
@@ -51,67 +53,82 @@ public class AutoLoginTask {
             List<AdminLoginDTO> adminUsers = adminService.getUsers(null);
             int cpuCoreCount = Runtime.getRuntime().availableProcessors();
 
-            // 创建管理所有任务的线程池
-            ExecutorService executorAdminUserService = Executors.newFixedThreadPool(Math.min(adminUsers.size(), cpuCoreCount * 2));
+            // 外层并发线程池 - 处理多个 adminUser
+            ExecutorService adminExecutor = Executors.newFixedThreadPool(Math.min(adminUsers.size(), cpuCoreCount));
 
-            // 存储所有 CompletableFuture
-            List<CompletableFuture<Void>> adminFutures = new ArrayList<>();
-
-            // ✅ 定义本地内存的 retryMap，仅在当前方法内生效（不持久）
             ConcurrentHashMap<String, Integer> retryMap = new ConcurrentHashMap<>();
 
+            List<CompletableFuture<Void>> adminFutures = new ArrayList<>();
+
             for (AdminLoginDTO adminUser : adminUsers) {
-                for (WebsiteType type : WebsiteType.values()) {
-                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-                        List<ConfigAccountVO> userList = accountService.getAccount(adminUser.getUsername(), type.getId());
+                CompletableFuture<Void> adminFuture = CompletableFuture.runAsync(() -> {
 
-                        // **在方法外部创建线程池**
-                        ExecutorService executorAccountService = Executors.newFixedThreadPool(Math.min(userList.size(), cpuCoreCount * 2));
+                    // 中层并发线程池 - 处理当前 adminUser 下的多个网站并行
+                    ExecutorService websiteExecutor = Executors.newFixedThreadPool(Math.min(WebsiteType.values().length, cpuCoreCount));
 
-                        try {
-                            List<CompletableFuture<Void>> accountFutures = userList.stream()
-                                    .map(userConfig -> CompletableFuture.runAsync(() -> {
-                                        boolean isValid = true;
-                                        if (userConfig.getIsTokenValid() != 1) {
-                                            isValid = false;
-                                        } else {
-                                            // 当前账号存在token，调用盘口api检测token是否真实有效
-                                            Object resultBalance = handicapApi.balanceByAccount(adminUser.getUsername(), type.getId(), userConfig);
-                                            if (resultBalance != null) {
-                                                JSONObject result = JSONUtil.parseObj(resultBalance);
-                                                if (!result.getBool("success")) {
-                                                    isValid = false;
-                                                }
-                                            } else {
+                    List<CompletableFuture<Void>> websiteFutures = new ArrayList<>();
+
+                    for (WebsiteType type : WebsiteType.values()) {
+                        CompletableFuture<Void> websiteFuture = CompletableFuture.runAsync(() -> {
+                            List<ConfigAccountVO> userList = accountService.getAccount(adminUser.getUsername(), type.getId());
+
+                            // 内层串行处理账号列表
+                            for (ConfigAccountVO userConfig : userList) {
+                                log.info("检查账户登录情况,网站:{},账户:{}", type.getDescription(), userConfig.getAccount());
+                                try {
+                                    boolean isValid = true;
+
+                                    if (userConfig.getIsTokenValid() != 1) {
+                                        isValid = false;
+                                    } else {
+                                        Object resultBalance = handicapApi.balanceByAccount(adminUser.getUsername(), type.getId(), userConfig);
+                                        if (resultBalance != null) {
+                                            JSONObject result = JSONUtil.parseObj(resultBalance);
+                                            if (!result.getBool("success")) {
                                                 isValid = false;
                                             }
+                                        } else {
+                                            isValid = false;
                                         }
-                                        if (!isValid) {
-                                            // 当前账号token无效，进行下线操作更新token状态
-                                            accountService.logoutByWebsiteAndAccountId(adminUser.getUsername(), type.getId(), userConfig.getId());
-                                            if (userConfig.getAutoLogin() == 1) {
-                                                // 当前账号token无效，调用盘口api登录
-                                                handicapApi.processAccountLogin(userConfig, adminUser.getUsername(), type.getId(), retryMap);
-                                            }
-                                        }
-                                    }, executorAccountService))
-                                    .toList();
+                                    }
 
-                            // **等待所有账号任务完成**
-                            CompletableFuture.allOf(accountFutures.toArray(new CompletableFuture[0])).join();
-                        } finally {
-                            // **正确关闭线程池**
-                            PriorityTaskExecutor.shutdownExecutor(executorAccountService);
-                        }
-                    }, executorAdminUserService);
-                    adminFutures.add(future);
-                }
+                                    if (!isValid) {
+                                        // 当前账号token无效，进行下线操作更新token状态
+                                        accountService.logoutByWebsiteAndAccountId(adminUser.getUsername(), type.getId(), userConfig.getId());
+                                        if (userConfig.getAutoLogin() == 1) {
+                                            // 当前账号token无效，调用盘口api登录
+                                            handicapApi.processAccountLogin(userConfig, adminUser.getUsername(), type.getId(), retryMap);
+                                        }
+                                    }
+
+                                    // 可选延时，防止过快请求被限流
+                                    // Thread.sleep(200);
+
+                                } catch (Exception e) {
+                                    log.error("自动登录任务异常,网站:{},账户:{},跳过当前账户进行下一个账户登录操作",
+                                            type.getDescription(), userConfig.getAccount(), e);
+                                }
+                            }
+                        }, websiteExecutor);
+
+                        websiteFutures.add(websiteFuture);
+                    }
+
+                    // 等待当前 adminUser 下所有网站任务完成
+                    CompletableFuture.allOf(websiteFutures.toArray(new CompletableFuture[0])).join();
+                    PriorityTaskExecutor.shutdownExecutor(websiteExecutor);
+
+                    log.info("管理员:{} 所有网站登录任务完成", adminUser.getUsername());
+
+                }, adminExecutor);
+
+                adminFutures.add(adminFuture);
             }
 
-            // **等待所有管理员任务完成**
+            // 等待所有管理员任务完成
             CompletableFuture.allOf(adminFutures.toArray(new CompletableFuture[0])).join();
-            // **确保 executorAdminUserService 正确关闭**
-            PriorityTaskExecutor.shutdownExecutor(executorAdminUserService);
+            PriorityTaskExecutor.shutdownExecutor(adminExecutor);
+
         } catch (Exception e) {
             log.error("自动登录 执行异常", e);
         } finally {

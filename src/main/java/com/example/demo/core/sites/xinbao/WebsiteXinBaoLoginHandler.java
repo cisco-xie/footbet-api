@@ -154,7 +154,8 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
         HttpResponse response = null;
         HttpRequest request = HttpRequest.post(fullUrl)
                 .addHeaders(requestBody.getHeaders().toSingleValueMap())
-                .body(requestBody.getBody());
+                .body(requestBody.getBody())
+                .timeout(5000);
         // 引入配置代理
         HttpProxyConfig.configureProxy(request, userConfig);
         response = request.execute();

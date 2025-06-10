@@ -1,5 +1,6 @@
 package com.example.demo.api;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.date.TimeInterval;
 import cn.hutool.core.util.RandomUtil;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Component
@@ -221,9 +223,16 @@ public class HandicapApi {
                     log.warn("登录失败达到上限，不再尝试。username={}, websiteId={}", username, websiteId);
                     return;
                 }
-
+                String uid = null;
+                if (result.containsKey("serverresponse") && result.getJSONObject("serverresponse").containsKey("uid")) {
+                    uid = result.getJSONObject("serverresponse").getStr("uid");
+                }
+                String accountName = null;
+                if (result.containsKey("serverresponse") && result.getJSONObject("serverresponse").containsKey("username")) {
+                    accountName = result.getJSONObject("serverresponse").getStr("username");
+                }
                 // 执行修改密码
-                changePwd(username, account, websiteId, result.getJSONObject("serverresponse").getStr("uid"), result.getJSONObject("serverresponse").getStr("username"), retryMap);
+                changePwd(username, account, websiteId, uid, accountName, retryMap);
             } else if (code != null && code == 109) {
                 // 修改账户名
                 retryCount++;
@@ -236,8 +245,30 @@ public class HandicapApi {
                     return;
                 }
 
+                String uid = null;
+                if (result.containsKey("serverresponse") && result.getJSONObject("serverresponse").containsKey("uid")) {
+                    uid = result.getJSONObject("serverresponse").getStr("uid");
+                }
+                String accountName = null;
+                if (result.containsKey("serverresponse") && result.getJSONObject("serverresponse").containsKey("username")) {
+                    accountName = result.getJSONObject("serverresponse").getStr("username");
+                }
                 // 执行检测修改账户名
-                checkUsername(username, account, websiteId, result.getJSONObject("serverresponse").getStr("uid"), result.getJSONObject("serverresponse").getStr("username"), retryMap);
+                checkUsername(username, account, websiteId, uid, accountName, retryMap);
+            } else if (code != null && code == 110) {
+                // 修改账户名
+                retryCount++;
+                retryMap.put(key, retryCount);
+
+                log.warn("登录失败，第{}次（本次流程内），username={}, websiteId={}", retryCount, username, websiteId);
+
+                if (retryCount >= 2) {
+                    log.warn("登录失败达到上限，不再尝试。username={}, websiteId={}", username, websiteId);
+                    return;
+                }
+
+                // 执行同意协议
+                accept(username, account, websiteId, retryMap);
             }
         }
     }
@@ -257,8 +288,9 @@ public class HandicapApi {
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
-            log.warn("暂不支持平博网站自动修改密码：{}", websiteId);
-            return;
+            params.putOpt("oldPassword", accountVO.getPassword());
+            params.putOpt("newPassword", password);
+            params.putOpt("chgPassword", password);
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             log.warn("暂不支持智博网站自动修改密码：{}", websiteId);
             return;
@@ -355,6 +387,34 @@ public class HandicapApi {
             accountVO.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
             accountService.saveAccount(username, websiteId, accountVO);
             // 修改成功就执行登录
+            processAccountLogin(accountVO, username, websiteId, retryMap);
+        }
+    }
+
+    // 运行修改密码工厂
+    public void accept(String username, ConfigAccountVO accountVO, String websiteId, Map<String, Integer> retryMap) {
+        TimeInterval timer = DateUtil.timer();
+        // 修改密码
+        WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+        ApiHandler apiHandler = factory.accept();
+        if (apiHandler == null) {
+            return;
+        }
+        JSONObject params = new JSONObject();
+        params.putOpt("adminUsername", username);
+        params.putOpt("websiteId", websiteId);
+        // 根据不同站点传入不同的参数
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+        } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+            log.warn("暂不支持智博网站自动同意协议：{}", websiteId);
+            return;
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+            log.warn("暂不支持新二网站自动同意协议：{}", websiteId);
+            return;
+        }
+        JSONObject result = apiHandler.execute(accountVO, params);
+        if (result.getBool("success")) {
+            // 同意成功就执行登录
             processAccountLogin(accountVO, username, websiteId, retryMap);
         }
     }
@@ -543,6 +603,9 @@ public class HandicapApi {
         return null;
     }
 
+    // 类成员变量，可加 @Component 单例管理
+    private final ConcurrentHashMap<String, AtomicInteger> accountIndexMap = new ConcurrentHashMap<>();
+
     /**
      * 根据用户和网站获取赛事列表数据-带赔率
      * @param username
@@ -550,10 +613,23 @@ public class HandicapApi {
      * @return
      */
     public Object eventsOdds(String username, String websiteId, String lid, String ecid) {
+        TimeInterval timer = DateUtil.timer();
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
-        for (ConfigAccountVO account : accounts) {
+        if (CollUtil.isEmpty(accounts)) {
+            return null;
+        }
+
+        String key = username + ":" + websiteId;
+        AtomicInteger indexRef = accountIndexMap.computeIfAbsent(key, k -> new AtomicInteger(0));
+
+        int size = accounts.size();
+        for (int i = 0; i < size; i++) {
+            int idx = Math.abs(indexRef.getAndIncrement() % size);
+            ConfigAccountVO account = accounts.get(idx);
+            log.info("获取赛事列表,网站:{},idx:{},账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, account.getAccount());
+
             if (account.getIsTokenValid() == 0) {
                 // 未登录直接跳过
                 continue;
@@ -616,10 +692,18 @@ public class HandicapApi {
                 }
                 params.putOpt("oddsFormatType", oddsFormatType);
             }
-            JSONObject result = apiHandler.execute(account, params);
-
-            if (result.getBool("success")) {
-                return result.get("leagues");
+            try {
+                Thread.sleep(300); // 加个延迟防止触发风控
+                JSONObject result = apiHandler.execute(account, params);
+                if (result.getBool("success") && result.get("leagues") != null) {
+                    log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{} 获取赛事成功", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), lid, ecid);
+                    return result.get("leagues");
+                }
+                log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{}, 获取赛事失败,获取结果:{}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), lid, ecid, result);
+            } catch (Exception e) {
+                log.error("账号 {} 获取赛事异常", account.getAccount(), e);
+            } finally {
+                log.info("获取 网站:{}, 账号:{}, lid:{}, ecid:{} 赔率 耗时: {}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), lid, ecid, timer.interval());
             }
         }
         return null;
