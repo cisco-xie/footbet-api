@@ -154,6 +154,12 @@ public class AdminService {
 
     public void add(List<AdminLoginVO> admins) {
         // 读取配置文件
+        String zhiboStr = ResourceUtil.readUtf8Str("setting/zhibo.json");
+        // 读取配置文件
+        String pingboStr = ResourceUtil.readUtf8Str("setting/pingbo.json");
+        // 读取配置文件
+        String xinbaoStr = ResourceUtil.readUtf8Str("setting/xinbao.json");
+        // 读取配置文件
         String settingStr = ResourceUtil.readUtf8Str("setting/default-user-setting.json");
         JSONObject settings = JSONUtil.parseObj(settingStr);
         JSONObject limit = settings.getJSONObject("limit");
@@ -171,6 +177,13 @@ public class AdminService {
             if (null == admin.getRoles() || admin.getRoles().isEmpty()) {
                 // 默认普通用户角色
                 roles = List.of("common");
+            } else if (admin.getRoles().contains("sweepwater")) {
+                // 首先检查sweepwater角色是否已存在
+                boolean sweepwaterExists = getUsers(null).stream()
+                        .anyMatch(user -> user.getRoles() != null && user.getRoles().contains("sweepwater"));
+                if (sweepwaterExists) {
+                    throw new BusinessException(SystemError.USER_1018);
+                }
             } else {
                 roles = List.of(admin.getRoles());
             }
@@ -185,6 +198,12 @@ public class AdminService {
             adminLoginDTO.setRoles(roles);
             adminLoginDTO.setPermissions(List.of("*:*:*"));
             businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(adminLoginDTO));
+
+            // 生成 Redis 中的 key
+            String websiteKey = KeyUtil.genKey(RedisConstants.PLATFORM_WEBSITE_ALL_PREFIX, admin.getUsername());
+            businessPlatformRedissonClient.getList(websiteKey).add(JSONUtil.parseObj(zhiboStr));
+            businessPlatformRedissonClient.getList(websiteKey).add(JSONUtil.parseObj(pingboStr));
+            businessPlatformRedissonClient.getList(websiteKey).add(JSONUtil.parseObj(xinbaoStr));
             // 配置默认软件设置信息
             String oddsScanKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_ODDSSCAN_PREFIX, admin.getUsername());
             businessPlatformRedissonClient.getBucket(oddsScanKey).set(oddsScan);

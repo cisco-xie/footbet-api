@@ -29,20 +29,31 @@ public class WebDriverConfig {
     public WebDriver webDriver() {
         // 检查当前线程是否已经有 WebDriver 实例
         if (driverThreadLocal.get() == null) {
-            System.setProperty("webdriver.chrome.driver", "D:\\developer\\chromedriver-v135\\chromedriver.exe");
-            // 配置Chrome选项以启用无头模式
             ChromeOptions options = new ChromeOptions();
-            options.addArguments("--headless");
+            options.addArguments("--headless");                             // 配置Chrome选项以启用无头模式
             options.addArguments("--disable-gpu");
             options.addArguments("--window-size=1920,1080");
             options.addArguments("--no-sandbox");
             options.addArguments("--disable-dev-shm-usage");
             options.addArguments("--remote-allow-origins=*");
-            options.addArguments("--blink-settings=imagesEnabled=false"); // 禁止加载图片
-            options.addArguments("--disable-software-rasterizer"); // 加速渲染，防止崩溃
+            options.addArguments("--blink-settings=imagesEnabled=false");   // 禁止加载图片
+            options.addArguments("--disable-software-rasterizer");          // 加速渲染，防止崩溃
+
+            String os = System.getProperty("os.name").toLowerCase();
+
+            if (os.contains("win")) {
+                // Windows 环境配置
+                System.setProperty("webdriver.chrome.driver", "D:\\developer\\chromedriver-v135\\chromedriver.exe");
+                // options.setBinary() 可选：一般 Windows 安装了 Chrome，会自动被 chromedriver 识别
+            } else if (os.contains("linux")) {
+                // Linux 环境配置
+                System.setProperty("webdriver.chrome.driver", "/usr/local/chromedriver-linux64/chromedriver");
+                options.setBinary("/usr/bin/google-chrome");
+            } else {
+                throw new UnsupportedOperationException("不支持的操作系统: " + os);
+            }
 
             WebDriver driver = new ChromeDriver(options);
-            // driver.manage().timeouts().implicitlyWait(10, TimeUnit.SECONDS);
             // 将 WebDriver 实例存储在 ThreadLocal 中
             driverThreadLocal.set(driver);
         }

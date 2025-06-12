@@ -16,6 +16,7 @@ import com.example.demo.common.enmu.XinBaoOddsFormatType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.core.holder.SweepWaterThreadPoolHolder;
+import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.dto.bet.SweepwaterBetDTO;
 import com.example.demo.model.dto.settings.*;
 import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
@@ -139,9 +140,11 @@ public class SweepwaterService {
      * @param username
      * @return
      */
-    public void sweepwater(String username) {
+    public void sweepwater(String username, List<AdminLoginDTO> sweepwaterUsers) {
         TimeInterval timerTotal = DateUtil.timer();
 
+        // 扫水专用账号
+        String sweepwaterUsername = sweepwaterUsers.get(0).getUsername();
         List<List<BindLeagueVO>> bindLeagueVOList = bindDictService.getAllBindDict(username);
         if (CollUtil.isEmpty(bindLeagueVOList)) {
             log.warn("无球队绑定数据，平台用户:{}", username);
@@ -207,36 +210,12 @@ public class SweepwaterService {
                                 String ecidA = event.getEcidA();
                                 String ecidB = event.getEcidB();
                                 // 根据网站获取对应盘口的赛事列表
-                                /*CompletableFuture<JSONArray> eventsAFuture = CompletableFuture.supplyAsync(() ->
-                                        getEventsForEcid(username, ecidFetchFuturesA, websiteIdA, bindLeagueVO.getLeagueIdA(), ecidA), eventExecutor);
-
-                                CompletableFuture<JSONArray> eventsBFuture = CompletableFuture.supplyAsync(() ->
-                                        getEventsForEcid(username, ecidFetchFuturesB, websiteIdB, bindLeagueVO.getLeagueIdB(), ecidB), eventExecutor);
-
-                                JSONArray eventsA = null;
-                                JSONArray eventsB = null;
-                                try {
-                                    eventsA = eventsAFuture.get(20, TimeUnit.SECONDS);
-                                    eventsB = eventsBFuture.get(20, TimeUnit.SECONDS);
-                                } catch (TimeoutException e) {
-                                    log.error("并行获取 events 超时: {}", e.getMessage(), e);
-                                    return;
-                                } catch (InterruptedException e) {
-                                    log.error("并行获取 events 被中断: {}", e.getMessage(), e);
-                                    Thread.currentThread().interrupt(); // 恢复中断状态
-                                    return;
-                                } catch (ExecutionException e) {
-                                    Throwable cause = e.getCause();
-                                    log.error("并行获取 events 执行异常: {}", cause != null ? cause.getMessage() : "未知异常", cause);
-                                    return;
-                                }*/
-
                                 // 串型执行
                                 TimeInterval getEventsForEcidTimerA = DateUtil.timer();
-                                JSONArray eventsA = getEventsForEcid(username, ecidFetchFuturesA, websiteIdA, bindLeagueVO.getLeagueIdA(), ecidA);
+                                JSONArray eventsA = getEventsForEcid(sweepwaterUsername, ecidFetchFuturesA, websiteIdA, bindLeagueVO.getLeagueIdA(), ecidA);
                                 log.info("获取 网站A:{} 赔率 耗时: {}", WebsiteType.getById(websiteIdA).getDescription(), getEventsForEcidTimerA.interval());
                                 TimeInterval getEventsForEcidTimerB = DateUtil.timer();
-                                JSONArray eventsB = getEventsForEcid(username, ecidFetchFuturesB, websiteIdB, bindLeagueVO.getLeagueIdB(), ecidB);
+                                JSONArray eventsB = getEventsForEcid(sweepwaterUsername, ecidFetchFuturesB, websiteIdB, bindLeagueVO.getLeagueIdB(), ecidB);
                                 log.info("获取 网站B:{} 赔率 耗时: {}", WebsiteType.getById(websiteIdB).getDescription(), getEventsForEcidTimerB.interval());
 
                                 if (eventsA == null || eventsB == null) return;

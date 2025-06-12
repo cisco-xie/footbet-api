@@ -17,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 
 /**
@@ -59,6 +60,21 @@ public class AutoSweepwaterTask {
                 log.info("没有开启投注的平台用户!!!");
                 return;
             }
+            // 单独提取扫水账号列表
+            List<AdminLoginDTO> sweepwaterUsers = adminUsers.stream()
+                    .filter(adminUser -> adminUser.getRoles().contains("sweepwater"))
+                    .toList();
+            if (sweepwaterUsers.isEmpty()) {
+                log.info("没有扫水的平台用户!!!");
+                return;
+            }
+            // 剔除专门的扫水账号
+            adminUsers.removeIf(adminUser -> !adminUser.getRoles().contains("sweepwater"));
+            if (adminUsers.isEmpty()) {
+                log.info("没有开启投注的平台用户!!!");
+                return;
+            }
+
             int cpuCoreCount = Runtime.getRuntime().availableProcessors();
 
             // 创建管理所有任务的线程池
@@ -70,7 +86,7 @@ public class AutoSweepwaterTask {
             for (AdminLoginDTO adminUser : adminUsers) {
                 CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                     // 执行扫水
-                    sweepwaterService.sweepwater(adminUser.getUsername());
+                    sweepwaterService.sweepwater(adminUser.getUsername(), sweepwaterUsers);
                     // 执行下注
                     // betService.bet(adminUser.getUsername());
                     // 获取盘口实时未结注单并加以保存

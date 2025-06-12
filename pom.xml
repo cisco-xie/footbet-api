@@ -166,7 +166,7 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring-boot.version}</version>
                 <configuration>
-                    <mainClass>com.example.demo.FootballApplication</mainClass>
+                    <mainClass>com.example.demo.FootballApiApplication</mainClass>
 <!--                    <skip>true</skip>-->
                 </configuration>
                 <executions>

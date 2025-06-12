@@ -1,0 +1,23 @@
+{
+  "id": "1874805533324103680",
+  "name": "平博",
+  "baseUrls": [
+    "https://www.ps3838.com"
+  ],
+  "enable": 1,
+  "simplex": 1,
+  "rollingBall": 1,
+  "hangingWall": 1,
+  "footWall": 1,
+  "bigBall": 1,
+  "smallBall": 1,
+  "firstHalf": 1,
+  "fullCourt": 1,
+  "oddsType": 1,
+  "simplexOrder": 0,
+  "rollingOrder": 0,
+  "settlementNum": 0,
+  "simulateBet": 0,
+  "cashPlatform": 0,
+  "backwater": 0
+}

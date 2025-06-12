@@ -79,10 +79,10 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
     @Override
     public JSONObject parseResponse(JSONObject params, HttpResponse response) {
         // 打印 Set-Cookie
-        List<String> setCookieHeaders = response.headers().get("Set-Cookie");
+        /*List<String> setCookieHeaders = response.headers().get("Set-Cookie");
         if (CollUtil.isNotEmpty(setCookieHeaders)) {
             log.info("返回的 Set-Cookie: {}", JSONUtil.toJsonStr(setCookieHeaders));
-        }
+        }*/
         // 检查响应状态
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();

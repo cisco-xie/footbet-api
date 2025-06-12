@@ -1,4 +1,3 @@
-#Redisson配置
 singleServerConfig:
   #  clientName: null
   #  address: "redis://127.0.0.1:6379"
@@ -11,20 +10,18 @@ singleServerConfig:
   retryInterval: 1000
   subscriptionsPerConnection: 5
   subscriptionConnectionMinimumIdleSize: 1
-  subscriptionConnectionPoolSize: 5   # 本地配置
-  connectionMinimumIdleSize: 4        # 本地配置
-  connectionPoolSize: 16              # 本地配置
-
-#  subscriptionConnectionPoolSize: 50   # 生产环境配置
-#  connectionMinimumIdleSize: 64        # 提高最小空闲连接数，确保高峰期无连接不足
-#  connectionPoolSize: 512              # 增大连接池以支持更多并发连接
-
+#  subscriptionConnectionPoolSize: 5
+#  connectionMinimumIdleSize: 4
+#  connectionPoolSize: 16
+  subscriptionConnectionPoolSize: 50
+  connectionMinimumIdleSize: 64
+  connectionPoolSize: 512
   dnsMonitoringInterval: 5000
 
-threads: 4        # 本地配置
-nettyThreads: 4   # 本地配置
-#threads: 12        # 设置为 2 倍于 CPU 核心数，以支持高并发任务
-#nettyThreads: 12   # 设置为与 CPU 核心数相等
+#threads: 4
+#nettyThreads: 4
+threads: 12
+nettyThreads: 12
 
 codec:
   class: "org.redisson.codec.JsonJacksonCodec"

@@ -10,8 +10,8 @@ spring:
       timeout: 5s
       database: 2
       # redis1121
-#      password: 20241201
-      password:
+      password: 20241201
+#      password:
     # 连接超时时间
 
 # 为不同业务设置不同的数据库

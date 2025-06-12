@@ -67,7 +67,7 @@ public class TestController extends BaseController {
     @GetMapping("/sweepwater")
     public Result sweepwater() {
         AdminLoginDTO admin = getUser();
-        sweepwaterService.sweepwater(admin.getUsername());
+        sweepwaterService.sweepwater(admin.getUsername(), null);
         return Result.success();
     }
 

@@ -118,7 +118,7 @@ public class AutoLoginTask {
                     CompletableFuture.allOf(websiteFutures.toArray(new CompletableFuture[0])).join();
                     PriorityTaskExecutor.shutdownExecutor(websiteExecutor);
 
-                    log.info("管理员:{} 所有网站登录任务完成", adminUser.getUsername());
+                    log.info("系统账号:{} 所有网站登录任务完成", adminUser.getUsername());
 
                 }, adminExecutor);
 

@@ -1,0 +1,24 @@
+{
+  "id": "1877702689064243200",
+  "name": "新二",
+  "baseUrls": [
+    "https://m061.mos077.com",
+    "https://m061.mos088.com"
+  ],
+  "enable": 1,
+  "simplex": 1,
+  "rollingBall": 1,
+  "hangingWall": 1,
+  "footWall": 1,
+  "bigBall": 1,
+  "smallBall": 1,
+  "firstHalf": 1,
+  "fullCourt": 1,
+  "oddsType": 1,
+  "simplexOrder": 0,
+  "rollingOrder": 0,
+  "settlementNum": 0,
+  "simulateBet": 0,
+  "cashPlatform": 0,
+  "backwater": 0
+}
