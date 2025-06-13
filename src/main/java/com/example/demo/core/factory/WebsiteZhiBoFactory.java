@@ -25,22 +25,22 @@ public class WebsiteZhiBoFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler checkUsername() {
-        return null;
+        return new WebsiteZhiBoCheckUsernameHandler(websiteService, apiUrlService); // 返回具体的检测昵称是否可用处理类
     }
 
     @Override
     public ApiHandler changeUsername() {
-        return null;
+        return new WebsiteZhiBoChangeUsernameHandler(websiteService, apiUrlService); // 返回具体的修改昵称处理类
     }
 
     @Override
     public ApiHandler changePwd() {
-        return null;    //        return new WebsiteZhiBoChangePwdHandler(websiteService, apiUrlService); // 返回具体的修改密码处理类
+        return new WebsiteZhiBoChangePwdHandler(websiteService, apiUrlService); // 返回具体的修改密码处理类
     }
 
     @Override
     public ApiHandler accept() {
-        return null;
+        return new WebsiteZhiBoAcceptHandler(websiteService, apiUrlService); // 返回具体的同意协议处理类;
     }
 
     @Override
@@ -75,7 +75,7 @@ public class WebsiteZhiBoFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler preferences() {
-        return null;         // 智博网站暂不用进行偏好设置
+        return new WebsiteZhiBoPreferencesHandler(websiteService, apiUrlService);   // 智博网站进行偏好设置
     }
 
     @Override

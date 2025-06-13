@@ -120,7 +120,7 @@ public class WebsiteService {
                 if (site.getId().equals(websiteVO.getId())) {
                     if (!Objects.equals(site.getOddsType(), websiteVO.getOddsType())) {
                         // 如果修改了赔率类型，则执行盘口偏好设置
-                        handicapApi.preferences(username, site.getId());
+                        handicapApi.preferences(username, site.getId(), null);
                     }
                     return JSONUtil.parse(websiteVO).toString();
                 }

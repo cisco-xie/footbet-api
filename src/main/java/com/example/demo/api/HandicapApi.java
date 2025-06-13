@@ -219,7 +219,7 @@ public class HandicapApi {
 
                 log.warn("登录失败，第{}次（本次流程内），username={}, websiteId={}", retryCount, username, websiteId);
 
-                if (retryCount >= 2) {
+                if (retryCount >= 5) {
                     log.warn("登录失败达到上限，不再尝试。username={}, websiteId={}", username, websiteId);
                     return;
                 }
@@ -240,7 +240,7 @@ public class HandicapApi {
 
                 log.warn("登录失败，第{}次（本次流程内），username={}, websiteId={}", retryCount, username, websiteId);
 
-                if (retryCount >= 2) {
+                if (retryCount >= 5) {
                     log.warn("登录失败达到上限，不再尝试。username={}, websiteId={}", username, websiteId);
                     return;
                 }
@@ -262,13 +262,27 @@ public class HandicapApi {
 
                 log.warn("登录失败，第{}次（本次流程内），username={}, websiteId={}", retryCount, username, websiteId);
 
-                if (retryCount >= 2) {
+                if (retryCount >= 5) {
                     log.warn("登录失败达到上限，不再尝试。username={}, websiteId={}", username, websiteId);
                     return;
                 }
 
                 // 执行同意协议
                 accept(username, account, websiteId, retryMap);
+            } else if (code != null && code == 111) {
+                // 修改偏好设置
+                retryCount++;
+                retryMap.put(key, retryCount);
+
+                log.warn("登录失败，第{}次（本次流程内），username={}, websiteId={}", retryCount, username, websiteId);
+
+                if (retryCount >= 5) {
+                    log.warn("登录失败达到上限，不再尝试。username={}, websiteId={}", username, websiteId);
+                    return;
+                }
+
+                // 修改偏好设置
+                preferences(username, websiteId, account);
             }
         }
     }
@@ -292,8 +306,10 @@ public class HandicapApi {
             params.putOpt("newPassword", password);
             params.putOpt("chgPassword", password);
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
-            log.warn("暂不支持智博网站自动修改密码：{}", websiteId);
-            return;
+            params.putOpt("token", "Bearer " + accountVO.getToken().getStr("token"));
+            params.putOpt("oldPassword", accountVO.getPassword());
+            params.putOpt("newPassword", password);
+            params.putOpt("chgPassword", password);
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putOpt("uid", uid);
             params.putOpt("username", account);
@@ -301,10 +317,10 @@ public class HandicapApi {
             params.putOpt("chgPassword", password);
         }
         JSONObject result = apiHandler.execute(accountVO, params);
-        accountVO.setPassword(password);
-        accountVO.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
-        accountService.saveAccount(username, websiteId, accountVO);
-        if (result.getBool("success")) {
+        if (result != null && result.getBool("success")) {
+            accountVO.setPassword(password);
+            accountVO.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
+            accountService.saveAccount(username, websiteId, accountVO);
             // 修改成功就执行登录
             processAccountLogin(accountVO, username, websiteId, retryMap);
         }
@@ -328,8 +344,11 @@ public class HandicapApi {
             log.warn("暂不支持平博网站自动修改账户名：{}", websiteId);
             return;
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
-            log.warn("暂不支持智博网站自动修改账户名：{}", websiteId);
-            return;
+            params.putOpt("token", "Bearer " + accountVO.getToken().getStr("token"));
+            String prefix = accountVO.getAccount().substring(0, 6);
+            String suffix = RandomUtil.randomNumbers(4);
+            chkName = prefix + suffix;
+            params.putOpt("loginName", chkName);
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putOpt("uid", uid);
             params.putOpt("username", account);
@@ -374,8 +393,8 @@ public class HandicapApi {
             log.warn("暂不支持平博网站自动修改密码：{}", websiteId);
             return;
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
-            log.warn("暂不支持智博网站自动修改密码：{}", websiteId);
-            return;
+            params.putOpt("token", "Bearer " + accountVO.getToken().getStr("token"));
+            params.putOpt("loginName", chkName);
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putOpt("uid", uid);
             params.putOpt("username", account);
@@ -392,7 +411,7 @@ public class HandicapApi {
     }
 
     // 运行修改密码工厂
-    public void accept(String username, ConfigAccountVO accountVO, String websiteId, Map<String, Integer> retryMap) {
+    public void accept(String username, ConfigAccountVO account, String websiteId, Map<String, Integer> retryMap) {
         TimeInterval timer = DateUtil.timer();
         // 修改密码
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
@@ -406,16 +425,15 @@ public class HandicapApi {
         // 根据不同站点传入不同的参数
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
-            log.warn("暂不支持智博网站自动同意协议：{}", websiteId);
-            return;
+            params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             log.warn("暂不支持新二网站自动同意协议：{}", websiteId);
             return;
         }
-        JSONObject result = apiHandler.execute(accountVO, params);
+        JSONObject result = apiHandler.execute(account, params);
         if (result.getBool("success")) {
             // 同意成功就执行登录
-            processAccountLogin(accountVO, username, websiteId, retryMap);
+            processAccountLogin(account, username, websiteId, retryMap);
         }
     }
 
@@ -620,11 +638,12 @@ public class HandicapApi {
         if (CollUtil.isEmpty(accounts)) {
             return null;
         }
-
-        String key = username + ":" + websiteId;
-        AtomicInteger indexRef = accountIndexMap.computeIfAbsent(key, k -> new AtomicInteger(0));
-
+        // 账号数量
         int size = accounts.size();
+        String key = username + ":" + websiteId;
+        // 使用随机起点初始化轮询索引,避免每次都从0开始，防止短时间内让多个用户请求打在同一个账号上
+        AtomicInteger indexRef = accountIndexMap.computeIfAbsent(key, k -> new AtomicInteger(RandomUtil.randomInt(size)));
+
         for (int i = 0; i < size; i++) {
             int idx = Math.abs(indexRef.getAndIncrement() % size);
             ConfigAccountVO account = accounts.get(idx);
@@ -829,13 +848,16 @@ public class HandicapApi {
      * @param websiteId
      * @return
      */
-    public Object preferences(String username, String websiteId) {
+    public Object preferences(String username, String websiteId, ConfigAccountVO accountVO) {
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
-            if (account.getIsTokenValid() == 0) {
-                // 未登录直接跳过
+            if (accountVO != null && !accountVO.getId().equals(account.getId())) {
+                continue;
+            }
+            if (accountVO == null && account.getIsTokenValid() == 0) {
+                // 指定的账号为空并且列表中的账号未登录直接跳过
                 continue;
             }
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);

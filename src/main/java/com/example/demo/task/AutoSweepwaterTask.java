@@ -69,7 +69,7 @@ public class AutoSweepwaterTask {
                 return;
             }
             // 剔除专门的扫水账号
-            adminUsers.removeIf(adminUser -> !adminUser.getRoles().contains("sweepwater"));
+            adminUsers.removeIf(adminUser -> adminUser.getRoles().contains("sweepwater"));
             if (adminUsers.isEmpty()) {
                 log.info("没有开启投注的平台用户!!!");
                 return;

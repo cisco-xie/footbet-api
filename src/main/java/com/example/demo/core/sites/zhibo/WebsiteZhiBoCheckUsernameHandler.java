@@ -1,4 +1,4 @@
-package com.example.demo.core.sites.pingbo;
+package com.example.demo.core.sites.zhibo;
 
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
@@ -13,95 +13,89 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 
-import java.util.Map;
-
 /**
  * 智博网站 - 登录 API具体实现
  */
 @Component
-public class WebsitePingBoLoginHandler implements ApiHandler {
-
+public class WebsiteZhiBoCheckUsernameHandler implements ApiHandler {
     private final WebsiteService websiteService;
     private final ApiUrlService apiUrlService;
 
     @Autowired
-    public WebsitePingBoLoginHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
+    public WebsiteZhiBoCheckUsernameHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
         this.websiteService = websiteService;
         this.apiUrlService = apiUrlService;
     }
 
-    /**
-     * 构建请求体
-     * @param params 请求参数
-     * @return HttpEntity 请求体
-     */
     @Override
     public HttpEntity<String> buildRequest(JSONObject params) {
         // 构造请求头
         HttpHeaders headers = new HttpHeaders();
         headers.add("accept", "*/*");
-        headers.add("content-type", "application/x-www-form-urlencoded");
+        headers.add("content-type", "application/json");
+        headers.add("locale", "zh_CN");
+        headers.add("authorization", params.getStr("token"));
 
         // 构造请求体
-        String requestBody = String.format("loginId=%s&password=%s&captcha=&captchaToken=",
-                params.getStr("loginId"),
-                params.getStr("password")
-        );
+        JSONObject body = new JSONObject();
+        body.putOpt("loginName", params.getStr("loginName"));
 
-        return new HttpEntity<>(requestBody, headers);
+        return new HttpEntity<>(body.toString(), headers);
     }
 
-    /**
-     * 解析响应体
-     * @param response 响应内容
-     * @return 解析后的数据
-     */
     @Override
     public JSONObject parseResponse(JSONObject params, HttpResponse response) {
-
         // 检查响应状态
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();
+            res.putOpt("success", false);
             if (response.getStatus() == 403) {
                 res.putOpt("code", 403);
-                res.putOpt("success", false);
-                res.putOpt("msg", "账户登录失败");
+                res.putOpt("msg", "账户登录失效");
                 return res;
             }
-            res.putOpt("code", response.getStatus());
-            res.putOpt("success", false);
-            res.putOpt("msg", "账户登录失败");
+            res.putOpt("msg", "账户登录失效");
             return res;
         }
         // 解析响应
         JSONObject responseJson = new JSONObject(response.body());
-
-        // 如果响应中包含错误信息，抛出异常或者其他处理
-        if (responseJson.getInt("code") != 1) {
-            if (responseJson.getInt("code") == 2) {
-                // 首次登录需要修改密码
+        if (!responseJson.getBool("success", false)) {
+            responseJson.putOpt("code", response.getStatus());
+            responseJson.putOpt("success", false);
+            responseJson.putOpt("msg", "昵称设定失败");
+            return responseJson;
+        }
+        /*if (responseJson.containsKey("nextAction") && !responseJson.getStr("nextAction").isBlank()) {
+            if (responseJson.getStr("nextAction").equals("member/changePassword")) {
+                // 需要修改密码
                 responseJson.putOpt("code", 106);
                 responseJson.putOpt("success", false);
-                responseJson.putOpt("msg", "账户昵称或密码错误");
-                return responseJson;
-            } else if (responseJson.getInt("code") == 3) {
+                responseJson.putOpt("msg", "需要修改密码");
+            } else if (responseJson.getStr("nextAction").equals("member/acceptAgreement")) {
                 // 需要同意协议
                 responseJson.putOpt("code", 110);
                 responseJson.putOpt("success", false);
-                responseJson.putOpt("msg", "需接受账户协议");
-                return responseJson;
+                responseJson.putOpt("msg", "需要接受账户协议");
+            } else if (responseJson.getStr("nextAction").equals("member/setLoginName")) {
+                // 需要修改用户登录名
+                responseJson.putOpt("code", 109);
+                responseJson.putOpt("success", false);
+                responseJson.putOpt("msg", "需要修改昵称");
+            } else if (responseJson.getStr("nextAction").equals("member/updatePreferences")) {
+                // 需要保存偏好
+                responseJson.putOpt("code", 111);
+                responseJson.putOpt("success", false);
+                responseJson.putOpt("msg", "需要保存偏好");
             }
-            responseJson.putOpt("success", false);
-            responseJson.putOpt("msg", "账户登录失败");
             return responseJson;
-        }
+        }*/
         responseJson.putOpt("success", true);
-        responseJson.putOpt("msg", "账户登录成功");
+        responseJson.putOpt("msg", "昵称设定成功");
         return responseJson;
     }
 
     /**
-     * 发送登录请求并返回结果
+     * 发送登录请求
      * @param params 请求参数
      * @return 登录结果
      */
@@ -111,17 +105,13 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
-        String apiUrl = apiUrlService.getApiUrl(siteId, "login");
+        String apiUrl = apiUrlService.getApiUrl(siteId, "checkUsername");
+
         // 构建请求
         HttpEntity<String> requestBody = buildRequest(params);
 
-        // 构造请求体
-        String queryParams = String.format("locale=zh_CN&_=%s&withCredentials=true",
-                System.currentTimeMillis()
-        );
-
         // 拼接完整的 URL
-        String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, queryParams);
+        String fullUrl = String.format("%s%s", baseUrl, apiUrl);
 
         // 发送请求
         HttpResponse response = null;
@@ -133,7 +123,7 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
         HttpProxyConfig.configureProxy(request, userConfig);
         response = request.execute();
 
-        // 解析响应并返回
+        // 解析响应
         return parseResponse(params, response);
     }
 }

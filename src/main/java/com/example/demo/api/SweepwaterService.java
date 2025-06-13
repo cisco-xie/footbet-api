@@ -988,10 +988,7 @@ public class SweepwaterService {
                                         );
                                         results.add(sweepwaterDTO);
                                         // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
-                                        log.info("扫水匹配到数据-保存扫水数据");
-                                        String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
-                                        businessPlatformRedissonClient.getList(sweepWaterKey).add(JSONUtil.toJsonStr(sweepwaterDTO));
-                                        // tryBet(username, sweepwaterDTO);
+                                        tryBet(username, sweepwaterDTO);
                                     }
                                     logInfo("平手盘", nameA, key, valueA, nameB, key, valueB, finalValue, oddsScan);
                                 }
@@ -1045,17 +1042,15 @@ public class SweepwaterService {
                                         results.add(sweepwaterDTO);
                                         // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                         log.info("扫水匹配到数据-保存扫水数据");
-                                        String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
-                                        businessPlatformRedissonClient.getList(sweepWaterKey).add(JSONUtil.toJsonStr(sweepwaterDTO));
                                         if ("letBall".equals(key)) {
                                             if (finalValue >= profit.getRollingLetBall()) {
                                                 // 满足利润设置的让球盘水位才进行投注
-                                                // tryBet(username, sweepwaterDTO);
+                                                tryBet(username, sweepwaterDTO);
                                             }
                                         } else if ("overSize".equals(key)) {
                                             if (finalValue >= profit.getRollingSize()) {
                                                 // 满足利润设置的大小盘水位才进行投注
-                                                // tryBet(username, sweepwaterDTO);
+                                                tryBet(username, sweepwaterDTO);
                                             }
                                         }
                                     }

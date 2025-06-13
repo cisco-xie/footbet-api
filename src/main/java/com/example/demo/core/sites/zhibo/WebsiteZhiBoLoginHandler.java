@@ -65,6 +65,30 @@ public class WebsiteZhiBoLoginHandler implements ApiHandler {
             responseJson.putOpt("msg", "账户登录失败");
             return responseJson;
         }
+        if (responseJson.containsKey("nextAction") && !responseJson.getStr("nextAction").isBlank()) {
+            if (responseJson.getStr("nextAction").equals("member/changePassword")) {
+                // 需要修改密码
+                responseJson.putOpt("code", 106);
+                responseJson.putOpt("success", false);
+                responseJson.putOpt("msg", "需要修改密码");
+            } else if (responseJson.getStr("nextAction").equals("member/acceptAgreement")) {
+                // 需要同意协议
+                responseJson.putOpt("code", 110);
+                responseJson.putOpt("success", false);
+                responseJson.putOpt("msg", "需要接受账户协议");
+            } else if (responseJson.getStr("nextAction").equals("member/setLoginName")) {
+                // 需要修改用户登录名
+                responseJson.putOpt("code", 109);
+                responseJson.putOpt("success", false);
+                responseJson.putOpt("msg", "需要修改昵称");
+            } else if (responseJson.getStr("nextAction").equals("member/updatePreferences")) {
+                // 需要保存偏好
+                responseJson.putOpt("code", 111);
+                responseJson.putOpt("success", false);
+                responseJson.putOpt("msg", "需要保存偏好");
+            }
+            return responseJson;
+        }
         responseJson.putOpt("success", true);
         responseJson.putOpt("msg", "账户登录成功");
         return responseJson;
