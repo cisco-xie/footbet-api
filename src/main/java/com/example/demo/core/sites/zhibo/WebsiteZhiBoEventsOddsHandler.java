@@ -54,6 +54,7 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
         // 检查响应状态
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();
+            res.putOpt("code", response.getStatus());
             res.putOpt("success", false);
             if (response.getStatus() == 403) {
                 res.putOpt("code", 403);

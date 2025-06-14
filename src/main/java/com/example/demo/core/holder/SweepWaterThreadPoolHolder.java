@@ -24,6 +24,9 @@ public class SweepWaterThreadPoolHolder {
     // 事件级线程池（内层）
     private final ExecutorService eventExecutor;
 
+    // 轻量配置线程池
+    private final ExecutorService configExecutor;
+
     public SweepWaterThreadPoolHolder() {
         int cpuCoreCount = Math.min(Runtime.getRuntime().availableProcessors() * 4, 100);
 
@@ -36,10 +39,18 @@ public class SweepWaterThreadPoolHolder {
         );
 
         this.eventExecutor = new ThreadPoolExecutor(
-                40, 100,
+                100, 200,
                 60L, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(2000),
                 new ThreadFactoryBuilder().setNameFormat("event-pool-%d").build(),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+
+        this.configExecutor = new ThreadPoolExecutor(
+                8, 16, // 核心线程数和最大线程数
+                30L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(200),
+                new ThreadFactoryBuilder().setNameFormat("config-pool-%d").build(),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
     }
@@ -52,10 +63,16 @@ public class SweepWaterThreadPoolHolder {
         return eventExecutor;
     }
 
+    public ExecutorService getConfigExecutor() {
+        return configExecutor;
+    }
+
     // 优雅关闭线程池示例方法（可在容器关闭时调用）
+    @PreDestroy
     public void shutdown() {
         shutdownExecutor(leagueExecutor);
         shutdownExecutor(eventExecutor);
+        shutdownExecutor(configExecutor);
     }
 
     /**

@@ -78,8 +78,9 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
         // 检查响应状态
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();
+            res.putOpt("code", response.getStatus());
             res.putOpt("success", false);
-            res.putOpt("msg", "账户登录失效");
+            res.putOpt("msg", "获取赔率详情失败");
             return res;
         }
 

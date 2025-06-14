@@ -404,6 +404,8 @@ public class BetService {
         boolean lastOddsTime = isA ? dto.getLastOddsTimeA() : dto.getLastOddsTimeB();
         if (isUnilateral && !lastOddsTime) {
             // 单边投注，当前网站赔率不是最新的，直接跳出不投注
+            result.putOpt("isBet", false);
+            result.putOpt("success", false);
             return result;
         }
         // 校验投注间隔key
@@ -473,12 +475,12 @@ public class BetService {
             } catch (Exception e) {
                 log.warn("用户 {} 投注尝试第 {} 次失败：{}", username, attempt, e.getMessage(), e);
                 // 短暂等待再重试
-                /*try {
-                    Thread.sleep(300L);
+                try {
+                    Thread.sleep(300);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     break;
-                }*/
+                }
             }
         }
 
@@ -512,6 +514,13 @@ public class BetService {
             if (betPreview == null) {
                 attempt++;
                 log.info("[投注预览重试] 第 {} 次失败：返回为 null", attempt);
+                try {
+                    Thread.sleep(300); // 添加延迟
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.warn("投注预览重试等待被中断，终止重试流程");
+                    return null;
+                }
                 continue;
             }
 

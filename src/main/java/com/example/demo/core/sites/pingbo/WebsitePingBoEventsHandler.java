@@ -110,7 +110,7 @@ public class WebsitePingBoEventsHandler implements ApiHandler {
         }
         responseJson.putOpt("success", true);
         responseJson.putOpt("leagues", result);
-        responseJson.putOpt("msg", "获取账户额度成功");
+        responseJson.putOpt("msg", "获取赛事列表成功");
         return responseJson;
     }
 

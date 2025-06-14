@@ -42,7 +42,7 @@ public class AutoLoginTask {
     @Resource
     private ConfigAccountService accountService;
 
-    // @Async("loginTaskExecutor") // ✅ 独立线程池执行
+    @Async("loginTaskExecutor") // ✅ 独立线程池执行
     // 上一次任务完成后再延迟 30 秒执行
     @Scheduled(fixedDelay = 30000)
     public void autoLogin() {

@@ -143,6 +143,7 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
         // 检查响应状态
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();
+            res.putOpt("code", response.getStatus());
             res.putOpt("success", false);
             if (response.getStatus() == 403) {
                 res.putOpt("msg", "账户登录失效");
@@ -514,7 +515,7 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
         }
         responseJson.putOpt("success", true);
         responseJson.putOpt("leagues", result);
-        responseJson.putOpt("msg", "获取账户额度成功");
+        responseJson.putOpt("msg", "获取赛事成功");
         return responseJson;
     }
 

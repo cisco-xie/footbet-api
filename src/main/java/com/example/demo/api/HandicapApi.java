@@ -717,6 +717,11 @@ public class HandicapApi {
                 if (result.getBool("success") && result.get("leagues") != null) {
                     log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{} 获取赛事成功", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), lid, ecid);
                     return result.get("leagues");
+                } else {
+                    if (result.getInt("code") == 429) {
+                        // 被盘口限流了，再延迟个500毫秒
+                        Thread.sleep(500);
+                    }
                 }
                 log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{}, 获取赛事失败,获取结果:{}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), lid, ecid, result);
             } catch (Exception e) {
@@ -936,7 +941,17 @@ public class HandicapApi {
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
-        for (ConfigAccountVO account : accounts) {
+        // 账号数量
+        int size = accounts.size();
+        String key = username + ":" + websiteId;
+        // 使用随机起点初始化轮询索引,避免每次都从0开始，防止短时间内让多个用户请求打在同一个账号上
+        AtomicInteger indexRef = accountIndexMap.computeIfAbsent(key, k -> new AtomicInteger(RandomUtil.randomInt(size)));
+
+        for (int i = 0; i < size; i++) {
+            int idx = Math.abs(indexRef.getAndIncrement() % size);
+            ConfigAccountVO account = accounts.get(idx);
+            log.info("获取赛事列表,网站:{},idx:{},账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, account.getAccount());
+
             if (account.getIsTokenValid() == 0) {
                 // 未登录直接跳过
                 continue;
@@ -1032,7 +1047,17 @@ public class HandicapApi {
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
-        for (ConfigAccountVO account : accounts) {
+        // 账号数量
+        int size = accounts.size();
+        String key = username + ":" + websiteId;
+        // 使用随机起点初始化轮询索引,避免每次都从0开始，防止短时间内让多个用户请求打在同一个账号上
+        AtomicInteger indexRef = accountIndexMap.computeIfAbsent(key, k -> new AtomicInteger(RandomUtil.randomInt(size)));
+
+        for (int i = 0; i < size; i++) {
+            int idx = Math.abs(indexRef.getAndIncrement() % size);
+            ConfigAccountVO account = accounts.get(idx);
+            log.info("获取赛事列表,网站:{},idx:{},账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, account.getAccount());
+
             if (account.getEnable() == 0 || account.getIsTokenValid() == 0) {
                 // 未启用或未登录直接跳过
                 continue;

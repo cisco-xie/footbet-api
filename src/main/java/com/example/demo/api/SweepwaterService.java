@@ -31,6 +31,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RBucket;
+import org.redisson.api.RList;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Lazy;
@@ -112,19 +113,24 @@ public class SweepwaterService {
 
     public List<SweepwaterDTO> getSweepwaters(String username) {
         String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
+        RList<String> list = businessPlatformRedissonClient.getList(key);
 
-        List<String> jsonList = businessPlatformRedissonClient.getList(key);
-
-        if (jsonList == null || jsonList.isEmpty()) {
-            return null;
+        if (list == null || list.isEmpty()) {
+            return Collections.emptyList();
         }
 
-        return jsonList.stream()
+        int size = list.size();
+        // 获取最后 1000 条（如果不足就全部返回）
+        int fromIndex = Math.max(0, size - 1000);
+        List<String> latestJsonList = list.range(fromIndex, size - 1);
+
+        return latestJsonList.stream()
                 .map(json -> JSONUtil.toBean(json, SweepwaterDTO.class))
-                // 排序:id倒叙
+                // 可选：按 ID 倒序排列（如果数据本身不是倒序写入）
                 .sorted(Comparator.comparing(SweepwaterDTO::getId).reversed())
                 .toList();
     }
+
 
     /**
      * 清空扫水列表
@@ -146,202 +152,254 @@ public class SweepwaterService {
         // 扫水专用账号
         String sweepwaterUsername = sweepwaterUsers.get(0).getUsername();
         List<List<BindLeagueVO>> bindLeagueVOList = bindDictService.getAllBindDict(username);
+
+        // 先过滤 bindLeagueVOList，去除 leagueIdA 或 leagueIdB 为空的元素，并过滤事件，剔除 idA 或 idB 为空的事件，剔除无事件的 bindLeagueVO
+        bindLeagueVOList = bindLeagueVOList.stream()
+                .map(leagueGroup -> leagueGroup.stream()
+                        .peek(bindLeagueVO -> {
+                            List<BindTeamVO> filteredEvents = bindLeagueVO.getEvents().stream()
+                                    .filter(event -> StringUtils.isNotBlank(event.getIdA()) && StringUtils.isNotBlank(event.getIdB()))
+                                    .collect(Collectors.toList());
+                            bindLeagueVO.setEvents(filteredEvents);
+                        })
+                        // 剔除没有事件的 bindLeagueVO
+                        .filter(bindLeagueVO -> StringUtils.isNotBlank(bindLeagueVO.getLeagueIdA())
+                                && StringUtils.isNotBlank(bindLeagueVO.getLeagueIdB())
+                                && !bindLeagueVO.getEvents().isEmpty())
+                        .collect(Collectors.toList()))
+                .filter(leagueGroup -> !leagueGroup.isEmpty())
+                .collect(Collectors.toList());
+
+
         if (CollUtil.isEmpty(bindLeagueVOList)) {
             log.warn("无球队绑定数据，平台用户:{}", username);
             return;
         }
+        ExecutorService configExecutor = threadPoolHolder.getConfigExecutor(); // 单独弄个轻量线程池
+        // 并行获取配置项
+        CompletableFuture<OddsScanDTO> oddsScanFuture = CompletableFuture.supplyAsync(() -> settingsService.getOddsScan(username), configExecutor);
+        CompletableFuture<ProfitDTO> profitFuture = CompletableFuture.supplyAsync(() -> settingsService.getProfit(username), configExecutor);
+        CompletableFuture<IntervalDTO> intervalFuture = CompletableFuture.supplyAsync(() -> settingsBetService.getInterval(username), configExecutor);
+        CompletableFuture<LimitDTO> limitFuture = CompletableFuture.supplyAsync(() -> settingsBetService.getLimit(username), configExecutor);
+        CompletableFuture<TypeFilterDTO> typeFilterFuture = CompletableFuture.supplyAsync(() -> settingsBetService.getTypeFilter(username), configExecutor);
+        CompletableFuture<List<OddsRangeDTO>> oddsRangesFuture = CompletableFuture.supplyAsync(() -> settingsFilterService.getOddsRanges(username), configExecutor);
+        CompletableFuture<List<TimeFrameDTO>> timeFramesFuture = CompletableFuture.supplyAsync(() -> settingsFilterService.getTimeFrames(username), configExecutor);
+        CompletableFuture<List<WebsiteVO>> websitesFuture = CompletableFuture.supplyAsync(() -> websiteService.getWebsites(username), configExecutor);
 
-        OddsScanDTO oddsScan = settingsService.getOddsScan(username);
-        ProfitDTO profit = settingsService.getProfit(username);
-        IntervalDTO interval = settingsBetService.getInterval(username);
-        LimitDTO limit = settingsBetService.getLimit(username);
-        TypeFilterDTO typeFilter = settingsBetService.getTypeFilter(username);
-        List<OddsRangeDTO> oddsRanges = settingsFilterService.getOddsRanges(username);
-        List<TimeFrameDTO> timeFrames = settingsFilterService.getTimeFrames(username);
-        List<WebsiteVO> websites = websiteService.getWebsites(username);
-        // 过滤掉未启用的网站
-        websites.removeIf(website -> website.getEnable() == 0);
-        if (CollUtil.isEmpty(websites)) {
-            log.info("无启用网站，平台用户:{}", username);
+        try {
+            CompletableFuture.allOf(
+                    oddsScanFuture, profitFuture, intervalFuture, limitFuture,
+                    typeFilterFuture, oddsRangesFuture, timeFramesFuture, websitesFuture
+            ).get(1, TimeUnit.SECONDS); // 最多等1秒
+
+            // 获取结果
+            OddsScanDTO oddsScan = oddsScanFuture.get();
+            ProfitDTO profit = profitFuture.get();
+            IntervalDTO interval = intervalFuture.get();
+            LimitDTO limit = limitFuture.get();
+            TypeFilterDTO typeFilter = typeFilterFuture.get();
+            List<OddsRangeDTO> oddsRanges = oddsRangesFuture.get();
+            List<TimeFrameDTO> timeFrames = timeFramesFuture.get();
+            List<WebsiteVO> websites = websitesFuture.get();
+
+            // 过滤掉未启用的网站
+            websites.removeIf(website -> website.getEnable() == 0);
+            if (CollUtil.isEmpty(websites)) {
+                log.info("无启用网站，平台用户:{}", username);
+                return;
+            }
+            // 转换为 Map<id, WebsiteVO>
+            Map<String, WebsiteVO> websiteMap = websites.stream()
+                    .collect(Collectors.toMap(WebsiteVO::getId, Function.identity()));
+
+            // 用于记录已获取的 ecid 对应事件，避免重复请求远程 API
+            ConcurrentHashMap<String, JSONArray> ecidFetchFuturesA = new ConcurrentHashMap<>();
+            ConcurrentHashMap<String, JSONArray> ecidFetchFuturesB = new ConcurrentHashMap<>();
+
+            log.info("sweepwater 开始执行，平台用户:{}", username);
+
+            // 联赛级线程池（外层）
+            // ExecutorService leagueExecutor = threadPoolHolder.getLeagueExecutor();
+            // 事件级线程池（内层）
+            // ExecutorService eventExecutor = threadPoolHolder.getEventExecutor();
+
+            // 统计所有 BindLeagueVO 数量
+            int totalBindLeagueCount = bindLeagueVOList.size();
+            int totalEventCount = bindLeagueVOList.stream()
+                    .flatMap(List::stream) // 拍平成所有 BindLeagueVO
+                    .mapToInt(vo -> {
+                        List<BindTeamVO> events = vo.getEvents();
+                        return events != null ? events.size() : 0;
+                    })
+                    .sum();
+
+            int cpuCoreCount = Math.min(Runtime.getRuntime().availableProcessors() * 4, 100);
+            int corePoolSize = Math.min(totalBindLeagueCount, cpuCoreCount);
+            int maxPoolSize = Math.max(totalBindLeagueCount, cpuCoreCount);
+
+            int corePoolSizeEvent = Math.min(totalEventCount, cpuCoreCount);
+            int maxPoolSizeEvent = Math.max(totalEventCount, cpuCoreCount);
+            // 联赛级线程池（外层）
+            ExecutorService leagueExecutor = new ThreadPoolExecutor(
+                    corePoolSize, maxPoolSize,
+                    0L, TimeUnit.SECONDS,
+                    new LinkedBlockingQueue<>(1000),
+                    new ThreadFactoryBuilder().setNameFormat("league-pool-%d").build(),
+                    new ThreadPoolExecutor.AbortPolicy()
+            );
+
+            // 事件级线程池（内层）
+            ExecutorService eventExecutor = new ThreadPoolExecutor(
+                    corePoolSizeEvent, maxPoolSizeEvent,
+                    60L, TimeUnit.SECONDS,
+                    new LinkedBlockingQueue<>(500),
+                    new ThreadFactoryBuilder().setNameFormat("event-pool-%d").build(),
+                    new ThreadPoolExecutor.CallerRunsPolicy()
+            );
+
+            List<CompletableFuture<Void>> leagueFutures = new ArrayList<>();
+
+            for (List<BindLeagueVO> leagueGroup : bindLeagueVOList) {
+                for (BindLeagueVO bindLeagueVO : leagueGroup) {
+                    leagueFutures.add(CompletableFuture.runAsync(() -> {
+                        String websiteIdA = bindLeagueVO.getWebsiteIdA();
+                        String websiteIdB = bindLeagueVO.getWebsiteIdB();
+
+                        if (!websiteMap.containsKey(websiteIdA) || !websiteMap.containsKey(websiteIdB)) {
+                            log.info("扫水任务 - 网站idA[{}]idB[{}]存在未启用状态", websiteIdA, websiteIdB);
+                            return;
+                        }
+                        List<CompletableFuture<Void>> eventFutures = new ArrayList<>();
+
+                        for (BindTeamVO event : bindLeagueVO.getEvents()) {
+                            eventFutures.add(CompletableFuture.runAsync(() -> {
+                                try {
+                                    String ecidA = event.getEcidA();
+                                    String ecidB = event.getEcidB();
+                                    // 根据网站获取对应盘口的赛事列表
+                                    // 并行获取eventsA和eventsB
+                                    TimeInterval getEventsTimer = DateUtil.timer();
+                                    CompletableFuture<JSONArray> futureA = CompletableFuture.supplyAsync(() ->
+                                                    getEventsForEcid(sweepwaterUsername, ecidFetchFuturesA, websiteIdA, bindLeagueVO.getLeagueIdA(), ecidA),
+                                            eventExecutor);
+
+                                    CompletableFuture<JSONArray> futureB = CompletableFuture.supplyAsync(() ->
+                                                    getEventsForEcid(sweepwaterUsername, ecidFetchFuturesB, websiteIdB, bindLeagueVO.getLeagueIdB(), ecidB),
+                                            eventExecutor);
+
+                                    // 等待两个结果都完成
+                                    CompletableFuture.allOf(futureA, futureB).join();
+
+                                    JSONArray eventsA = futureA.get();
+                                    JSONArray eventsB = futureB.get();
+
+                                    log.info("获取网站A:{}和网站B:{}赔率总耗时: {}ms",
+                                            WebsiteType.getById(websiteIdA).getDescription(),
+                                            WebsiteType.getById(websiteIdB).getDescription(),
+                                            getEventsTimer.interval());
+
+                                    if (eventsA == null || eventsB == null) return;
+                                    // 平台绑定球队赛事对应获取盘口赛事列表
+                                    JSONObject eventAJson = findEventByLeagueId(eventsA, bindLeagueVO.getLeagueIdA());
+                                    JSONObject eventBJson = findEventByLeagueId(eventsB, bindLeagueVO.getLeagueIdB());
+
+                                    if (eventAJson == null || eventBJson == null) return;
+
+                                    aggregateEventOdds(
+                                            username,
+                                            oddsScan,
+                                            profit,
+                                            interval,
+                                            limit,
+                                            oddsRanges,
+                                            timeFrames,
+                                            typeFilter,
+                                            websiteMap.get(websiteIdA), websiteMap.get(websiteIdB),
+                                            eventAJson, eventBJson,
+                                            event.getNameA(), event.getNameB(),
+                                            websiteIdA, websiteIdB,
+                                            bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(),
+                                            event.getIdA(), event.getIdB(),
+                                            event.getIsHomeA(), event.getIsHomeB()
+                                    );
+                                } catch (Exception ex) {
+                                    log.error("扫水事件处理异常，平台用户:{}，联赛:{} - {}，事件:{} - {}", username,
+                                            bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(),
+                                            event.getNameA(), event.getNameB(), ex);
+                                }
+                            }, eventExecutor).orTimeout(30, TimeUnit.SECONDS)
+                                    .exceptionally(ex -> {
+                                        log.warn("事件任务异常，平台用户:{}，联赛:{}-{}，异常:", username,
+                                                bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(), ex);
+                                        return null;
+                                    }));
+                        }
+
+                        // 等待当前联赛所有事件处理完
+                        try {
+                            CompletableFuture.allOf(eventFutures.toArray(new CompletableFuture[0])).get(60, TimeUnit.SECONDS);
+                        } catch (TimeoutException te) {
+                            log.warn("联赛任务超时，平台用户:{}，联赛:{}-{}", username, bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB());
+                        } catch (Exception e) {
+                            log.error("联赛任务异常，平台用户:{}，联赛:{}-{}，异常:{}", username,
+                                    bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(), e.getMessage(), e);
+                        }
+
+                    }, leagueExecutor));
+                }
+            }
+
+            // 等待所有联赛级任务执行完毕
+            try {
+                CompletableFuture.allOf(leagueFutures.toArray(new CompletableFuture[0])).get(10, TimeUnit.MINUTES);
+            } catch (TimeoutException te) {
+                log.warn("扫水主流程执行超时，平台用户:{}", username);
+            } catch (Exception e) {
+                log.error("扫水主流程执行异常，平台用户:{}，异常信息:{}", username, e.getMessage(), e);
+            } finally {
+                PriorityTaskExecutor.shutdownExecutor(leagueExecutor);
+                PriorityTaskExecutor.shutdownExecutor(eventExecutor);
+            }
+        } catch (TimeoutException te) {
+            log.warn("获取配置超时，平台用户:{}", username);
+            return;
+        } catch (Exception ex) {
+            log.error("获取配置失败，平台用户:{}，异常:{}", username, ex.getMessage(), ex);
             return;
         }
-
-        // 转换为 Map<id, WebsiteVO>
-        Map<String, WebsiteVO> websiteMap = websites.stream()
-                .collect(Collectors.toMap(WebsiteVO::getId, Function.identity()));
-        // 用于记录已获取的 ecid 对应事件，避免重复请求远程 API
-        // Map<String, JSONArray> fetchedEcidSetA = new ConcurrentHashMap<>();
-        // Map<String, JSONArray> fetchedEcidSetB = new ConcurrentHashMap<>();
-        ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFuturesA = new ConcurrentHashMap<>();
-        ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFuturesB = new ConcurrentHashMap<>();
-
-        log.info("sweepwater 开始执行，平台用户:{}", username);
-
-        // 联赛级线程池（外层）
-        ExecutorService leagueExecutor = threadPoolHolder.getLeagueExecutor();
-        // 事件级线程池（内层）
-        ExecutorService eventExecutor = threadPoolHolder.getEventExecutor();
-
-        List<CompletableFuture<Void>> leagueFutures = new ArrayList<>();
-
-        for (List<BindLeagueVO> leagueGroup : bindLeagueVOList) {
-            for (BindLeagueVO bindLeagueVO : leagueGroup) {
-                leagueFutures.add(CompletableFuture.runAsync(() -> {
-                    if (StringUtils.isBlank(bindLeagueVO.getLeagueIdA()) || StringUtils.isBlank(bindLeagueVO.getLeagueIdB())) {
-                        return;
-                    }
-
-                    String websiteIdA = bindLeagueVO.getWebsiteIdA();
-                    String websiteIdB = bindLeagueVO.getWebsiteIdB();
-
-                    if (!websiteMap.containsKey(websiteIdA) || !websiteMap.containsKey(websiteIdB)) {
-                        log.info("扫水任务 - 网站idA[{}]idB[{}]存在未启用状态", websiteIdA, websiteIdB);
-                        return;
-                    }
-                    List<CompletableFuture<Void>> eventFutures = new ArrayList<>();
-
-                    for (BindTeamVO event : bindLeagueVO.getEvents()) {
-                        eventFutures.add(CompletableFuture.runAsync(() -> {
-                            try {
-                                if (StringUtils.isBlank(event.getIdA()) || StringUtils.isBlank(event.getIdB())) {
-                                    return;
-                                }
-
-                                String ecidA = event.getEcidA();
-                                String ecidB = event.getEcidB();
-                                // 根据网站获取对应盘口的赛事列表
-                                // 串型执行
-                                TimeInterval getEventsForEcidTimerA = DateUtil.timer();
-                                JSONArray eventsA = getEventsForEcid(sweepwaterUsername, ecidFetchFuturesA, websiteIdA, bindLeagueVO.getLeagueIdA(), ecidA);
-                                log.info("获取 网站A:{} 赔率 耗时: {}", WebsiteType.getById(websiteIdA).getDescription(), getEventsForEcidTimerA.interval());
-                                TimeInterval getEventsForEcidTimerB = DateUtil.timer();
-                                JSONArray eventsB = getEventsForEcid(sweepwaterUsername, ecidFetchFuturesB, websiteIdB, bindLeagueVO.getLeagueIdB(), ecidB);
-                                log.info("获取 网站B:{} 赔率 耗时: {}", WebsiteType.getById(websiteIdB).getDescription(), getEventsForEcidTimerB.interval());
-
-                                if (eventsA == null || eventsB == null) return;
-                                // 平台绑定球队赛事对应获取盘口赛事列表
-                                JSONObject eventAJson = findEventByLeagueId(eventsA, bindLeagueVO.getLeagueIdA());
-                                JSONObject eventBJson = findEventByLeagueId(eventsB, bindLeagueVO.getLeagueIdB());
-
-                                if (eventAJson == null || eventBJson == null) return;
-
-                                List<SweepwaterDTO> results = aggregateEventOdds(
-                                        username,
-                                        oddsScan,
-                                        profit,
-                                        interval,
-                                        limit,
-                                        oddsRanges,
-                                        timeFrames,
-                                        typeFilter,
-                                        websiteMap.get(websiteIdA), websiteMap.get(websiteIdB),
-                                        eventAJson, eventBJson,
-                                        event.getNameA(), event.getNameB(),
-                                        websiteIdA, websiteIdB,
-                                        bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(),
-                                        event.getIdA(), event.getIdB(),
-                                        event.getIsHomeA(), event.getIsHomeB()
-                                );
-                            } catch (Exception ex) {
-                                log.error("扫水事件处理异常，平台用户:{}，联赛:{} - {}，事件:{} - {}", username,
-                                        bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(),
-                                        event.getNameA(), event.getNameB(), ex);
-                            }
-                        }, eventExecutor).orTimeout(30, TimeUnit.SECONDS)
-                                .exceptionally(ex -> {
-                                    log.warn("事件任务异常，平台用户:{}，联赛:{}-{}，异常:{}", username,
-                                            bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(), ex.getMessage());
-                                    return null;
-                                }));
-                    }
-
-                    // 等待当前联赛所有事件处理完
-                    try {
-                        CompletableFuture.allOf(eventFutures.toArray(new CompletableFuture[0])).get(60, TimeUnit.SECONDS);
-                    } catch (TimeoutException te) {
-                        log.warn("联赛任务超时，平台用户:{}，联赛:{}-{}", username, bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB());
-                    } catch (Exception e) {
-                        log.error("联赛任务异常，平台用户:{}，联赛:{}-{}，异常:{}", username,
-                                bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(), e.getMessage(), e);
-                    }
-
-                }, leagueExecutor));
-            }
-        }
-
-        // 等待所有联赛级任务执行完毕
-        try {
-            CompletableFuture.allOf(leagueFutures.toArray(new CompletableFuture[0])).get(10, TimeUnit.MINUTES);
-        } catch (TimeoutException te) {
-            log.warn("扫水主流程执行超时，平台用户:{}", username);
-        } catch (Exception e) {
-            log.error("扫水主流程执行异常，平台用户:{}，异常信息:{}", username, e.getMessage(), e);
-        }
-
         log.info("扫水结束，平台用户:{}，耗时:{}毫秒", username, timerTotal.interval());
     }
 
-    private JSONArray getEventsForEcid(String username,
-                                       ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures,
-                                       String websiteId, String leagueId, String ecid) {
+    /**
+     * 拉取比赛赔率
+     * @param username
+     * @param ecidCache
+     * @param websiteId
+     * @param leagueId
+     * @param ecid
+     * @return
+     */
+    public JSONArray getEventsForEcid(String username,
+                                      ConcurrentHashMap<String, JSONArray> ecidCache,
+                                      String websiteId, String leagueId, String ecid) {
         String cacheKey = StringUtils.isNotBlank(ecid) ? ecid : websiteId;
 
-        // 先看缓存是否已有对应的 CompletableFuture
-        CompletableFuture<JSONArray> future = ecidFetchFutures.get(cacheKey);
-        if (future != null) {
-            try {
-                log.info("从缓存中获取websiteId:{}, cacheKey:{}", websiteId, cacheKey);
-                return future.get();  // 等待缓存中的请求完成，获取结果
-            } catch (Exception e) {
-                log.error("获取缓存 CompletableFuture 结果异常, key: " + cacheKey, e);
-                // 失败时可以选择移除缓存，避免脏数据
-                ecidFetchFutures.remove(cacheKey);
-            }
-        }
-
-        // 没有缓存，创建新的 CompletableFuture 请求，并放入缓存
-        CompletableFuture<JSONArray> newFuture = CompletableFuture.supplyAsync(() -> {
+        return ecidCache.computeIfAbsent(cacheKey, key -> {
             try {
                 JSONArray events = (JSONArray) handicapApi.eventsOdds(
                         username,
                         websiteId,
                         StringUtils.isNotBlank(ecid) ? leagueId : null,
                         StringUtils.isNotBlank(ecid) ? ecid : null);
-                if (events == null) {
-                    log.warn("获取到空赛事数据: key={}", cacheKey);
-                    return new JSONArray();
-                }
-                log.debug("成功拉取赛事数据: key={}, size={}", cacheKey, events.size());
-                return events;
+                return events != null ? events : new JSONArray();
             } catch (Exception e) {
-                log.error("拉取eventsOdds异常 - 用户:{}, 网站:{}, 联赛:{}, ecid:{}",
-                        username, websiteId, leagueId, ecid, e);
+                log.error("拉取eventsOdds异常: key={}, 用户={}, 网站={}, 联赛={}, ecid={}",
+                        key, username, websiteId, leagueId, ecid, e);
                 return new JSONArray();
             }
         });
-
-        // 使用 putIfAbsent 保证并发时只有一个请求被缓存
-        CompletableFuture<JSONArray> existingFuture = ecidFetchFutures.putIfAbsent(cacheKey, newFuture);
-        if (existingFuture != null) {
-            // 其他线程已先一步put了future，使用它并取消新建的
-            try {
-                return existingFuture.get();
-            } catch (Exception e) {
-                log.error("获取已缓存 CompletableFuture 结果异常, key: " + cacheKey, e);
-                ecidFetchFutures.remove(cacheKey);
-                return null;
-            }
-        } else {
-            // 新建的future为唯一缓存，等待返回结果
-            try {
-                return newFuture.get();
-            } catch (Exception e) {
-                log.error("执行新建 CompletableFuture 结果异常, key: " + cacheKey, e);
-                ecidFetchFutures.remove(cacheKey);
-                return null;
-            }
-        }
     }
+
 
     private JSONObject findEventByLeagueId(JSONArray events, String leagueId) {
         for (Object eventObj : events) {
@@ -352,276 +410,6 @@ public class SweepwaterService {
         }
         return null; // 如果没有找到，返回null
     }
-
-    /*public List<SweepwaterDTO> aggregateEventOdds(String username, OddsScanDTO oddsScan, ProfitDTO profit, IntervalDTO interval, LimitDTO limit, List<OddsRangeDTO> oddsRanges, List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter, WebsiteVO websiteA, WebsiteVO websiteB, JSONObject eventAJson, JSONObject eventBJson, String bindTeamNameA, String bindTeamNameB, String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, boolean isHomeA, boolean isHomeB) {
-        List<SweepwaterDTO> results = new ArrayList<>();
-        // 遍历第一个 JSON 的事件列表
-        JSONArray eventsA = eventAJson.getJSONArray("events");
-        JSONArray eventsB = eventBJson.getJSONArray("events");
-        for (Object eventA : eventsA) {
-            JSONObject aJson = (JSONObject) eventA;
-            String nameA = aJson.getStr("name");
-            String scoreA = aJson.getStr("score");
-            int reTimeA = aJson.getInt("reTime");        // 比赛时长
-            String sessionA = aJson.getStr("session");      // 赛事阶段
-            // 限制赛事时间范围 start
-            if ("HT".equalsIgnoreCase(sessionA)) {
-                // 场间休息
-            } else if ("1H".equalsIgnoreCase(sessionA)) {
-                // 上半场
-                Optional<TimeFrameDTO> timeFrameDTOA = timeFrames.stream()
-                        .filter(w -> w.getBallType() == 1 && w.getCourseType() == 1)
-                        .findFirst();
-                if (timeFrameDTOA.isPresent()) {
-                    TimeFrameDTO timeFrameA = timeFrameDTOA.get();
-                    // 使用 oddsGreaterA
-                    if (reTimeA < timeFrameA.getTimeFormSec() || reTimeA > timeFrameA.getTimeToSec()) {
-                        log.info("当前赛事时间:{}不在[{}-{}]范围内", reTimeA, timeFrameA.getTimeFormSec(), timeFrameA.getTimeToSec());
-                        continue;
-                    }
-                }
-            } else if ("2H".equalsIgnoreCase(sessionA)) {
-                // 下半场（即全场）
-                Optional<TimeFrameDTO> timeFrameDTOA = timeFrames.stream()
-                        .filter(w -> w.getBallType() == 1 && w.getCourseType() == 2)
-                        .findFirst();
-                if (timeFrameDTOA.isPresent()) {
-                    TimeFrameDTO timeFrameA = timeFrameDTOA.get();
-                    // 使用 oddsGreaterA
-                    if (reTimeA < timeFrameA.getTimeFormSec() || reTimeA > timeFrameA.getTimeToSec()) {
-                        log.info("当前赛事时间:{}不在[{}-{}]范围内", reTimeA, timeFrameA.getTimeFormSec(), timeFrameA.getTimeToSec());
-                        continue;
-                    }
-                }
-            }
-            // 限制赛事时间范围 end
-            JSONObject fullCourtA = new JSONObject();
-            JSONObject firstHalfA = new JSONObject();
-            if (websiteA.getFullCourt() == 1) {
-                // 开启全场
-                fullCourtA = aJson.getJSONObject("fullCourt");
-                if (websiteA.getBigBall() == 0 && isHomeA) {
-                    // 关闭大球,主队是大球,直接清空大小球信息
-                    fullCourtA.putOpt("overSize", new JSONObject());
-                }
-                if (websiteA.getSmallBall() == 0 && !isHomeA) {
-                    // 关闭小球,客队是小球,直接清空大小球信息
-                    fullCourtA.putOpt("overSize", new JSONObject());
-                }
-                if (websiteA.getHangingWall() == 0) {
-                    // 关闭上盘
-                    JSONObject letBall = fullCourtA.getJSONObject("letBall");
-                    if (letBall != null && !letBall.isEmpty()) {
-                        for (Object v : letBall.values()) {
-                            JSONObject letBallInfo = JSONUtil.parseObj(v);
-                            if (letBallInfo.containsKey("wall") && "hanging".equals(letBallInfo.getStr("wall"))) {
-                                fullCourtA.putOpt("letBall", new JSONObject());
-                            }
-                        }
-                    }
-                }
-                if (websiteA.getFootWall() == 0) {
-                    // 关闭下盘
-                    JSONObject letBall = fullCourtA.getJSONObject("letBall");
-                    if (letBall != null && !letBall.isEmpty()) {
-                        for (Object v : letBall.values()) {
-                            JSONObject letBallInfo = JSONUtil.parseObj(v);
-                            if (letBallInfo.containsKey("wall") && "foot".equals(letBallInfo.getStr("wall"))) {
-                                fullCourtA.putOpt("letBall", new JSONObject());
-                            }
-                        }
-                    }
-                }
-                if (typeFilter != null && typeFilter.getFlatPlate() != null && typeFilter.getFlatPlate() == 1) {
-                    // 软件设置-投注相关-盘口类型过滤选项  不做·让球盘·平手盘
-                    JSONObject letBall = fullCourtA.getJSONObject("letBall");
-                    if (letBall != null && !letBall.isEmpty()) {
-                        letBall.remove("0");
-                    }
-                }
-            }
-            if (websiteA.getFirstHalf() == 1) {
-                // 开启上半场
-                firstHalfA = aJson.getJSONObject("firstHalf");
-                if (websiteA.getBigBall() == 0 && isHomeA) {
-                    // 关闭大球,主队是大球,直接清空大小球信息
-                    firstHalfA.putOpt("overSize", new JSONObject());
-                }
-                if (websiteA.getSmallBall() == 0 && !isHomeA) {
-                    // 关闭小球,客队是小球,直接清空大小球信息
-                    firstHalfA.putOpt("overSize", new JSONObject());
-                }
-                if (websiteA.getHangingWall() == 0) {
-                    // 关闭上盘
-                    JSONObject letBall = firstHalfA.getJSONObject("letBall");
-                    if (letBall != null && !letBall.isEmpty()) {
-                        for (Object v : letBall.values()) {
-                            JSONObject letBallInfo = JSONUtil.parseObj(v);
-                            if (letBallInfo.containsKey("wall") && "hanging".equals(letBallInfo.getStr("wall"))) {
-                                firstHalfA.putOpt("letBall", new JSONObject());
-                            }
-                        }
-                    }
-                }
-                if (websiteA.getFootWall() == 0) {
-                    // 关闭下盘
-                    JSONObject letBall = firstHalfA.getJSONObject("letBall");
-                    if (letBall != null && !letBall.isEmpty()) {
-                        for (Object v : letBall.values()) {
-                            JSONObject letBallInfo = JSONUtil.parseObj(v);
-                            if (letBallInfo.containsKey("wall") && "foot".equals(letBallInfo.getStr("wall"))) {
-                                firstHalfA.putOpt("letBall", new JSONObject());
-                            }
-                        }
-                    }
-                }
-                if (typeFilter != null && typeFilter.getFlatPlate() != null && typeFilter.getFlatPlate() == 1) {
-                    // 软件设置-投注相关-盘口类型过滤选项  不做·让球盘·平手盘
-                    JSONObject letBall = firstHalfA.getJSONObject("letBall");
-                    if (letBall != null && !letBall.isEmpty()) {
-                        letBall.remove("0");
-                    }
-                }
-            }
-
-            // 遍历第二个 JSON 的事件列表
-            for (Object event2 : eventsB) {
-                JSONObject bJson = (JSONObject) event2;
-                String nameB = bJson.getStr("name");
-                String scoreB = bJson.getStr("score");
-                int reTimeB = bJson.getInt("reTime");        // 比赛时长
-                String sessionB = bJson.getStr("session");      // 赛事阶段
-                // 限制赛事时间范围 start
-                if ("HT".equalsIgnoreCase(sessionB)) {
-                    // 场间休息
-                } else if ("1H".equalsIgnoreCase(sessionB)) {
-                    // 上半场
-                    Optional<TimeFrameDTO> timeFrameDTOB = timeFrames.stream()
-                            .filter(w -> w.getBallType() == 1 && w.getCourseType() == 1)
-                            .findFirst();
-                    if (timeFrameDTOB.isPresent()) {
-                        TimeFrameDTO timeFrameB = timeFrameDTOB.get();
-                        // 使用 oddsGreaterA
-                        if (reTimeB < timeFrameB.getTimeFormSec() || reTimeB > timeFrameB.getTimeToSec()) {
-                            log.info("当前赛事时间:{}不在[{}-{}]范围内", reTimeB, timeFrameB.getTimeFormSec(), timeFrameB.getTimeToSec());
-                            continue;
-                        }
-                    }
-                } else if ("2H".equalsIgnoreCase(sessionB)) {
-                    // 下半场（即全场）
-                    Optional<TimeFrameDTO> timeFrameDTOB = timeFrames.stream()
-                            .filter(w -> w.getBallType() == 1 && w.getCourseType() == 2)
-                            .findFirst();
-                    if (timeFrameDTOB.isPresent()) {
-                        TimeFrameDTO timeFrameB = timeFrameDTOB.get();
-                        // 使用 oddsGreaterA
-                        if (reTimeB < timeFrameB.getTimeFormSec() || reTimeB > timeFrameB.getTimeToSec()) {
-                            log.info("当前赛事时间:{}不在[{}-{}]范围内", reTimeB, timeFrameB.getTimeFormSec(), timeFrameB.getTimeToSec());
-                            continue;
-                        }
-                    }
-                }
-                // 限制赛事时间范围 end
-                JSONObject fullCourtB = new JSONObject();
-                JSONObject firstHalfB = new JSONObject();
-                if (websiteB.getFullCourt() == 1) {
-                    // 开启全场
-                    fullCourtB = bJson.getJSONObject("fullCourt");
-                    if (websiteB.getBigBall() == 0 && isHomeB) {
-                        // 关闭大球,主队是大球,直接清空大小球信息
-                        fullCourtB.putOpt("overSize", new JSONObject());
-                    }
-                    if (websiteB.getSmallBall() == 0 && !isHomeB) {
-                        // 关闭小球,客队是小球,直接清空大小球信息
-                        fullCourtB.putOpt("overSize", new JSONObject());
-                    }
-                    if (websiteB.getHangingWall() == 0) {
-                        // 关闭上盘
-                        JSONObject letBall = fullCourtB.getJSONObject("letBall");
-                        if (letBall != null && !letBall.isEmpty()) {
-                            for (Object v : letBall.values()) {
-                                JSONObject letBallInfo = JSONUtil.parseObj(v);
-                                if (letBallInfo.containsKey("wall") && "hanging".equals(letBallInfo.getStr("wall"))) {
-                                    fullCourtB.putOpt("letBall", new JSONObject());
-                                }
-                            }
-                        }
-                    }
-                    if (websiteB.getFootWall() == 0) {
-                        // 关闭下盘
-                        JSONObject letBall = fullCourtB.getJSONObject("letBall");
-                        if (letBall != null && !letBall.isEmpty()) {
-                            for (Object v : letBall.values()) {
-                                JSONObject letBallInfo = JSONUtil.parseObj(v);
-                                if (letBallInfo.containsKey("wall") && "foot".equals(letBallInfo.getStr("wall"))) {
-                                    fullCourtB.putOpt("letBall", new JSONObject());
-                                }
-                            }
-                        }
-                    }
-                    if (typeFilter != null && typeFilter.getFlatPlate() != null && typeFilter.getFlatPlate() == 1) {
-                        // 软件设置-投注相关-盘口类型过滤选项  不做·让球盘·平手盘
-                        JSONObject letBall = fullCourtB.getJSONObject("letBall");
-                        if (letBall != null && !letBall.isEmpty()) {
-                            letBall.remove("0");
-                        }
-                    }
-                }
-                if (websiteB.getFirstHalf() == 1) {
-                    // 开启上半场
-                    firstHalfB = bJson.getJSONObject("firstHalf");
-                    if (websiteB.getBigBall() == 0 && isHomeB) {
-                        // 关闭大球,主队是大球,直接清空大小球信息
-                        firstHalfB.putOpt("overSize", new JSONObject());
-                    }
-                    if (websiteB.getSmallBall() == 0 && !isHomeB) {
-                        // 关闭小球,客队是小球,直接清空大小球信息
-                        firstHalfB.putOpt("overSize", new JSONObject());
-                    }
-                    if (websiteB.getHangingWall() == 0) {
-                        // 关闭上盘
-                        JSONObject letBall = firstHalfB.getJSONObject("letBall");
-                        if (letBall != null && !letBall.isEmpty()) {
-                            for (Object v : letBall.values()) {
-                                JSONObject letBallInfo = JSONUtil.parseObj(v);
-                                if (letBallInfo.containsKey("wall") && "hanging".equals(letBallInfo.getStr("wall"))) {
-                                    firstHalfB.putOpt("letBall", new JSONObject());
-                                }
-                            }
-                        }
-                    }
-                    if (websiteB.getFootWall() == 0) {
-                        // 关闭下盘
-                        JSONObject letBall = firstHalfB.getJSONObject("letBall");
-                        if (letBall != null && !letBall.isEmpty()) {
-                            for (Object v : letBall.values()) {
-                                JSONObject letBallInfo = JSONUtil.parseObj(v);
-                                if (letBallInfo.containsKey("wall") && "foot".equals(letBallInfo.getStr("wall"))) {
-                                    firstHalfB.putOpt("letBall", new JSONObject());
-                                }
-                            }
-                        }
-                    }
-                    if (typeFilter != null && typeFilter.getFlatPlate() != null && typeFilter.getFlatPlate() == 1) {
-                        // 软件设置-投注相关-盘口类型过滤选项  不做·让球盘·平手盘
-                        JSONObject letBall = firstHalfB.getJSONObject("letBall");
-                        if (letBall != null && !letBall.isEmpty()) {
-                            letBall.remove("0");
-                        }
-                    }
-                }
-
-                // 检查是否是相反的队伍
-                if (nameA.equals(bindTeamNameA) && !nameB.equals(bindTeamNameB) ||
-                        nameA.equals(bindTeamNameB) && !nameB.equals(bindTeamNameA)) {
-                    // 合并 fullCourt 和 firstHalf 数据
-                    processFullCourtOdds(username, oddsScan, profit, interval, limit, oddsRanges, fullCourtA, fullCourtB, "fullCourt", nameA, nameB, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, results, scoreA, scoreB);
-                    processFullCourtOdds(username, oddsScan, profit, interval, limit, oddsRanges, firstHalfA, firstHalfB, "firstHalf", nameA, nameB, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, results, scoreA, scoreB);
-                }
-            }
-        }
-        return results;
-    }*/
 
     /**
      * 处理事件赔率聚合
@@ -987,6 +775,8 @@ public class SweepwaterService {
                                                 valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio")
                                         );
                                         results.add(sweepwaterDTO);
+                                        // String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
+                                        // businessPlatformRedissonClient.getList(sweepWaterKey).add(JSONUtil.toJsonStr(sweepwaterDTO));
                                         // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                         tryBet(username, sweepwaterDTO);
                                     }
@@ -1040,6 +830,8 @@ public class SweepwaterService {
                                                 valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio")
                                                 );
                                         results.add(sweepwaterDTO);
+                                        // String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
+                                        // businessPlatformRedissonClient.getList(sweepWaterKey).add(JSONUtil.toJsonStr(sweepwaterDTO));
                                         // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                         log.info("扫水匹配到数据-保存扫水数据");
                                         if ("letBall".equals(key)) {

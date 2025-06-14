@@ -82,7 +82,7 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
 
         // 1. 检查 HTTP 响应状态码
         if (status != 200) {
-            log.warn("[平博][投注][失败][状态码={}]", status);
+            log.warn("[平博][投注预览][失败][状态码={}]", status);
 
             result.putOpt("code", status);
             result.putOpt("success", false);
