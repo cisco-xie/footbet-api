@@ -23,7 +23,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -195,7 +194,7 @@ public class SettingsService {
      * @param username
      * @return
      */
-    public BetAmountDTO getBetAmout(String username) {
+    public BetAmountDTO getBetAmount(String username) {
 
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_AMOUNT_PREFIX, username);
 
@@ -213,7 +212,7 @@ public class SettingsService {
      * @param username
      * @return
      */
-    public void saveBetAmout(String username, BetAmountVO betAmountVO) {
+    public void saveBetAmount(String username, BetAmountVO betAmountVO) {
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_AMOUNT_PREFIX, username);
         // 从 Redis 中获取数据
         businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(betAmountVO));

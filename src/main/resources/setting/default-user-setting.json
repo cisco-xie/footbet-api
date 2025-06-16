@@ -14,7 +14,9 @@
   },
   "amount": {
     "type": 1,
-    "amount": 200
+    "amountZhiBo": 200,
+    "amountPingBo": 200,
+    "amountXinEr": 200
   },
   "oddsscan": {
     "waterLevelFrom": 1.85,

@@ -111,7 +111,7 @@ public class SettingsGeneralController extends BaseController {
     public Result add(@RequestBody BetAmountVO betAmountVO) {
         AdminLoginDTO admin = getUser();
         // 调用服务层方法新增网站
-        settingsService.saveBetAmout(admin.getUsername(), betAmountVO);
+        settingsService.saveBetAmount(admin.getUsername(), betAmountVO);
         return Result.success();
     }
 
@@ -120,6 +120,6 @@ public class SettingsGeneralController extends BaseController {
     public Result<BetAmountDTO> getBetAmout() {
         AdminLoginDTO admin = getUser();
         // 调用服务层方法获取网站列表
-        return Result.success(settingsService.getBetAmout(admin.getUsername()));
+        return Result.success(settingsService.getBetAmount(admin.getUsername()));
     }
 }

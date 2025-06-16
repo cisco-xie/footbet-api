@@ -182,7 +182,7 @@ public class BetService {
         sweepwaters.removeIf(s -> s.getIsBet() == 1);
         LimitDTO limitDTO = settingsBetService.getLimit(username);
         IntervalDTO intervalDTO = settingsBetService.getInterval(username);
-        BetAmountDTO amountDTO = settingsService.getBetAmout(username);
+        BetAmountDTO amountDTO = settingsService.getBetAmount(username);
         AdminLoginDTO admin = adminService.getAdmin(username);
         // CPU核数*4或者最大100线程
         int cpuCoreCount = Math.min(Runtime.getRuntime().availableProcessors() * 4, 100);
@@ -383,7 +383,7 @@ public class BetService {
         JSONObject result = new JSONObject();
         String score = isA ? dto.getScoreA() : dto.getScoreB();
         // 构建投注参数并调用投注接口
-        JSONObject params = buildBetParams(dto, amountDTO.getAmount(), isA);
+        JSONObject params = buildBetParams(dto, amountDTO, isA);
 
         // 投注
         JSONObject betPreview = buildBetInfo(username, websiteId, params);
@@ -402,11 +402,25 @@ public class BetService {
         }
 
         boolean lastOddsTime = isA ? dto.getLastOddsTimeA() : dto.getLastOddsTimeB();
-        if (isUnilateral && !lastOddsTime) {
-            // 单边投注，当前网站赔率不是最新的，直接跳出不投注
-            result.putOpt("isBet", false);
-            result.putOpt("success", false);
-            return result;
+        if (isUnilateral) {
+            if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1 && lastOddsTime) {
+                // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
+                result.putOpt("isBet", false);
+                result.putOpt("success", false);
+                return result;
+            } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2 && !lastOddsTime) {
+                // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
+                result.putOpt("isBet", false);
+                result.putOpt("success", false);
+                return result;
+            }
+
+            if (limitDTO.getWebsiteLimit() != null && !limitDTO.getWebsiteLimit().equals(websiteId)) {
+                // 单边投注，当前网站不是所指定的网站，直接跳出不投注
+                result.putOpt("isBet", false);
+                result.putOpt("success", false);
+                return result;
+            }
         }
         // 校验投注间隔key
         String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, eventId);
@@ -688,25 +702,25 @@ public class BetService {
     /**
      * 构建投注参数
      */
-    private JSONObject buildBetParams(SweepwaterBetDTO sweepwaterDTO, BigDecimal amount, boolean isA) {
+    private JSONObject buildBetParams(SweepwaterBetDTO sweepwaterDTO, BetAmountDTO amount, boolean isA) {
         JSONObject params = new JSONObject();
         String websiteId = isA ? sweepwaterDTO.getWebsiteIdA() : sweepwaterDTO.getWebsiteIdB();
 
         if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("marketSelectionId", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
-            params.putOpt("stake", amount);
+            params.putOpt("stake", amount.getAmountZhiBo());
             params.putOpt("odds", isA ? sweepwaterDTO.getOddsA() : sweepwaterDTO.getOddsB());
             params.putOpt("decimalOdds", isA ? sweepwaterDTO.getDecimalOddsA() : sweepwaterDTO.getDecimalOddsB());
             params.putOpt("handicap", isA ? sweepwaterDTO.getHandicapA() : sweepwaterDTO.getHandicapB());
             params.putOpt("score", isA ? sweepwaterDTO.getScoreA() : sweepwaterDTO.getScoreB());
         } else if (WebsiteType.PINGBO.getId().equals(websiteId)) {
-            params.putOpt("stake", amount);
+            params.putOpt("stake", amount.getAmountPingBo());
             params.putOpt("odds", isA ? sweepwaterDTO.getOddsA() : sweepwaterDTO.getOddsB());
             params.putOpt("oddsId", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
             params.putOpt("selectionId", isA ? sweepwaterDTO.getSelectionIdA() : sweepwaterDTO.getSelectionIdB());
         } else {
             params.putOpt("gid", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
-            params.putOpt("golds", amount);
+            params.putOpt("golds", amount.getAmountXinEr());
             params.putOpt("oddFType", isA ? sweepwaterDTO.getStrongA() : sweepwaterDTO.getStrongB());
             params.putOpt("gtype", isA ? sweepwaterDTO.getGTypeA() : sweepwaterDTO.getGTypeB());
             params.putOpt("wtype", isA ? sweepwaterDTO.getWTypeA() : sweepwaterDTO.getWTypeB());
