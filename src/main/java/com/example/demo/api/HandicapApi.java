@@ -712,7 +712,6 @@ public class HandicapApi {
                 params.putOpt("oddsFormatType", oddsFormatType);
             }
             try {
-                Thread.sleep(300); // 加个延迟防止触发风控
                 JSONObject result = apiHandler.execute(account, params);
                 if (result.getBool("success") && result.get("leagues") != null) {
                     log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{} 获取赛事成功", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), lid, ecid);

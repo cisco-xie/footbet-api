@@ -3,6 +3,8 @@ package com.example.demo.model.dto.settings;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class LimitDTO {
     @Schema(description = "同场比赛·投注限制(注)")
@@ -13,6 +15,6 @@ public class LimitDTO {
     private Integer unilateralBet;
     @Schema(description = "选边(1=旧, 2=新)")
     private Integer unilateralBetType;
-    @Schema(description = "限定网站(1=智博, 2=平博, 3=新二)")
-    private String websiteLimit;
+    @Schema(description = "指定网站(智博, 平博, 新二)")
+    private List<String> websiteLimit;
 }

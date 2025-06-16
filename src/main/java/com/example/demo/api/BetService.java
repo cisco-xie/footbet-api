@@ -415,7 +415,7 @@ public class BetService {
                 return result;
             }
 
-            if (limitDTO.getWebsiteLimit() != null && !limitDTO.getWebsiteLimit().equals(websiteId)) {
+            if (limitDTO.getWebsiteLimit() != null && !limitDTO.getWebsiteLimit().contains(websiteId)) {
                 // 单边投注，当前网站不是所指定的网站，直接跳出不投注
                 result.putOpt("isBet", false);
                 result.putOpt("success", false);
