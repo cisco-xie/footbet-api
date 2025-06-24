@@ -103,6 +103,7 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
         // 1. 检查响应状态码
         if (response.getStatus() != 200) {
             return new JSONObject()
+                    .putOpt("code", response.getStatus())
                     .putOpt("success", false)
                     .putOpt("msg", "账户登录失效");
         }

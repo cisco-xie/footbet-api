@@ -64,6 +64,7 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
             res.putOpt("msg", "获取赛事失败");
             return res;
         }
+        String username = params.getStr("adminUsername");
         // 解析响应
         JSONArray result = new JSONArray();
         JSONObject responseJson = new JSONObject(response.body());
@@ -115,15 +116,15 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                         boolean isFirstHalf = marketJson.getStr("name").contains("半场");
 
                         if (marketGroupId == 2) { // 让球盘
-                            processHandicapMarket(marketJson, isFirstHalf, "Home",
+                            processHandicapMarket(username, marketJson, isFirstHalf, "Home",
                                     letHomeJson, letAwayJson,
                                     firstHalfLetHomeJson, firstHalfLetAwayJson);
                         } else if (marketGroupId == 3) { // 大小盘
-                            processHandicapMarket(marketJson, isFirstHalf, "Over",
+                            processHandicapMarket(username, marketJson, isFirstHalf, "Over",
                                     overSizeJson, underSizeJson,
                                     firstHalfOverSizeJson, firstHalfUnderSizeJson);
                         } else if (marketGroupId == 1) { // 胜平负盘
-                            processWinDrawWinMarket(marketJson, isFirstHalf,
+                            processWinDrawWinMarket(username, marketJson, isFirstHalf,
                                     winHomeJson, drawAwayJson, winAwayJson,
                                     firstHalfWinHomeJson, firstHalfDrawAwayJson, firstHalfWinAwayJson);
                         }
@@ -266,7 +267,7 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
     }
 
     // 辅助方法：处理让球盘和大小盘
-    private void processHandicapMarket(JSONObject marketJson, boolean isFirstHalf, String homeIndicator,
+    private void processHandicapMarket(String username, JSONObject marketJson, boolean isFirstHalf, String homeIndicator,
                                        JSONObject fullHome, JSONObject fullAway,
                                        JSONObject firstHalfHome, JSONObject firstHalfAway) {
         JSONArray lines = marketJson.getJSONArray("lines");
@@ -315,13 +316,15 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                         oddsJson.putOpt("wall", wallAway.get());
                         targetAway.putOpt(key, oddsJson);
                     }
+                    // 记录赔率
+                    apiUrlService.updateOddsCache(username, sel.getStr("id"), sel.getDouble("odds"));
                 }
             });
         });
     }
 
     // 辅助方法：处理胜平负盘
-    private void processWinDrawWinMarket(JSONObject marketJson, boolean isFirstHalf,
+    private void processWinDrawWinMarket(String username, JSONObject marketJson, boolean isFirstHalf,
                                          JSONObject fullHome, JSONObject fullDraw, JSONObject fullAway,
                                          JSONObject halfHome, JSONObject halfDraw, JSONObject halfAway) {
         JSONArray selections = marketJson.getJSONArray("selections");
@@ -370,6 +373,8 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                         break;
                 }
             }
+            // 记录赔率
+            apiUrlService.updateOddsCache(username, sel.getStr("id"), sel.getDouble("odds"));
         });
     }
 

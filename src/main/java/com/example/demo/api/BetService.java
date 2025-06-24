@@ -664,6 +664,35 @@ public class BetService {
     }
 
     /**
+     * 获取当前联赛总投注次数
+     * @param limitKey
+     * @param limitDTO
+     * @return
+     */
+    public boolean getBetLimit(String limitKey, LimitDTO limitDTO) {
+        try {
+            RBucket<Object> bucket = businessPlatformRedissonClient.getBucket(limitKey);
+            JSONObject counterJson = Optional.ofNullable(bucket.get())
+                    .map(JSONUtil::parseObj)
+                    .orElse(new JSONObject());
+
+            int totalCount = counterJson.values().stream()
+                    .filter(val -> val instanceof Integer)
+                    .mapToInt(val -> (Integer) val)
+                    .sum();
+
+            if (totalCount >= limitDTO.getBetLimitGame()) {
+                return false;
+            }
+
+            return true;
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
      * 投注失败后撤销配额
      * @param limitKey
      * @param score

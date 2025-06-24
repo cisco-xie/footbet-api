@@ -17,6 +17,7 @@
 package com.example.demo.controller;
 
 import com.example.demo.api.BetService;
+import com.example.demo.api.ConfigAccountService;
 import com.example.demo.api.HandicapApi;
 import com.example.demo.api.SweepwaterService;
 import com.example.demo.core.result.Result;
@@ -41,6 +42,8 @@ public class TestController extends BaseController {
     private SweepwaterService sweepwaterService;
     @Resource
     private BetService betService;
+    @Resource
+    private ConfigAccountService accountService;
 
     @Operation(summary = "登录所有盘口账号")
     @GetMapping("/login")
@@ -76,6 +79,14 @@ public class TestController extends BaseController {
     public Result bet() {
         AdminLoginDTO admin = getUser();
         //betService.bet(admin.getUsername());
+        return Result.success();
+    }
+
+    @Operation(summary = "去重")
+    @GetMapping("/dedup")
+    public Result dedup(@RequestParam String websiteId) {
+        AdminLoginDTO admin = getUser();
+        accountService.deduplicateLargeAccountList(admin.getUsername(), websiteId);
         return Result.success();
     }
 

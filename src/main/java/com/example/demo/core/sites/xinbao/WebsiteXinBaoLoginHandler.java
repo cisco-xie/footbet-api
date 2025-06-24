@@ -92,8 +92,8 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
                 res.putOpt("msg", "账户登录失败");
                 return res;
             }
-            res.putOpt("code", 403);
-            res.putOpt("msg", "账户登录失败");
+            res.putOpt("code", response.getStatus());
+            res.putOpt("msg", "账户登录操作失败");
             return res;
         }
 

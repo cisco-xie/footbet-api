@@ -6,8 +6,11 @@ import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.utils.KeyUtil;
 import jakarta.annotation.Resource;
+import org.redisson.api.RBucket;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Component;
+
+import java.time.Duration;
 
 @Component
 public class ApiUrlService {
@@ -30,4 +33,32 @@ public class ApiUrlService {
         }
         return null;
     }
+
+    /**
+     * 赔率缓存处理
+     * @param username      系统用户
+     * @param id            赛事id
+     * @param newOdds       当前赔率
+     */
+    public void updateOddsCache(String username, String id, double newOdds) {
+        String oddsKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, id);
+        RBucket<Object> bucket = businessPlatformRedissonClient.getBucket(oddsKey);
+        Object cached = bucket.get();
+        long now = System.currentTimeMillis();
+
+        JSONObject oddsJson = new JSONObject();
+        oddsJson.putOpt("odds", newOdds);
+        oddsJson.putOpt("time", now);
+
+        if (cached == null) {
+            bucket.set(oddsJson, Duration.ofHours(2));
+        } else {
+            JSONObject existing = JSONUtil.parseObj(cached);
+            double existingOdds = existing.getDouble("odds");
+            if (Math.abs(existingOdds - newOdds) >= 0.00001) {
+                bucket.set(oddsJson, Duration.ofHours(2));
+            }
+        }
+    }
+
 }

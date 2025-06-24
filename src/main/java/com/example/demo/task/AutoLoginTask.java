@@ -77,7 +77,7 @@ public class AutoLoginTask {
                                 log.info("检查账户登录情况,网站:{},账户:{}", type.getDescription(), userConfig.getAccount());
                                 try {
                                     boolean isValid = true;
-
+                                    userConfig = accountService.getAccountById(adminUser.getUsername(), type.getId(), userConfig.getId());
                                     if (userConfig.getIsTokenValid() != 1) {
                                         isValid = false;
                                     } else {

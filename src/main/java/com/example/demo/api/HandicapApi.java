@@ -202,6 +202,7 @@ public class HandicapApi {
             params.putOpt("password", account.getPassword());
         }
         JSONObject result = apiHandler.execute(account, params);
+        log.info("登录账号,网站:{}, 账号:{}, 登录结果：{}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), result);
         account.setIsTokenValid(result.getBool("success") ? 1 : 0);
         account.setToken(result);
         account.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
@@ -335,7 +336,7 @@ public class HandicapApi {
             return;
         }
 
-        String chkName = account + "1"; // 初始尝试名
+        String chkName = account + "A"; // 初始尝试名
         JSONObject params = new JSONObject();
         params.putOpt("adminUsername", username);
         params.putOpt("websiteId", websiteId);
@@ -346,8 +347,8 @@ public class HandicapApi {
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + accountVO.getToken().getStr("token"));
             String prefix = accountVO.getAccount().substring(0, 6);
-            String suffix = RandomUtil.randomNumbers(4);
-            chkName = prefix + suffix;
+            String suffix = RandomUtil.randomNumbers(3);
+            chkName = prefix + suffix + "A";
             params.putOpt("loginName", chkName);
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putOpt("uid", uid);
@@ -621,6 +622,10 @@ public class HandicapApi {
         return null;
     }
 
+    // 放在类字段中，建议作为单例缓存维护
+    private final Map<String, Long> accountCooldownMap = new ConcurrentHashMap<>();
+    // 冷却期，单位毫秒（如3秒内不重复调用同一账号）
+    private final long cooldownMillis = 3000;
     // 类成员变量，可加 @Component 单例管理
     private final ConcurrentHashMap<String, AtomicInteger> accountIndexMap = new ConcurrentHashMap<>();
 
@@ -645,9 +650,21 @@ public class HandicapApi {
         AtomicInteger indexRef = accountIndexMap.computeIfAbsent(key, k -> new AtomicInteger(RandomUtil.randomInt(size)));
 
         for (int i = 0; i < size; i++) {
-            int idx = Math.abs(indexRef.getAndIncrement() % size);
+            // int idx = Math.abs(indexRef.getAndIncrement() % size);
+            // 防止 AtomicInteger 溢出
+            int idx = indexRef.getAndUpdate(val -> (val + 1) % size);
             ConfigAccountVO account = accounts.get(idx);
-            log.info("获取赛事列表,网站:{},idx:{},账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, account.getAccount());
+            String accountName = account.getAccount();
+            // 检查冷却时间
+            long now = System.currentTimeMillis();
+            long lastUsed = accountCooldownMap.getOrDefault(accountName, 0L);
+
+            if (now - lastUsed < cooldownMillis) {
+                log.info("获取赛事列表,网站:{},账号 [{}] 正在冷却中，跳过", WebsiteType.getById(websiteId).getDescription(), accountName);
+                continue;
+            }
+
+            log.info("获取赛事列表,网站:{},idx:{},账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, accountName);
 
             if (account.getIsTokenValid() == 0) {
                 // 未登录直接跳过
@@ -713,20 +730,24 @@ public class HandicapApi {
             }
             try {
                 JSONObject result = apiHandler.execute(account, params);
+                log.info("获取赛事列表,网站:{}, 账号:{}, code:{}, success:{}", websiteId, accountName, result.get("code"), result.getBool("success"));
+                // ✅ 更新调用时间（不论成功与否）
+                accountCooldownMap.put(accountName, System.currentTimeMillis());
                 if (result.getBool("success") && result.get("leagues") != null) {
-                    log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{} 获取赛事成功", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), lid, ecid);
+                    log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{} 获取赛事成功", WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid);
                     return result.get("leagues");
                 } else {
-                    if (result.getInt("code") == 429) {
+                    if (result.containsKey("code") && result.getInt("code") == 429) {
                         // 被盘口限流了，再延迟个500毫秒
+                        log.info("获取赛事列表,网站:{}, 账号 [{}] 被限流，lid:{}, ecid:{}，延迟等待", WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid);
                         Thread.sleep(500);
                     }
                 }
-                log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{}, 获取赛事失败,获取结果:{}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), lid, ecid, result);
+                log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{}, 获取赛事失败,获取结果:{}", WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid, result);
             } catch (Exception e) {
-                log.error("账号 {} 获取赛事异常", account.getAccount(), e);
+                log.error("获取赛事列表,网站:{}, 账号 {} 获取赛事异常", WebsiteType.getById(websiteId).getDescription(), accountName, e);
             } finally {
-                log.info("获取 网站:{}, 账号:{}, lid:{}, ecid:{} 赔率 耗时: {}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), lid, ecid, timer.interval());
+                log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{} 赔率 耗时: {}", WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid, timer.interval());
             }
         }
         return null;

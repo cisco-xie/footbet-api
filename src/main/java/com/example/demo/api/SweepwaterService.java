@@ -26,6 +26,7 @@ import com.example.demo.model.vo.dict.BindTeamVO;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import io.lettuce.core.RedisException;
 import jakarta.annotation.Resource;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -44,8 +45,11 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * 扫水
@@ -95,19 +99,107 @@ public class SweepwaterService {
                     .expireAfterWrite(5, TimeUnit.SECONDS)  // 缓存 5 秒自动过期
                     .build();
 
+    /**
+     * 更新扫水已经投注
+     * @param username
+     * @param id
+     */
     public void setIsBet(String username, String id) {
-        String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
+        final String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
+        final RList<String> redisList = businessPlatformRedissonClient.getList(key);
 
-        List<String> jsonList = businessPlatformRedissonClient.getList(key);
+        try {
+            // 1. 异步读取Redis列表（带2秒超时）
+            List<String> items = redisList.readAllAsync()
+                    .toCompletableFuture()
+                    .orTimeout(2, TimeUnit.SECONDS)
+                    .join();
 
-        for (int i = 0; i < jsonList.size(); i++) {
-            String json = jsonList.get(i);
-            SweepwaterDTO dto = JSONUtil.toBean(json, SweepwaterDTO.class);
-            if (dto.getId().equals(id)) { // 比如根据 ID 匹配
-                dto.setIsBet(1);
-                jsonList.set(i, JSONUtil.toJsonStr(dto)); // ✅ 修改这个位置
-                break;
+            // 2. 并行查找目标项
+            AtomicInteger foundIndex = new AtomicInteger(-1);
+            boolean found = IntStream.range(0, items.size()).parallel().anyMatch(i -> {
+                try {
+                    SweepwaterDTO dto = JSONUtil.toBean(items.get(i), SweepwaterDTO.class);
+                    if (id.equals(dto.getId())) {
+                        foundIndex.set(i);
+                        return true;
+                    }
+                } catch (Exception e) {
+                    log.info("JSON解析失败 [key={}, index={}]", key, i, e);
+                }
+                return false;
+            });
+
+            if (!found) {
+                log.info("未找到目标记录 [key={}, id={}]", key, id);
+                return;  // 直接退出，不执行后续更新
             }
+
+            // 3. 更新目标项（带重试机制）
+            if (foundIndex.get() >= 0) {
+                int index = foundIndex.get();
+                String originalJson = items.get(index);
+                SweepwaterDTO dto = JSONUtil.toBean(originalJson, SweepwaterDTO.class);
+                dto.setIsBet(1);
+                String updatedJson = JSONUtil.toJsonStr(dto);
+
+                // 带重试的更新逻辑
+                int retryCount = 0;
+                long waitTime = 100; // 初始等待100ms
+                while (retryCount <= 3) { // 最多重试3次
+                    try {
+                        redisList.setAsync(index, updatedJson)
+                                .toCompletableFuture()
+                                .orTimeout(1, TimeUnit.SECONDS)
+                                .join();
+                        log.info("更新成功 [key={}, id={}]", key, id);
+                        return;
+                    } catch (CompletionException ce) {
+                        Throwable cause = ce.getCause();
+                        if (cause instanceof TimeoutException) {
+                            if (retryCount++ < 3) {
+                                log.info("更新超时，准备重试 [key={}, id={}, 第{}/3次]", key, id, retryCount);
+                                try {
+                                    Thread.sleep(waitTime);
+                                    waitTime *= 2; // 指数退避
+                                } catch (InterruptedException ie) {
+                                    Thread.currentThread().interrupt();
+                                    log.info("重试被中断 [key={}]", key);
+                                    break;
+                                }
+                            } else {
+                                // 超过重试次数，退出循环
+                                break;
+                            }
+                        } else if (cause instanceof InterruptedException) {
+                            Thread.currentThread().interrupt();
+                            log.info("更新操作被中断 [key={}]", key);
+                            break;
+                        } else {
+                            log.info("更新失败 [key={}, id={}]", key, id, ce);
+                            break;
+                        }
+                    } catch (Exception e) {
+                        log.info("更新失败 [key={}, id={}]", key, id, e);
+                        break;
+                    }
+                }
+                log.info("更新失败，超过最大重试次数 [key={}, id={}]", key, id);
+            } else {
+                log.info("未找到目标记录 [key={}, id={}]", key, id);
+            }
+        } catch (CompletionException ce) {
+            Throwable cause = ce.getCause();
+            if (cause instanceof TimeoutException) {
+                log.info("Redis读取超时 [key={}]", key, ce);
+            } else if (cause instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+                log.info("操作被中断 [key={}]", key);
+            } else {
+                log.info("Redis读取失败 [key={}]", key, ce);
+            }
+        } catch (Exception e) {
+            log.info("setIsBet执行异常 [key={}]", key, e);
         }
     }
 
@@ -130,7 +222,6 @@ public class SweepwaterService {
                 .sorted(Comparator.comparing(SweepwaterDTO::getId).reversed())
                 .toList();
     }
-
 
     /**
      * 清空扫水列表
@@ -175,6 +266,7 @@ public class SweepwaterService {
             log.warn("无球队绑定数据，平台用户:{}", username);
             return;
         }
+        log.info("球队绑定数据:{}", JSONUtil.parseObj(bindLeagueVOList));
         ExecutorService configExecutor = threadPoolHolder.getConfigExecutor(); // 单独弄个轻量线程池
         // 并行获取配置项
         CompletableFuture<OddsScanDTO> oddsScanFuture = CompletableFuture.supplyAsync(() -> settingsService.getOddsScan(username), configExecutor);
@@ -298,7 +390,7 @@ public class SweepwaterService {
                                             WebsiteType.getById(websiteIdB).getDescription(),
                                             getEventsTimer.interval());
 
-                                    if (eventsA == null || eventsB == null) return;
+                                    if (eventsA.isEmpty() || eventsB.isEmpty()) return;
                                     // 平台绑定球队赛事对应获取盘口赛事列表
                                     JSONObject eventAJson = findEventByLeagueId(eventsA, bindLeagueVO.getLeagueIdA());
                                     JSONObject eventBJson = findEventByLeagueId(eventsB, bindLeagueVO.getLeagueIdB());
@@ -449,7 +541,17 @@ public class SweepwaterService {
             String leagueIdA, String leagueIdB,
             String eventIdA, String eventIdB,
             boolean isHomeA, boolean isHomeB) {
+        // 投注次数限制key
+        String limitKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventIdA);
+        boolean betLimitA = betService.getBetLimit(limitKeyA, limit);
 
+        // 投注次数限制key
+        String limitKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventIdB);
+        boolean betLimitB = betService.getBetLimit(limitKeyB, limit);
+        if (betLimitA && betLimitB) {
+            log.info("网站A:{}-联赛:{},和网站B:{}-联赛:{},的投注总次数都达到限制,不进行扫水和后续操作", WebsiteType.getById(websiteIdA).getDescription(), eventAJson.getStr("league"), WebsiteType.getById(websiteIdB).getDescription(), eventBJson.getStr("league"));
+            return null;
+        }
         List<SweepwaterDTO> results = new ArrayList<>();
         JSONArray eventsA = eventAJson.getJSONArray("events");
         JSONArray eventsB = eventBJson.getJSONArray("events");
@@ -756,9 +858,9 @@ public class SweepwaterService {
                                     }
 
                                     // 记录网站A的赔率
-                                    updateOddsCache(username, valueAJson.getStr("id"), valueA);
+                                    // updateOddsCache(username, valueAJson.getStr("id"), valueA);
                                     // 记录网站B的赔率
-                                    updateOddsCache(username, valueBJson.getStr("id"), valueB);
+                                    // updateOddsCache(username, valueBJson.getStr("id"), valueB);
                                     double value = valueA + valueB + 2;
                                     BigDecimal result = BigDecimal.valueOf(value).setScale(3, RoundingMode.HALF_UP);
                                     double finalValue = result.doubleValue();
@@ -766,8 +868,8 @@ public class SweepwaterService {
                                     // 判断赔率是否在指定区间内
                                     if (oddsScan.getWaterLevelFrom() <= finalValue && finalValue <= oddsScan.getWaterLevelTo()) {
                                         // 查询缓存看谁的赔率是最新变动的
-                                        String oddsKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, valueAJson.getStr("id"));
-                                        String oddsKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, valueBJson.getStr("id"));
+                                        String oddsKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, valueAJson.getStr("id") + (valueAJson.getStr("choseTeam") == null ? "" : valueAJson.getStr("choseTeam")));
+                                        String oddsKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, valueBJson.getStr("id") + (valueBJson.getStr("choseTeam") == null ? "" : valueBJson.getStr("choseTeam")));
                                         Map<String, Boolean> latestChanged = isLatestChanged(oddsKeyA, oddsKeyB);
                                         boolean lastTimeA = latestChanged.get("lastTimeA");
                                         boolean lastTimeB = latestChanged.get("lastTimeB");
@@ -810,9 +912,9 @@ public class SweepwaterService {
                                         continue;
                                     }
                                     // 记录网站A的赔率
-                                    updateOddsCache(username, valueAJson.getStr("id"), valueA);
+                                    // updateOddsCache(username, valueAJson.getStr("id"), valueA);
                                     // 记录网站B的赔率
-                                    updateOddsCache(username, valueBJson.getStr("id"), valueB);
+                                    // updateOddsCache(username, valueBJson.getStr("id"), valueB);
 
                                     double value = valueA + valueB + 2;
                                     BigDecimal result = BigDecimal.valueOf(value).setScale(3, RoundingMode.HALF_UP);
@@ -821,8 +923,8 @@ public class SweepwaterService {
                                     // 判断赔率是否在指定区间内
                                     if (oddsScan.getWaterLevelFrom() <= finalValue && finalValue <= oddsScan.getWaterLevelTo()) {
                                         // 查询缓存看谁的赔率是最新变动的
-                                        String oddsKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, valueAJson.getStr("id"));
-                                        String oddsKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, valueBJson.getStr("id"));
+                                        String oddsKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, valueAJson.getStr("id") + (valueAJson.getStr("choseTeam") == null ? "" : valueAJson.getStr("choseTeam")));
+                                        String oddsKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, valueBJson.getStr("id") + (valueBJson.getStr("choseTeam") == null ? "" : valueBJson.getStr("choseTeam")));
                                         Map<String, Boolean> latestChanged = isLatestChanged(oddsKeyA, oddsKeyB);
                                         boolean lastTimeA = latestChanged.get("lastTimeA");
                                         boolean lastTimeB = latestChanged.get("lastTimeB");

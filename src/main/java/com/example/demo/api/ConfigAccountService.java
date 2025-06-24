@@ -10,11 +10,13 @@ import com.example.demo.model.vo.WebsiteVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.redisson.api.RList;
+import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Component;
 
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -104,38 +106,44 @@ public class ConfigAccountService {
      * @param configAccountVO 网站信息
      */
     public void saveAccount(String username, String websiteId, ConfigAccountVO configAccountVO) {
-
-        // 生成 Redis 中的 key
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
+        RList<String> accountList = businessPlatformRedissonClient.getList(key);
+        RLock lock = businessPlatformRedissonClient.getLock("lock:" + key);
 
-        // 为新账号生成唯一 ID
-        if (StringUtils.isBlank(configAccountVO.getId())) {
-            configAccountVO.setId(IdUtil.getSnowflakeNextIdStr());  // 如果 ID 为空，生成新的 ID
-        }
+        try {
+            lock.lock(10, TimeUnit.SECONDS); // 获取分布式锁，防止并发覆盖
 
-        // 获取 Redis 中的列表
-        List<String> accountList = businessPlatformRedissonClient.getList(key);
+            // 若账户 ID 为空则生成
+            if (StringUtils.isBlank(configAccountVO.getId())) {
+                configAccountVO.setId(IdUtil.getSnowflakeNextIdStr());
+            }
 
-        // 检查账号是否已经存在，若存在则进行更新
-        boolean exists = accountList.stream()
-                .anyMatch(json -> {
-                    ConfigAccountVO site = JSONUtil.toBean(json, ConfigAccountVO.class);
-                    return site.getId().equals(configAccountVO.getId());  // 根据 ID 判断是否已存在
-                });
+            List<String> updatedList = new ArrayList<>();
+            boolean updated = false;
 
-        if (exists) {
-            // 如果账号已存在，替换旧数据
-            accountList.replaceAll(json -> {
-                ConfigAccountVO site = JSONUtil.toBean(json, ConfigAccountVO.class);
-                if (site.getId().equals(configAccountVO.getId())) {
-                    return JSONUtil.parse(configAccountVO).toString();
+            // 遍历当前账户列表，若存在则替换
+            for (String json : accountList) {
+                ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
+                if (account.getId().equals(configAccountVO.getId())) {
+                    updatedList.add(JSONUtil.toJsonStr(configAccountVO));
+                    updated = true;
+                } else {
+                    updatedList.add(json);
                 }
-                return json;
-            });
-        } else {
-            // 如果账号不存在，直接新增
-            configAccountVO.setWebsiteId(websiteId);
-            accountList.add(JSONUtil.parse(configAccountVO).toString());
+            }
+
+            // 如果未更新说明是新增
+            if (!updated) {
+                configAccountVO.setWebsiteId(websiteId);
+                updatedList.add(JSONUtil.toJsonStr(configAccountVO));
+            }
+
+            // 覆盖原有列表
+            accountList.clear();
+            accountList.addAll(updatedList);
+
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -146,90 +154,162 @@ public class ConfigAccountService {
      */
     public void deleteAccount(String username, String websiteId, String accountId) {
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
+        RList<String> list = businessPlatformRedissonClient.getList(key);
 
-        // 获取所有账户信息
-        List<String> jsonList = businessPlatformRedissonClient.getList(key);
-
-        // 找到对应的 website 并删除
-        jsonList.stream()
-                .filter(json -> JSONUtil.toBean(json, ConfigAccountVO.class).getId().equals(accountId))
-                .findFirst()
-                .ifPresent(json -> businessPlatformRedissonClient.getList(key).remove(json));
-    }
-
-    /**
-     * 账号一键启停
-     * @param username
-     * @param websiteId
-     * @param isEnable
-     */
-    public void enable(String username, String websiteId, Integer isEnable) {
-        // Redis key
-        String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
-
-        // 获取 Redis 中的列表
-        List<String> accountList = businessPlatformRedissonClient.getList(key);
-
-        // 替换列表中所有账户的 启停
-        accountList.replaceAll(json -> {
-            ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
-            // 设置启停
-            account.setEnable(isEnable);
-            return JSONUtil.toJsonStr(account);
-        });
-    }
-
-    /**
-     * 退出所有账户-即清空所有token
-     * @param username
-     * @param websiteId
-     */
-    public void logoutByWebsite(String username, String websiteId, String accountId) {
-        // Redis key
-        String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
-
-        // 获取 Redis 中的列表
-        List<String> accountList = businessPlatformRedissonClient.getList(key);
-
-        // 替换列表中所有账户的 token
-        accountList.replaceAll(json -> {
-            ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
-
-            // 若指定 accountId，跳过不匹配的账户
-            if (StringUtils.isNotBlank(accountId) && !accountId.equals(account.getId())) {
-                return json; // 保持原样
-            }
-            // 清除 token 信息
-            account.setIsTokenValid(0);
-            account.setToken(new JSONObject());
-
-            return JSONUtil.toJsonStr(account);
-        });
-    }
-
-    /**
-     * 退出指定账户-即清空token
-     * @param username
-     * @param websiteId
-     * @param accountId
-     */
-    public void logoutByWebsiteAndAccountId(String username, String websiteId, String accountId) {
-
-        // 生成 Redis 中的 key
-        String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
-
-        // 获取 Redis 中的列表
-        List<String> accountList = businessPlatformRedissonClient.getList(key);
-
-        // 将所有账户token置空
-        accountList.replaceAll(json -> {
+        for (String json : list) {
             ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
             if (account.getId().equals(accountId)) {
+                list.remove(json);
+                break;
+            }
+        }
+    }
+
+    /**
+     * 启停账户
+     * @param username 用户名
+     * @param websiteId 网站 ID
+     * @param isEnable 启用状态（1启用，0停用）
+     */
+    public void enable(String username, String websiteId, Integer isEnable) {
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
+        RList<String> accountList = businessPlatformRedissonClient.getList(key);
+        RLock lock = businessPlatformRedissonClient.getLock("lock:" + key);
+
+        try {
+            lock.lock(10, TimeUnit.SECONDS);
+
+            List<String> updated = new ArrayList<>();
+            for (String json : accountList) {
+                ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
+                account.setEnable(isEnable);
+                updated.add(JSONUtil.toJsonStr(account));
+            }
+            accountList.clear();
+            accountList.addAll(updated);
+
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * 退出所有账户 - 即清空所有 token
+     * @param username 用户名
+     * @param websiteId 网站 ID
+     * @param accountId 可选，若不为空只清除对应 ID
+     */
+    public void logoutByWebsite(String username, String websiteId, String accountId) {
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
+        RList<String> redisList = businessPlatformRedissonClient.getList(key);
+        RLock lock = businessPlatformRedissonClient.getLock("lock:" + key);
+
+        try {
+            lock.lock(10, TimeUnit.SECONDS);
+
+            List<String> updatedList = new ArrayList<>();
+            for (String json : redisList) {
+                ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
+
+                // 如果指定了 accountId，跳过非目标账户
+                if (StringUtils.isNotBlank(accountId) && !accountId.equals(account.getId())) {
+                    updatedList.add(json);
+                    continue;
+                }
+
+                // 清空 token 信息
                 account.setIsTokenValid(0);
                 account.setToken(new JSONObject());
+                updatedList.add(JSONUtil.toJsonStr(account));
             }
-            return JSONUtil.parse(account).toString();
-        });
+
+            redisList.clear();
+            redisList.addAll(updatedList);
+
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * 退出指定账户 - 即清空指定账户 token
+     * @param username 用户名
+     * @param websiteId 网站 ID
+     * @param accountId 账户 ID
+     */
+    public void logoutByWebsiteAndAccountId(String username, String websiteId, String accountId) {
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
+        RList<String> accountList = businessPlatformRedissonClient.getList(key);
+        RLock lock = businessPlatformRedissonClient.getLock("lock:" + key);
+
+        try {
+            lock.lock(10, TimeUnit.SECONDS);
+
+            List<String> updatedList = new ArrayList<>();
+            for (String json : accountList) {
+                ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
+                if (account.getId().equals(accountId)) {
+                    account.setIsTokenValid(0);
+                    account.setToken(new JSONObject());
+                }
+                updatedList.add(JSONUtil.toJsonStr(account));
+            }
+            accountList.clear();
+            accountList.addAll(updatedList);
+
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * 退出系统用户和网站进行id去重
+     * @param username
+     * @param websiteId
+     */
+    public void deduplicateLargeAccountList(String username, String websiteId) {
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
+        RList<String> redisList = businessPlatformRedissonClient.getList(key);
+        RLock lock = businessPlatformRedissonClient.getLock("lock:" + key);
+
+        try {
+            lock.lock(10, TimeUnit.MINUTES); // 批量操作，延长锁时间
+
+            int total = redisList.size();
+            log.info("开始去重，Redis 列表总长度：{}", total);
+
+            Set<String> seenIds = new HashSet<>(total / 2); // 估算初始容量
+            List<String> dedupedList = new ArrayList<>(total);
+
+            for (int i = 0; i < total; i++) {
+                String json = redisList.get(i);
+                try {
+                    ConfigAccountVO vo = JSONUtil.toBean(json, ConfigAccountVO.class);
+                    if (seenIds.add(vo.getId())) {
+                        dedupedList.add(json); // 新 ID，保留
+                    }
+                } catch (Exception e) {
+                    log.warn("解析异常，跳过非法JSON: {}", json);
+                }
+
+                if (i % 10_000 == 0) {
+                    log.info("已处理 {} 条...", i);
+                }
+            }
+
+            // 分批写入，避免超大 payload
+            redisList.clear();
+            int batchSize = 10_000;
+            for (int i = 0; i < dedupedList.size(); i += batchSize) {
+                int end = Math.min(i + batchSize, dedupedList.size());
+                redisList.addAll(dedupedList.subList(i, end));
+            }
+
+            log.info("去重完成，原始数量={}，去重后={}", total, dedupedList.size());
+
+        } finally {
+            lock.unlock();
+        }
     }
 
 }

@@ -21,8 +21,8 @@ singleServerConfig:
 
 #threads: 4
 #nettyThreads: 4
-threads: 12
-nettyThreads: 12
+threads: 96
+nettyThreads: 48
 
 codec:
   class: "org.redisson.codec.JsonJacksonCodec"
