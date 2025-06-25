@@ -493,7 +493,8 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
         HttpResponse response = null;
         HttpRequest request = HttpRequest.post(fullUrl)
                 .addHeaders(requestBody.getHeaders().toSingleValueMap())
-                .body(requestBody.getBody());
+                .body(requestBody.getBody())
+                .timeout(10000);
         // 引入配置代理
         HttpProxyConfig.configureProxy(request, userConfig);
         response = request.execute();

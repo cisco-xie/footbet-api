@@ -682,10 +682,10 @@ public class BetService {
                     .sum();
 
             if (totalCount >= limitDTO.getBetLimitGame()) {
-                return false;
+                return true;
             }
 
-            return true;
+            return false;
 
         } catch (Exception e) {
             return false;

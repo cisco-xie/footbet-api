@@ -32,7 +32,7 @@ public class CacheCleanerTask {
     /**
      * 清理超过4小时的扫水记录
      */
-    @Scheduled(fixedDelay = 10 * 60 * 1000) // 每10分钟执行
+    @Scheduled(fixedDelay = 60 * 60 * 1000) // 每60分钟执行
     public void cleanExpiredSweepwaterDTO() {
         // 获取所有系统用户
         List<AdminLoginDTO> adminUsers = adminService.getUsers(null);

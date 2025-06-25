@@ -237,7 +237,8 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
         // 发送请求
         HttpResponse response = null;
         HttpRequest request = HttpRequest.get(fullUrl)
-                .addHeaders(requestBody.getHeaders().toSingleValueMap());
+                .addHeaders(requestBody.getHeaders().toSingleValueMap())
+                .timeout(10000);
         // 引入配置代理
         HttpProxyConfig.configureProxy(request, userConfig);
         response = request.execute();

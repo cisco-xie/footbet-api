@@ -266,7 +266,7 @@ public class SweepwaterService {
             log.warn("无球队绑定数据，平台用户:{}", username);
             return;
         }
-        log.info("球队绑定数据:{}", JSONUtil.parseObj(bindLeagueVOList));
+        log.info("球队绑定数据:{}", JSONUtil.parseArray(bindLeagueVOList));
         ExecutorService configExecutor = threadPoolHolder.getConfigExecutor(); // 单独弄个轻量线程池
         // 并行获取配置项
         CompletableFuture<OddsScanDTO> oddsScanFuture = CompletableFuture.supplyAsync(() -> settingsService.getOddsScan(username), configExecutor);
@@ -344,8 +344,15 @@ public class SweepwaterService {
             ExecutorService eventExecutor = new ThreadPoolExecutor(
                     corePoolSizeEvent, maxPoolSizeEvent,
                     60L, TimeUnit.SECONDS,
-                    new LinkedBlockingQueue<>(500),
+                    new LinkedBlockingQueue<>(1500),
                     new ThreadFactoryBuilder().setNameFormat("event-pool-%d").build(),
+                    new ThreadPoolExecutor.DiscardOldestPolicy()
+            );
+            ExecutorService perSweepEventExecutor = new ThreadPoolExecutor(
+                    corePoolSizeEvent, maxPoolSizeEvent,
+                    60L, TimeUnit.SECONDS,
+                    new LinkedBlockingQueue<>(1500),
+                    new ThreadFactoryBuilder().setNameFormat("team-event-%d").build(),
                     new ThreadPoolExecutor.CallerRunsPolicy()
             );
 
@@ -370,14 +377,15 @@ public class SweepwaterService {
                                     String ecidB = event.getEcidB();
                                     // 根据网站获取对应盘口的赛事列表
                                     // 并行获取eventsA和eventsB
+                                    log.info("获取赛事数据获取,网站A:{},网站B:{}", WebsiteType.getById(websiteIdA).getDescription(), WebsiteType.getById(websiteIdB).getDescription());
                                     TimeInterval getEventsTimer = DateUtil.timer();
                                     CompletableFuture<JSONArray> futureA = CompletableFuture.supplyAsync(() ->
                                                     getEventsForEcid(sweepwaterUsername, ecidFetchFuturesA, websiteIdA, bindLeagueVO.getLeagueIdA(), ecidA),
-                                            eventExecutor);
+                                            perSweepEventExecutor);
 
                                     CompletableFuture<JSONArray> futureB = CompletableFuture.supplyAsync(() ->
                                                     getEventsForEcid(sweepwaterUsername, ecidFetchFuturesB, websiteIdB, bindLeagueVO.getLeagueIdB(), ecidB),
-                                            eventExecutor);
+                                            perSweepEventExecutor);
 
                                     // 等待两个结果都完成
                                     CompletableFuture.allOf(futureA, futureB).join();
@@ -422,7 +430,7 @@ public class SweepwaterService {
                             }, eventExecutor).orTimeout(30, TimeUnit.SECONDS)
                                     .exceptionally(ex -> {
                                         log.warn("事件任务异常，平台用户:{}，联赛:{}-{}，异常:", username,
-                                                bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(), ex);
+                                                bindLeagueVO.getLeagueNameA(), bindLeagueVO.getLeagueNameB(), ex);
                                         return null;
                                     }));
                         }
@@ -451,6 +459,7 @@ public class SweepwaterService {
             } finally {
                 PriorityTaskExecutor.shutdownExecutor(leagueExecutor);
                 PriorityTaskExecutor.shutdownExecutor(eventExecutor);
+                PriorityTaskExecutor.shutdownExecutor(perSweepEventExecutor);
             }
         } catch (TimeoutException te) {
             log.warn("获取配置超时，平台用户:{}", username);
@@ -485,7 +494,7 @@ public class SweepwaterService {
                         StringUtils.isNotBlank(ecid) ? ecid : null);
                 return events != null ? events : new JSONArray();
             } catch (Exception e) {
-                log.error("拉取eventsOdds异常: key={}, 用户={}, 网站={}, 联赛={}, ecid={}",
+                log.info("拉取eventsOdds异常: key={}, 用户={}, 网站={}, 联赛={}, ecid={}",
                         key, username, websiteId, leagueId, ecid, e);
                 return new JSONArray();
             }

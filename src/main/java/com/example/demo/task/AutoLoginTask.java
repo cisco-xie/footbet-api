@@ -43,8 +43,8 @@ public class AutoLoginTask {
     private ConfigAccountService accountService;
 
     @Async("loginTaskExecutor") // ✅ 独立线程池执行
-    // 上一次任务完成后再延迟 30 秒执行
-    @Scheduled(fixedDelay = 30000)
+    // 上一次任务完成后再延迟 10 分钟后执行
+    @Scheduled(fixedDelay = 10 * 60 * 1000)
     public void autoLogin() {
         long startTime = System.currentTimeMillis();
         try {

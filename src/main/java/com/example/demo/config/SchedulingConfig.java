@@ -32,11 +32,12 @@ public class SchedulingConfig {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         int cores = Runtime.getRuntime().availableProcessors();
         executor.setCorePoolSize(cores * 10);       // 480
-        executor.setMaxPoolSize(cores * 20);        // 960
-        executor.setQueueCapacity(10000);           // 防止任务排队阻塞
+        executor.setMaxPoolSize(cores * 10);        // 960
+        executor.setQueueCapacity(2000);           // 防止任务排队阻塞
         executor.setThreadNamePrefix("sweep-task-");
         // ✅ 丢弃最旧任务，接受新任务
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardOldestPolicy());
+        executor.setAllowCoreThreadTimeOut(true);
         // 线程空闲60秒后回收
         executor.setKeepAliveSeconds(60);
         executor.initialize();

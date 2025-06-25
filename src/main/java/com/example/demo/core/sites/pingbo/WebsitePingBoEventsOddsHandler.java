@@ -592,7 +592,8 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
         HttpResponse response = null;
         HttpRequest request = HttpRequest.get(fullUrl)
                 .addHeaders(requestBody.getHeaders().toSingleValueMap())
-                .body(requestBody.getBody());
+                .body(requestBody.getBody())
+                .timeout(10000);
         // 引入配置代理
         HttpProxyConfig.configureProxy(request, userConfig);
         response = request.execute();

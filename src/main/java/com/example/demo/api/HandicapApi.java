@@ -624,8 +624,8 @@ public class HandicapApi {
 
     // 放在类字段中，建议作为单例缓存维护
     private final Map<String, Long> accountCooldownMap = new ConcurrentHashMap<>();
-    // 冷却期，单位毫秒（如3秒内不重复调用同一账号）
-    private final long cooldownMillis = 3000;
+    // 冷却期，单位毫秒（如2秒内不重复调用同一账号）
+    private final static long cooldownMillis = 2000;
     // 类成员变量，可加 @Component 单例管理
     private final ConcurrentHashMap<String, AtomicInteger> accountIndexMap = new ConcurrentHashMap<>();
 
@@ -636,6 +636,7 @@ public class HandicapApi {
      * @return
      */
     public Object eventsOdds(String username, String websiteId, String lid, String ecid) {
+        log.info("执行eventsOdds方法-获取赛事列表,平台用户:{},网站:{}", username, WebsiteType.getById(websiteId).getDescription());
         TimeInterval timer = DateUtil.timer();
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
@@ -660,11 +661,11 @@ public class HandicapApi {
             long lastUsed = accountCooldownMap.getOrDefault(accountName, 0L);
 
             if (now - lastUsed < cooldownMillis) {
-                log.info("获取赛事列表,网站:{},账号 [{}] 正在冷却中，跳过", WebsiteType.getById(websiteId).getDescription(), accountName);
+                log.info("获取赛事列表,平台用户:{},网站:{},账号 [{}] 正在冷却中，跳过", username, WebsiteType.getById(websiteId).getDescription(), accountName);
                 continue;
             }
 
-            log.info("获取赛事列表,网站:{},idx:{},账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, accountName);
+            log.info("获取赛事列表,平台用户:{},网站:{},idx:{},账号:{}", username, WebsiteType.getById(websiteId).getDescription(), idx, accountName);
 
             if (account.getIsTokenValid() == 0) {
                 // 未登录直接跳过
@@ -730,24 +731,24 @@ public class HandicapApi {
             }
             try {
                 JSONObject result = apiHandler.execute(account, params);
-                log.info("获取赛事列表,网站:{}, 账号:{}, code:{}, success:{}", websiteId, accountName, result.get("code"), result.getBool("success"));
+                log.info("获取赛事列表,平台用户:{},网站:{}, 账号:{}, code:{}, success:{}", username, websiteId, accountName, result.get("code"), result.getBool("success"));
                 // ✅ 更新调用时间（不论成功与否）
                 accountCooldownMap.put(accountName, System.currentTimeMillis());
                 if (result.getBool("success") && result.get("leagues") != null) {
-                    log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{} 获取赛事成功", WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid);
+                    log.info("获取赛事列表,平台用户:{},网站:{}, 账号:{}, lid:{}, ecid:{} 获取赛事成功", username, WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid);
                     return result.get("leagues");
                 } else {
                     if (result.containsKey("code") && result.getInt("code") == 429) {
                         // 被盘口限流了，再延迟个500毫秒
-                        log.info("获取赛事列表,网站:{}, 账号 [{}] 被限流，lid:{}, ecid:{}，延迟等待", WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid);
+                        log.info("获取赛事列表,平台用户:{},网站:{}, 账号 [{}] 被限流，lid:{}, ecid:{}，延迟等待", username, WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid);
                         Thread.sleep(500);
                     }
                 }
-                log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{}, 获取赛事失败,获取结果:{}", WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid, result);
+                log.info("获取赛事列表,平台用户:{},网站:{}, 账号:{}, lid:{}, ecid:{}, 获取赛事失败,获取结果:{}", username, WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid, result);
             } catch (Exception e) {
-                log.error("获取赛事列表,网站:{}, 账号 {} 获取赛事异常", WebsiteType.getById(websiteId).getDescription(), accountName, e);
+                log.error("获取赛事列表,平台用户:{},网站:{}, 账号 {} 获取赛事异常", username, WebsiteType.getById(websiteId).getDescription(), accountName, e);
             } finally {
-                log.info("获取赛事列表,网站:{}, 账号:{}, lid:{}, ecid:{} 赔率 耗时: {}", WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid, timer.interval());
+                log.info("获取赛事列表,平台用户:{},网站:{}, 账号:{}, lid:{}, ecid:{} 赔率 耗时: {}", username, WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid, timer.interval());
             }
         }
         return null;
