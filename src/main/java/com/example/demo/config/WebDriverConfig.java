@@ -19,7 +19,7 @@ import org.springframework.context.annotation.Configuration;
  * 在应用程序关闭时，WebDriver 实例会自动释放资源，以避免内存泄漏。
  * </p>
  */
-@Configuration
+/*@Configuration
 public class WebDriverConfig {
 
     // 使用 ThreadLocal 来存储每个线程的 WebDriver 实例
@@ -61,9 +61,9 @@ public class WebDriverConfig {
         return driverThreadLocal.get();
     }
 
-    /**
+    *//**
      * 服务关闭时自动清理 WebDriver 实例
-     */
+     *//*
     @PreDestroy
     public void cleanup() {
         if (driverThreadLocal.get() != null) {
@@ -72,4 +72,4 @@ public class WebDriverConfig {
         }
     }
 
-}
+}*/

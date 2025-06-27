@@ -96,9 +96,12 @@ public class AutoLoginTask {
                                         // 当前账号token无效，进行下线操作更新token状态
                                         accountService.logoutByWebsiteAndAccountId(adminUser.getUsername(), type.getId(), userConfig.getId());
                                         if (userConfig.getAutoLogin() == 1) {
+                                            log.info("自动登录-平台用户:{}, 账号{} 当前token无效,进行自动登录", adminUser.getUsername(), adminUser.getUsername());
                                             // 当前账号token无效，调用盘口api登录
                                             handicapApi.processAccountLogin(userConfig, adminUser.getUsername(), type.getId(), retryMap);
                                         }
+                                    } else {
+                                        log.info("自动登录-平台用户:{}, 账号{} 当前token有效无需登录", adminUser.getUsername(), adminUser.getUsername());
                                     }
 
                                     // 可选延时，防止过快请求被限流

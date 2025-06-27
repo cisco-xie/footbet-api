@@ -266,7 +266,6 @@ public class SweepwaterService {
             log.warn("无球队绑定数据，平台用户:{}", username);
             return;
         }
-        log.info("球队绑定数据:{}", JSONUtil.parseArray(bindLeagueVOList));
         ExecutorService configExecutor = threadPoolHolder.getConfigExecutor(); // 单独弄个轻量线程池
         // 并行获取配置项
         CompletableFuture<OddsScanDTO> oddsScanFuture = CompletableFuture.supplyAsync(() -> settingsService.getOddsScan(username), configExecutor);
@@ -311,12 +310,14 @@ public class SweepwaterService {
             log.info("sweepwater 开始执行，平台用户:{}", username);
 
             // 联赛级线程池（外层）
-            // ExecutorService leagueExecutor = threadPoolHolder.getLeagueExecutor();
-            // 事件级线程池（内层）
-            // ExecutorService eventExecutor = threadPoolHolder.getEventExecutor();
+            ExecutorService leagueExecutor = threadPoolHolder.getLeagueExecutor();
+            // 赛事级线程池（内层）
+            ExecutorService eventExecutor = threadPoolHolder.getEventExecutor();
+            // 球队赔率级线程池（内层）
+            ExecutorService teamOddsExecutor = threadPoolHolder.getTeamOddsExecutor();
 
             // 统计所有 BindLeagueVO 数量
-            int totalBindLeagueCount = bindLeagueVOList.size();
+            /*int totalBindLeagueCount = bindLeagueVOList.size();
             int totalEventCount = bindLeagueVOList.stream()
                     .flatMap(List::stream) // 拍平成所有 BindLeagueVO
                     .mapToInt(vo -> {
@@ -339,8 +340,7 @@ public class SweepwaterService {
                     new ThreadFactoryBuilder().setNameFormat("league-pool-%d").build(),
                     new ThreadPoolExecutor.AbortPolicy()
             );
-
-            // 事件级线程池（内层）
+            // 赛事级线程池（内层）
             ExecutorService eventExecutor = new ThreadPoolExecutor(
                     corePoolSizeEvent, maxPoolSizeEvent,
                     60L, TimeUnit.SECONDS,
@@ -348,13 +348,14 @@ public class SweepwaterService {
                     new ThreadFactoryBuilder().setNameFormat("event-pool-%d").build(),
                     new ThreadPoolExecutor.DiscardOldestPolicy()
             );
+            // 球队赔率级线程池（内层）
             ExecutorService perSweepEventExecutor = new ThreadPoolExecutor(
                     corePoolSizeEvent, maxPoolSizeEvent,
                     60L, TimeUnit.SECONDS,
                     new LinkedBlockingQueue<>(1500),
                     new ThreadFactoryBuilder().setNameFormat("team-event-%d").build(),
-                    new ThreadPoolExecutor.CallerRunsPolicy()
-            );
+                    new ThreadPoolExecutor.DiscardOldestPolicy()
+            );*/
 
             List<CompletableFuture<Void>> leagueFutures = new ArrayList<>();
 
@@ -381,11 +382,11 @@ public class SweepwaterService {
                                     TimeInterval getEventsTimer = DateUtil.timer();
                                     CompletableFuture<JSONArray> futureA = CompletableFuture.supplyAsync(() ->
                                                     getEventsForEcid(sweepwaterUsername, ecidFetchFuturesA, websiteIdA, bindLeagueVO.getLeagueIdA(), ecidA),
-                                            perSweepEventExecutor);
+                                            teamOddsExecutor);
 
                                     CompletableFuture<JSONArray> futureB = CompletableFuture.supplyAsync(() ->
                                                     getEventsForEcid(sweepwaterUsername, ecidFetchFuturesB, websiteIdB, bindLeagueVO.getLeagueIdB(), ecidB),
-                                            perSweepEventExecutor);
+                                            teamOddsExecutor);
 
                                     // 等待两个结果都完成
                                     CompletableFuture.allOf(futureA, futureB).join();
@@ -398,12 +399,54 @@ public class SweepwaterService {
                                             WebsiteType.getById(websiteIdB).getDescription(),
                                             getEventsTimer.interval());
 
-                                    if (eventsA.isEmpty() || eventsB.isEmpty()) return;
+                                    if (eventsA.isEmpty()) {
+                                        log.info("扫水,平台用户:{},网站A:{},获取赛事id:{},名称:{},球队id:{},名称:{},赔率失败, 退出",
+                                                username,
+                                                WebsiteType.getById(websiteIdA).getDescription(),
+                                                bindLeagueVO.getLeagueIdA(),
+                                                bindLeagueVO.getLeagueNameA(),
+                                                event.getIdA(),
+                                                event.getNameA()
+                                        );
+                                        return;
+                                    }
+                                    if (eventsB.isEmpty()) {
+                                        log.info("扫水,平台用户:{},网站B:{},获取赛事id:{},名称:{},球队id:{},名称:{},获取赔率失败, 退出",
+                                                username,
+                                                WebsiteType.getById(websiteIdB).getDescription(),
+                                                bindLeagueVO.getLeagueIdB(),
+                                                bindLeagueVO.getLeagueNameB(),
+                                                event.getIdB(),
+                                                event.getNameB()
+                                        );
+                                        return;
+                                    }
                                     // 平台绑定球队赛事对应获取盘口赛事列表
                                     JSONObject eventAJson = findEventByLeagueId(eventsA, bindLeagueVO.getLeagueIdA());
-                                    JSONObject eventBJson = findEventByLeagueId(eventsB, bindLeagueVO.getLeagueIdB());
+                                    if (eventAJson == null) {
+                                        log.info("扫水, 平台用户: {}, 网站A: {}, 在盘口赛事中未找到对应联绑定的赛事id:{},名称:{},球队id:{},名称:{}, 退出",
+                                                username,
+                                                WebsiteType.getById(websiteIdA).getDescription(),
+                                                bindLeagueVO.getLeagueIdA(),
+                                                bindLeagueVO.getLeagueNameA(),
+                                                event.getIdA(),
+                                                event.getNameA()
+                                        );
+                                        return;
+                                    }
 
-                                    if (eventAJson == null || eventBJson == null) return;
+                                    JSONObject eventBJson = findEventByLeagueId(eventsB, bindLeagueVO.getLeagueIdB());
+                                    if (eventBJson == null) {
+                                        log.info("扫水, 平台用户: {}, 网站B: {}, 在盘口赛事中未找到对应联绑定的赛事id:{},名称:{},球队id:{},名称:{}, 退出",
+                                                username,
+                                                WebsiteType.getById(websiteIdB).getDescription(),
+                                                bindLeagueVO.getLeagueIdB(),
+                                                bindLeagueVO.getLeagueNameB(),
+                                                event.getIdB(),
+                                                event.getNameB()
+                                        );
+                                        return;
+                                    }
 
                                     aggregateEventOdds(
                                             username,
@@ -423,13 +466,17 @@ public class SweepwaterService {
                                             event.getIsHomeA(), event.getIsHomeB()
                                     );
                                 } catch (Exception ex) {
-                                    log.error("扫水事件处理异常，平台用户:{}，联赛:{} - {}，事件:{} - {}", username,
+                                    log.error("扫水事件处理异常，平台用户:{},网站A:{}-网站B:{},联赛:{} - {}，事件:{} - {}", username,
+                                            WebsiteType.getById(websiteIdA).getDescription(),
+                                            WebsiteType.getById(websiteIdB).getDescription(),
                                             bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(),
                                             event.getNameA(), event.getNameB(), ex);
                                 }
                             }, eventExecutor).orTimeout(30, TimeUnit.SECONDS)
                                     .exceptionally(ex -> {
-                                        log.warn("事件任务异常，平台用户:{}，联赛:{}-{}，异常:", username,
+                                        log.warn("事件任务异常，平台用户:{}, 网站A:{}-网站B:{},联赛:{}-{}，异常:", username,
+                                                WebsiteType.getById(websiteIdA).getDescription(),
+                                                WebsiteType.getById(websiteIdB).getDescription(),
                                                 bindLeagueVO.getLeagueNameA(), bindLeagueVO.getLeagueNameB(), ex);
                                         return null;
                                     }));
@@ -457,9 +504,10 @@ public class SweepwaterService {
             } catch (Exception e) {
                 log.error("扫水主流程执行异常，平台用户:{}，异常信息:{}", username, e.getMessage(), e);
             } finally {
-                PriorityTaskExecutor.shutdownExecutor(leagueExecutor);
+                // 使用复用线程池就不需要关闭操作
+                /*PriorityTaskExecutor.shutdownExecutor(leagueExecutor);
                 PriorityTaskExecutor.shutdownExecutor(eventExecutor);
-                PriorityTaskExecutor.shutdownExecutor(perSweepEventExecutor);
+                PriorityTaskExecutor.shutdownExecutor(teamOddsExecutor);*/
             }
         } catch (TimeoutException te) {
             log.warn("获取配置超时，平台用户:{}", username);
@@ -485,7 +533,14 @@ public class SweepwaterService {
                                       String websiteId, String leagueId, String ecid) {
         String cacheKey = StringUtils.isNotBlank(ecid) ? ecid : websiteId;
 
+        if (ecidCache.containsKey(cacheKey)) {
+            log.info("从缓存中获取赔率: 平台用户={}, 网站={}, key={}, 联赛={}, ecid={}",
+                    username, WebsiteType.getById(websiteId).getDescription(), cacheKey, leagueId, ecid);
+        }
+
         return ecidCache.computeIfAbsent(cacheKey, key -> {
+            log.info("首次拉取赔率，通过 API 获取: 用户={}, 网站={}, key={}, 联赛={}, ecid={}",
+                    username, WebsiteType.getById(websiteId).getDescription(), key, leagueId, ecid);
             try {
                 JSONArray events = (JSONArray) handicapApi.eventsOdds(
                         username,

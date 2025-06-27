@@ -5,7 +5,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.SchedulingConfigurer;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -14,7 +17,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 @Configuration
 @EnableScheduling
 @EnableAsync
-public class SchedulingConfig {
+public class SchedulingConfig implements SchedulingConfigurer {
 
     @Bean("loginTaskExecutor")
     public Executor loginTaskExecutor() {
@@ -55,6 +58,21 @@ public class SchedulingConfig {
         executor.setKeepAliveSeconds(60);
         executor.initialize();
         return executor;
+    }
+
+    /**
+     * ✅ 替换 Spring 默认的 Scheduled 任务线程池
+     */
+    @Override
+    public void configureTasks(ScheduledTaskRegistrar registrar) {
+        int cores = Runtime.getRuntime().availableProcessors();
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(cores * 10);       // 480
+        scheduler.setThreadNamePrefix("scheduled-task-");
+        scheduler.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardOldestPolicy());
+        scheduler.initialize();
+
+        registrar.setTaskScheduler(scheduler);
     }
 }
 

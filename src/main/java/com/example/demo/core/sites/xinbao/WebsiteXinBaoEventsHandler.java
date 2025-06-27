@@ -10,9 +10,11 @@ import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.constants.Constants;
+import com.example.demo.common.enmu.ZhiBoSchedulesType;
 import com.example.demo.config.HttpProxyConfig;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.model.vo.ConfigAccountVO;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -50,11 +52,18 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
         headers.add("accept", "*/*");
         headers.add("content-type", "application/x-www-form-urlencoded");
 
-        String showType = "live";  // 滚球赛事
+        String showType;  // 滚球赛事
 //        String showType = "today";  // 今日赛事
 
-        String rType = "rb";  // 滚球赛事
+        String rType;  // 滚球赛事
 //        String rType = "r";  // 今日赛事
+        if (ZhiBoSchedulesType.LIVESCHEDULE.getId() == params.getInt("showType")) {
+            showType = "live";  // 滚球赛事
+            rType = "rb";  // 滚球赛事
+        } else {
+            showType = "today";  // 今日赛事
+            rType = "r";  // 今日赛事
+        }
         // 构造请求体
         String requestBody = String.format("p=get_game_list&uid=%s&ver=%s&langx=zh-cn&gtype=ft&showtype=%s&rtype=%s&ltype=3&cupFantasy=N&sorttype=L&isFantasy=N&ts=%s",
                 params.getStr("uid"),
@@ -101,7 +110,10 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
             String gid = gameJson.getStr("GID");        // 比赛队伍GID
             String ecid = gameJson.getStr("ECID");      // 联赛ECID
             String league = gameJson.getStr("LEAGUE");  // 联赛名称
-
+            String PTYPE = gameJson.getStr("PTYPE");   // 队名别称类型，如果有则不显示此队伍
+            if (StringUtils.isNotBlank(PTYPE)) {
+                return;
+            }
             // 查找是否已经存在相同的 lid（赛事）
             JSONObject leagueJson = leagueMap.get(lid);
             if (leagueJson == null) {
@@ -130,8 +142,8 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
 
             // 将队伍信息添加到当前联赛的 events 中
             JSONArray events = leagueJson.getJSONArray("events");
-            events.put(eventCJson);
             events.put(eventHJson);
+            events.put(eventCJson);
         });
         // 将所有合并后的联赛放入 result 数组中
         result.addAll(leagueMap.values());

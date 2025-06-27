@@ -7,6 +7,7 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.common.enmu.ZhiBoSchedulesType;
 import com.example.demo.config.HttpProxyConfig;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.model.vo.ConfigAccountVO;
@@ -68,13 +69,14 @@ public class WebsitePingBoEventsHandler implements ApiHandler {
                 res.putOpt("msg", "账户登录失效");
                 return res;
             }
+            res.putOpt("code", response.getStatus());
             res.putOpt("msg", "获取赛事失败");
             return res;
         }
         // 解析响应
         JSONArray result = new JSONArray();
         JSONObject responseJson = new JSONObject(response.body());
-        // key为l的则是列表数据，key为e的则是指定联赛的详情数据
+        // key为l的则是滚球列表数据，key为e的则是指定联赛的详情数据
         JSONArray l = responseJson.getJSONArray("l");
         if (!l.isEmpty()) {
             JSONArray events = l.getJSONArray(0).getJSONArray(2);
@@ -106,7 +108,39 @@ public class WebsitePingBoEventsHandler implements ApiHandler {
                     result.put(leagueJson);
                 });
             }
-            responseJson.putOpt("leagues", events);
+        }
+        // key为的则是今日列表数据，key为e的则是指定联赛的详情数据
+        JSONArray n = responseJson.getJSONArray("n");
+        if (!n.isEmpty()) {
+            JSONArray events = n.getJSONArray(0).getJSONArray(2);
+            if (!events.isEmpty()) {
+                events.forEach(event -> {
+                    JSONArray league = JSONUtil.parseArray(event);
+                    JSONObject leagueJson = new JSONObject();
+                    leagueJson.putOpt("id", league.getStr(0));
+                    leagueJson.putOpt("league", league.getStr(1));
+                    JSONArray teams = league.getJSONArray(2);
+                    if (!teams.isEmpty()) {
+                        JSONArray teamsJson = new JSONArray();
+                        teams.forEach(team -> {
+                            // 主队
+                            JSONObject eventHomeJson = new JSONObject();
+                            // 客队
+                            JSONObject eventAwayJson = new JSONObject();
+                            eventHomeJson.putOpt("id", JSONUtil.parseArray(team).getStr(0));
+                            eventHomeJson.putOpt("name", JSONUtil.parseArray(team).getStr(1));
+                            eventHomeJson.putOpt("isHome", true);
+                            eventAwayJson.putOpt("id", JSONUtil.parseArray(team).getStr(0));
+                            eventAwayJson.putOpt("name", JSONUtil.parseArray(team).getStr(2));
+                            eventAwayJson.putOpt("isHome", false);
+                            teamsJson.put(eventAwayJson);
+                            teamsJson.put(eventHomeJson);
+                        });
+                        leagueJson.putOpt("events", teamsJson);
+                    }
+                    result.put(leagueJson);
+                });
+            }
         }
         responseJson.putOpt("success", true);
         responseJson.putOpt("leagues", result);
@@ -121,6 +155,13 @@ public class WebsitePingBoEventsHandler implements ApiHandler {
      */
     @Override
     public JSONObject execute(ConfigAccountVO userConfig, JSONObject params) {
+        if (ZhiBoSchedulesType.TODAYSCHEDULE.getId() == params.getInt("showType")) {
+            // 查询今日赛事可以直接退出不用再次调用接口查询，因为平博的赛事列表接口会同时返回滚球和今日赛事
+            return new JSONObject()
+                    .putOpt("code", 200)
+                    .putOpt("success", false)
+                    .putOpt("msg", "无需查询");
+        }
         // 获取 完整API 路径
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");

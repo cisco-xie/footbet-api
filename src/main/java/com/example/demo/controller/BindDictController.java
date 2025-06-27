@@ -64,15 +64,26 @@ public class BindDictController extends BaseController {
 
     @Operation(summary = "绑定字典")
     @PostMapping("/bind")
-    public Result add(@RequestBody List<BindLeagueVO> bindLeagueVOS) {
+    public Result add(@RequestParam String websiteIdA, @RequestParam String websiteIdB, @RequestBody List<BindLeagueVO> bindLeagueVOS) {
         AdminLoginDTO admin = getUser();
         // 调用服务层方法新增网站
-        bindDictService.bindDict(admin.getUsername(), bindLeagueVOS);
+        bindDictService.bindDict(admin.getUsername(), websiteIdA, websiteIdB, bindLeagueVOS);
         return Result.success();
     }
 
-    @Operation(summary = "删除绑定")
+    @Operation(summary = "删除指定绑定")
     @DeleteMapping("/bind")
+    public Result delete(@RequestParam String websiteIdA, @RequestParam String websiteIdB) {
+        AdminLoginDTO admin = getUser();
+        // 调用服务层方法删除网站
+        bindDictService.deleteBindDict(admin.getUsername(), websiteIdA, websiteIdB);
+        // 删除扫水记录
+        sweepwaterService.delSweepwaters(admin.getUsername());
+        return Result.success();
+    }
+
+    @Operation(summary = "删除所有绑定")
+    @DeleteMapping("/bind/all")
     public Result delete() {
         AdminLoginDTO admin = getUser();
         // 调用服务层方法删除网站

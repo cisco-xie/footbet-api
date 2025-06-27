@@ -170,6 +170,7 @@ public class HandicapApi {
             processAccountLogin(account, username, websiteId, retryMap);
         } catch (Exception e) {
             log.error("执行单个登入任务时出现异常", e);
+            throw new BusinessException(SystemError.USER_1006);
         }
     }
 
@@ -559,9 +560,10 @@ public class HandicapApi {
      * 根据用户和网站获取赛事列表
      * @param username
      * @param websiteId
+     * @param showType
      * @return
      */
-    public Object events(String username, String websiteId) {
+    public Object events(String username, String websiteId, int showType) {
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
@@ -579,6 +581,7 @@ public class HandicapApi {
             JSONObject params = new JSONObject();
             params.putOpt("adminUsername", username);
             params.putOpt("websiteId", websiteId);
+            params.putOpt("showType", showType);
             // 根据不同站点传入不同的参数
             if (WebsiteType.PINGBO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("tokens"));
@@ -731,7 +734,7 @@ public class HandicapApi {
             }
             try {
                 JSONObject result = apiHandler.execute(account, params);
-                log.info("获取赛事列表,平台用户:{},网站:{}, 账号:{}, code:{}, success:{}", username, websiteId, accountName, result.get("code"), result.getBool("success"));
+                log.info("获取赛事列表,平台用户:{},网站:{}, 账号:{}, code:{}, success:{}", username, WebsiteType.getById(websiteId).getDescription(), accountName, result.get("code"), result.getBool("success"));
                 // ✅ 更新调用时间（不论成功与否）
                 accountCooldownMap.put(accountName, System.currentTimeMillis());
                 if (result.getBool("success") && result.get("leagues") != null) {

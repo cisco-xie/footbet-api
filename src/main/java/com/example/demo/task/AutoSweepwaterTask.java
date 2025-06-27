@@ -5,6 +5,7 @@ import com.example.demo.api.AdminService;
 import com.example.demo.api.BetService;
 import com.example.demo.api.SweepwaterService;
 import com.example.demo.config.PriorityTaskExecutor;
+import com.example.demo.core.holder.SweepWaterThreadPoolHolder;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import jakarta.annotation.Resource;
@@ -42,7 +43,10 @@ public class AutoSweepwaterTask {
     @Resource
     private BetService betService;
 
-    private static final int MAX_CONCURRENT_SWEEPS = 600;
+    @Resource
+    private SweepWaterThreadPoolHolder threadPoolHolder;
+
+    private static final int MAX_CONCURRENT_SWEEPS = 120;
     // 使用双端队列记录正在处理的任务，先进先出
     private final ConcurrentLinkedDeque<CompletableFuture<Void>> taskQueue =
             new ConcurrentLinkedDeque<>();
@@ -83,7 +87,7 @@ public class AutoSweepwaterTask {
                 long costTime = System.currentTimeMillis() - startTime;
                 log.info("本轮扫水耗时: {}ms，当前活跃任务: {}", costTime, activeTasks.sum());
             }
-        });
+        }, threadPoolHolder.getSweepOrchestratorExecutor());
 
         taskQueue.addLast(currentTask);
     }
@@ -115,11 +119,7 @@ public class AutoSweepwaterTask {
         int cpuCoreCount = Runtime.getRuntime().availableProcessors();
 
         // 使用工作窃取线程池替代固定线程池
-        ExecutorService executorAdminUserService = new ForkJoinPool(
-                Math.min(adminUsers.size(), cpuCoreCount * 4),
-                ForkJoinPool.defaultForkJoinWorkerThreadFactory,
-                null, true
-        );
+        ExecutorService executorAdminUserService = threadPoolHolder.getUserSweepExecutor();
 
         try {
             List<CompletableFuture<Void>> adminFutures = adminUsers.stream()
@@ -132,7 +132,8 @@ public class AutoSweepwaterTask {
         } catch (Exception e) {
             log.error("自动扫水 执行异常", e);
         } finally {
-            PriorityTaskExecutor.shutdownExecutor(executorAdminUserService);
+            // 复用线程池无需关闭
+            // PriorityTaskExecutor.shutdownExecutor(executorAdminUserService);
         }
     }
 

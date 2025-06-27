@@ -6,6 +6,7 @@ import com.example.demo.api.WebsiteService;
 import com.example.demo.common.enmu.SystemError;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.enmu.XinBaoOddsFormatType;
+import com.example.demo.common.utils.WebDriverFactory;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
@@ -38,9 +39,6 @@ import java.util.NoSuchElementException;
 public class ProxyController extends BaseController {
 
     @Resource
-    private WebDriver webDriver;
-
-    @Resource
     private ConfigAccountService accountService;
 
     @Resource
@@ -56,7 +54,7 @@ public class ProxyController extends BaseController {
         String browser = account.getToken().getJSONObject("tokens").getStr("X-Browser-Session-Id");
         String slid = account.getToken().getJSONObject("tokens").getStr("X-SLID");
         String lcu = account.getToken().getJSONObject("tokens").getStr("X-Lcu");
-        return "pctag=48737fbc-cfb0-4199-b54b-32a6a57fc64e; dgRH0=6Zn5gZ2NOAamUly; skin=ps3838; b-user-id=cea40892-825f-666a-cf0e-a8fe24c39a01; _gid=GA1.2.1677352228.1736944373; _ga=GA1.2.1445030965.1736944373; PCTR=1896783056883; u=" + lcu + "; lcu=" + lcu + "; custid=" + custid + "; BrowserSessionId=" + browser + "; _og=QQ==; _ulp=KzhkT2JESFJ1US9xbC9rZkxDaHJZb3V2YVZlTCtKN2ViYnBYdGNCY0U2SzB4bnZpTVZaQWVwamhPQW5FSkNqS3xiOGZmZmEzZGNlM2Y0MGJiMmRlNDE2ZTEwYTMzMWM3Mg==; uoc=be97830afef253f33d2a502d243b8c37; _userDefaultView=COMPACT; SLID=" + slid + "; auth=true; _sig=Icy1OV014TnpZeVl6RTROek0wTXpjNE5nOm5xd2hWTTZTdmJIVmluQ0k1TndvaWxMS2g6MTcxMzE1ODI0NDo3Mzc2OTk5MTY6bm9uZTo5Q0NFQTlvSVhE; _apt=9CCEA9oIXD; _ga_DXNRHBHDY9=GS1.1.1736944373.1.1.1736944383.50.0.1813848857; _ga_1YEJQEHQ55=GS1.1.1739016699.1.0.1739016745.14.0.0; _vid=3cdc158d8a079b8caa05594a23644c6d; __prefs=W251bGwsNCwxLDAsMSxudWxsLGZhbHNlLDAuMDAwMCx0cnVlLHRydWUsIl8zTElORVMiLDAsbnVsbCx0cnVlLHRydWUsZmFsc2UsZmFsc2UsbnVsbCxudWxsLHRydWVd; lang=zh_CN; _lastView=eyJoNjEwMDAwMDAxIjoiQ09NUEFDVCJ9";
+        return "pctag=48737fbc-cfb0-4199-b54b-32a6a57fc64e; dgRH0=6Zn5gZ2NOAamUly; skin=ps3838; b-user-id=cea40892-825f-666a-cf0e-a8fe24c39a01; _gid=GA1.2.1677352228.1736944373; _ga=GA1.1.2032622592.1750933442; PCTR=1896783056883; u=" + lcu + "; lcu=" + lcu + "; custid=" + custid + "; BrowserSessionId=" + browser + "; _og=QQ==; _ulp=KzhkT2JESFJ1US9xbC9rZkxDaHJZb3V2YVZlTCtKN2ViYnBYdGNCY0U2SzB4bnZpTVZaQWVwamhPQW5FSkNqS3xiOGZmZmEzZGNlM2Y0MGJiMmRlNDE2ZTEwYTMzMWM3Mg==; uoc=be97830afef253f33d2a502d243b8c37; _userDefaultView=COMPACT; SLID=" + slid + "; auth=true; _sig=Icy1OV014TnpZeVl6RTROek0wTXpjNE5nOm5xd2hWTTZTdmJIVmluQ0k1TndvaWxMS2g6MTcxMzE1ODI0NDo3Mzc2OTk5MTY6bm9uZTo5Q0NFQTlvSVhE; _apt=9CCEA9oIXD; _ga_DXNRHBHDY9=GS1.1.1736944373.1.1.1736944383.50.0.1813848857; _ga_1YEJQEHQ55=GS1.1.1739016699.1.0.1739016745.14.0.0; _vid=3cdc158d8a079b8caa05594a23644c6d; __prefs=W251bGwsNCwxLDAsMSxudWxsLGZhbHNlLDAuMDAwMCx0cnVlLHRydWUsIl8zTElORVMiLDAsbnVsbCx0cnVlLHRydWUsZmFsc2UsZmFsc2UsbnVsbCxudWxsLHRydWVd; lang=zh_CN; _lastView=eyJoNjEwMDAwMDAxIjoiQ09NUEFDVCJ9";
     }
 
     /**
@@ -126,7 +124,7 @@ public class ProxyController extends BaseController {
             List<WebElement> dialogElements = d.findElements(By.className("ui-dialog"));
             if (!dialogElements.isEmpty()) {
                 // 如果找到了 ui-dialog，则说明需要重新登录
-                System.out.println("检测到登录弹窗，触发重新登录");
+                log.info("检测到登录弹窗，触发重新登录");
                 // 处理重新登录的逻辑，抛出异常或其他处理
                 throw new BusinessException(SystemError.USER_1016);
             }
@@ -173,24 +171,33 @@ public class ProxyController extends BaseController {
     public Result proxySeleniumUnsettled(@RequestParam String websiteId, @RequestParam String accountId) throws Exception {
         AdminLoginDTO admin = getUser();
         String baseUrl = websiteService.getWebsiteBaseUrl(admin.getUsername(), websiteId);
-        WebDriver driver = webDriver; // 从配置中获取共享实例
+        WebDriver driver = WebDriverFactory.createNewWebDriver(); // 从配置中获取共享实例
 
-        // 根据 websiteId 判断执行不同的方法
-        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
-            return Result.success(proxySeleniumForWebsitePingBo(admin, websiteId, accountId, baseUrl, driver));
-        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
-            return Result.success(proxySeleniumForWebsiteXinBao(admin, websiteId, accountId, baseUrl, driver));
-        } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
-            return Result.success(proxySeleniumForWebsiteZhiBo(admin, websiteId, accountId, baseUrl, driver));
-        } else {
-            throw new RuntimeException("未知的网站");
+        try {
+            // 根据 websiteId 判断执行不同的方法
+            if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+                return Result.success(proxySeleniumForWebsitePingBo(admin, websiteId, accountId, baseUrl, driver));
+            } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+                return Result.success(proxySeleniumForWebsiteXinBao(admin, websiteId, accountId, baseUrl, driver));
+            } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+                return Result.success(proxySeleniumForWebsiteZhiBo(admin, websiteId, accountId, baseUrl, driver));
+            } else {
+                throw new RuntimeException("未知的网站");
+            }
+        } finally {
+            // ✅ 无论成功或异常，都关闭资源
+            if (driver != null) {
+                driver.quit();
+            }
         }
     }
 
     private String proxySeleniumForWebsitePingBo(AdminLoginDTO admin, String websiteId, String accountId, String baseUrl, WebDriver driver) throws Exception {
         try {
             ConfigAccountVO account = accountService.getAccountById(admin.getUsername(), websiteId, accountId);
-
+            if (account.getIsTokenValid() == 0) {
+                throw new BusinessException(SystemError.USER_1016);
+            }
             // 构建完整的cookie字符串
             String cookie = buildCookie(account);
 
@@ -231,16 +238,17 @@ public class ProxyController extends BaseController {
 
             // 获取页面源代码
             return document.html();
-        } finally {
-            // 关闭 WebDriver（根据需要可选择注释掉）
-            // driver.quit();
+        } catch (Exception e) {
+            throw new BusinessException(SystemError.SYS_500);
         }
     }
 
     private String proxySeleniumForWebsiteXinBao(AdminLoginDTO admin, String websiteId, String accountId, String baseUrl, WebDriver driver) throws Exception {
         try {
             ConfigAccountVO account = accountService.getAccountById(admin.getUsername(), websiteId, accountId);
-
+            if (account.getIsTokenValid() == 0) {
+                throw new BusinessException(SystemError.USER_1016);
+            }
             // 获取 serverresponse 对象，避免多次重复访问
             JSONObject serverResponse = account.getToken().getJSONObject("serverresponse");
 
@@ -315,9 +323,6 @@ public class ProxyController extends BaseController {
         } catch (TimeoutException e) {
             log.warn("页面加载超时");
             throw new BusinessException(SystemError.UNSETTLE_1330);
-        } finally {
-            // 根据需要关闭 WebDriver，这里可以根据实际需求决定是否保留 WebDriver
-            // driver.quit();
         }
     }
 
@@ -325,6 +330,9 @@ public class ProxyController extends BaseController {
         try {
             // 获取账号信息
             ConfigAccountVO account = accountService.getAccountById(admin.getUsername(), websiteId, accountId);
+            if (account.getIsTokenValid() == 0) {
+                throw new BusinessException(SystemError.USER_1016);
+            }
             String username = account.getAccount();  // 账号
             String password = account.getPassword();  // 密码
 
@@ -388,9 +396,6 @@ public class ProxyController extends BaseController {
         } catch (Exception e) {
             log.error("登录或页面加载失败", e);
             throw new BusinessException(SystemError.UNSETTLE_1330);
-        } finally {
-            // 根据需要关闭 WebDriver
-            // driver.quit();
         }
     }
 
