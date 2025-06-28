@@ -291,7 +291,8 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                     JSONObject oddsJson = new JSONObject();
                     oddsJson.putOpt("id", sel.getStr("id"));                    // 投注id
                     oddsJson.putOpt("odds", odds);
-                    oddsJson.putOpt("decimalOdds", sel.getStr("decimalOdds"));
+                    oddsJson.putOpt("decimalOdds", sel.getStr("decimalOdds"));                // 投注id
+                    oddsJson.putOpt("handicap", handicap);
                     if (homeIndicator.equals(sel.getStr("indicator"))) {
                         if (StringUtils.isBlank(wallHome.get())) {
                             if (handicap < 0) {
@@ -337,22 +338,26 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
             String id = sel.getStr("id");
             String odds = sel.getStr("odds");
             String decimalOdds = sel.getStr("decimalOdds");
+            double handicap = sel.getDouble("handicap");
             if (isFirstHalf) {
                 switch (indicator) {
                     case "Home":
                         fullHome.putOpt("id", id);                    // 投注id
                         fullHome.putOpt("odds", odds);
                         fullHome.putOpt("decimalOdds", decimalOdds);
+                        fullHome.putOpt("handicap", handicap);
                         break;
                     case "Draw":
                         fullDraw.putOpt("id", id);                    // 投注id
                         fullDraw.putOpt("odds", odds);
                         fullDraw.putOpt("decimalOdds", decimalOdds);
+                        fullDraw.putOpt("handicap", handicap);
                         break;
                     case "Away":
                         fullAway.putOpt("id", id);                    // 投注id
                         fullAway.putOpt("odds", odds);
                         fullAway.putOpt("decimalOdds", decimalOdds);
+                        fullAway.putOpt("handicap", handicap);
                         break;
                 }
             } else {
@@ -361,16 +366,19 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                         halfHome.putOpt("id", id);                    // 投注id
                         halfHome.putOpt("odds", odds);
                         halfHome.putOpt("decimalOdds", decimalOdds);
+                        fullHome.putOpt("handicap", handicap);
                         break;
                     case "Draw":
                         halfDraw.putOpt("id", id);                    // 投注id
                         halfDraw.putOpt("odds", odds);
                         halfDraw.putOpt("decimalOdds", decimalOdds);
+                        halfDraw.putOpt("handicap", handicap);
                         break;
                     case "Away":
                         halfAway.putOpt("id", id);                    // 投注id
                         halfAway.putOpt("odds", odds);
                         halfAway.putOpt("decimalOdds", decimalOdds);
+                        halfAway.putOpt("handicap", handicap);
                         break;
                 }
             }

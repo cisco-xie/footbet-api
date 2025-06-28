@@ -220,6 +220,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 homeOddsJson.putOpt("con", getMiddleValue(game.getStr("ratio_re")));
                 int ratioHome = getRatio(game.getStr("ratio_re"), "主队");
                 homeOddsJson.putOpt("ratio", ratioHome);
+                homeOddsJson.putOpt("handicap", game.getStr("ratio_re"));
                 if (StringUtils.isBlank(wallHome.get())) {
                     if (ratioHome > 0) {
                         // 上盘
@@ -242,6 +243,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 awayOddsJson.putOpt("con", -Math.abs(getMiddleValue(game.getStr("ratio_re"))));
                 int ratioAway = getRatio(game.getStr("ratio_re"), "客队");
                 awayOddsJson.putOpt("ratio", ratioAway);
+                awayOddsJson.putOpt("handicap", game.getStr("ratio_re"));
                 if (StringUtils.isBlank(wallAway.get())) {
                     if (ratioAway > 0) {
                         // 上盘
@@ -277,6 +279,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 homeOverSizeOddsJson.putOpt("choseTeam", "C");
                 homeOverSizeOddsJson.putOpt("con", getMiddleValue(game.getStr("ratio_rouo")));
                 homeOverSizeOddsJson.putOpt("ratio", getRatio(game.getStr("ratio_rouo"), "大"));
+                homeOverSizeOddsJson.putOpt("handicap", game.getStr("ratio_rouo"));
 
                 JSONObject awayOverSizeOddsJson = new JSONObject();
                 awayOverSizeOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
@@ -288,6 +291,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 awayOverSizeOddsJson.putOpt("choseTeam", "H");
                 awayOverSizeOddsJson.putOpt("con", -Math.abs(getMiddleValue(game.getStr("ratio_rouo"))));
                 awayOverSizeOddsJson.putOpt("ratio", getRatio(game.getStr("ratio_rouo"), "小"));
+                homeOverSizeOddsJson.putOpt("handicap", game.getStr("ratio_rouo"));
 
                 homeOverSize.putOpt(getHandicapRange(game.getStr("ratio_rouo")), homeOverSizeOddsJson);
                 awayOverSize.putOpt(getHandicapRange(game.getStr("ratio_rouu")), awayOverSizeOddsJson);
@@ -337,6 +341,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 homeOddsJson.putOpt("con", getMiddleValue(game.getStr("ratio_hre")));
                 int ratioHome = getRatio(game.getStr("ratio_re"), "主队");
                 homeOddsJson.putOpt("ratio", ratioHome);
+                homeOddsJson.putOpt("handicap", game.getStr("ratio_hre"));
                 if (StringUtils.isBlank(wallHome.get())) {
                     if (ratioHome > 0) {
                         // 上盘
@@ -359,6 +364,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 awayOddsJson.putOpt("con", -Math.abs(getMiddleValue(game.getStr("ratio_hre"))));
                 int ratioAway = getRatio(game.getStr("ratio_re"), "客队");
                 awayOddsJson.putOpt("ratio", ratioAway);
+                awayOddsJson.putOpt("handicap", game.getStr("ratio_hre"));
                 if (StringUtils.isBlank(wallAway.get())) {
                     if (ratioAway > 0) {
                         // 上盘
@@ -395,6 +401,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 homeOddsJson.putOpt("choseTeam", "C");
                 homeOddsJson.putOpt("con", getMiddleValue(game.getStr("ratio_hrouo")));
                 homeOddsJson.putOpt("ratio", getRatio(game.getStr("ratio_hrouo"), "大"));
+                homeOddsJson.putOpt("handicap", game.getStr("ratio_hrouo"));
 
                 JSONObject awayOddsJson = new JSONObject();
                 awayOddsJson.putOpt("id", game.getStr("gid"));                              // 投注id
@@ -405,6 +412,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 awayOddsJson.putOpt("choseTeam", "H");
                 awayOddsJson.putOpt("con", -Math.abs(getMiddleValue(game.getStr("ratio_hrouo"))));
                 awayOddsJson.putOpt("ratio", getRatio(game.getStr("ratio_hrouo"), "小"));
+                awayOddsJson.putOpt("handicap", game.getStr("ratio_hrouo"));
 
                 homeFirstHomeOverSize.putOpt(getHandicapRange(game.getStr("ratio_hrouo")), homeOddsJson);
                 homeFirstAwayOverSize.putOpt(getHandicapRange(game.getStr("ratio_hrouu")), awayOddsJson);

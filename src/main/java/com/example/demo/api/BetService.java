@@ -856,7 +856,7 @@ public class BetService {
             String keyA = bet.getWebsiteIdA() + "_" + bet.getBetAccountIdA();
             String keyB = bet.getWebsiteIdB() + "_" + bet.getBetAccountIdB();
             // 网站A
-            if (!StringUtils.isBlank(bet.getBetAccountIdA()) && bet.getBetSuccessA() && bet.getBetInfoA() == null) {
+            if (!StringUtils.isBlank(bet.getBetAccountIdA()) && bet.getBetSuccessA()) {
                 futures.add(CompletableFuture.runAsync(() -> {
                     unsettleds.computeIfAbsent(keyA, key -> {
                         Object unsettledA = handicapApi.unsettled(username, bet.getWebsiteIdA(), bet.getBetAccountIdA());
@@ -871,7 +871,7 @@ public class BetService {
             }
 
             // 网站B
-            if (!StringUtils.isBlank(bet.getBetAccountIdB()) && bet.getBetSuccessB() && bet.getBetInfoB() == null) {
+            if (!StringUtils.isBlank(bet.getBetAccountIdB()) && bet.getBetSuccessB()) {
                 futures.add(CompletableFuture.runAsync(() -> {
                     unsettleds.computeIfAbsent(keyB, key -> {
                         Object unsettledB = handicapApi.unsettled(username, bet.getWebsiteIdB(), bet.getBetAccountIdB());

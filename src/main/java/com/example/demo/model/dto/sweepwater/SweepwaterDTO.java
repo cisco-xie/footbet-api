@@ -1,5 +1,6 @@
 package com.example.demo.model.dto.sweepwater;
 
+import cn.hutool.json.JSONObject;
 import lombok.Data;
 
 @Data
@@ -32,6 +33,8 @@ public class SweepwaterDTO {
     private Integer isBet;          // 是否进行过投注
     private String betIdA;          // 投注成功后盘口返回的id
     private String betIdB;          // 投注成功后盘口返回的id
+    private JSONObject betInfoA;    // 通过赔率手动解析的未结注单信息
+    private JSONObject betInfoB;    // 通过赔率手动解析的未结注单信息
     private String decimalOddsA;    // 智博网站的投注专属参数
     private String decimalOddsB;    // 智博网站的投注专属参数
     private String handicapA;       // 智博网站的投注专属参数
