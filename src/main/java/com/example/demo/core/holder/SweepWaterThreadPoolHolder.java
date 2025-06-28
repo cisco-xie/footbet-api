@@ -84,7 +84,7 @@ public class SweepWaterThreadPoolHolder {
 
         // 球队赔率线程池
         this.teamOddsExecutor = new ThreadPoolExecutor(
-                800, 1200,
+                1000, 2000,
                 60L, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(2000),
                 new ThreadFactoryBuilder().setNameFormat("odds-pool-%d").build(),
