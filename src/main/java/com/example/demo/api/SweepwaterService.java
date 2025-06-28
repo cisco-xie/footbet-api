@@ -112,7 +112,7 @@ public class SweepwaterService {
             // 1. 异步读取Redis列表（带2秒超时）
             List<String> items = redisList.readAllAsync()
                     .toCompletableFuture()
-                    .orTimeout(2, TimeUnit.SECONDS)
+                    .orTimeout(5, TimeUnit.SECONDS)
                     .join();
 
             // 2. 并行查找目标项

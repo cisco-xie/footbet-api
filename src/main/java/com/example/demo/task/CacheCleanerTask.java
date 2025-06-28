@@ -11,6 +11,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RList;
 import org.redisson.api.RedissonClient;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -30,14 +31,15 @@ public class CacheCleanerTask {
     private RedissonClient businessPlatformRedissonClient;
 
     /**
-     * 清理超过4小时的扫水记录
+     * 清理超过1小时的扫水记录
      */
-    @Scheduled(fixedDelay = 60 * 60 * 1000) // 每60分钟执行
+    @Scheduled(fixedDelay = 10 * 60 * 1000) // 每10分钟执行
     public void cleanExpiredSweepwaterDTO() {
-        // 获取所有系统用户
+        log.info("开始执行清理扫水数据");
         List<AdminLoginDTO> adminUsers = adminService.getUsers(null);
         LocalDateTime now = LocalDateTime.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(DatePattern.NORM_DATETIME_PATTERN);
+
         for (AdminLoginDTO admin : adminUsers) {
             String username = admin.getUsername();
             String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
@@ -45,23 +47,32 @@ public class CacheCleanerTask {
 
             if (sweepList == null || sweepList.isEmpty()) continue;
 
+            int currentSize = sweepList.size();
+            if (currentSize > 10_000) {
+                int removeCount = currentSize - 10_000;
+                // Redis 列表有序，前面的为旧数据，裁剪前面的部分
+                List<String> excessList = sweepList.subList(0, removeCount);
+                sweepList.removeAll(new ArrayList<>(excessList)); // 拷贝防止 ConcurrentModificationException
+                log.info("清理扫水数据：用户{}，清除超量记录{}条", username, removeCount);
+            }
+
+            // 再清理超过1小时的记录
             List<String> toRemove = new ArrayList<>();
             for (String json : sweepList) {
                 try {
                     SweepwaterDTO dto = JSONUtil.toBean(json, SweepwaterDTO.class);
                     LocalDateTime createTime = LocalDateTime.parse(dto.getCreateTime(), formatter);
-                    // 清理超过4小时的扫水记录
-                    if (createTime.plusHours(4).isBefore(now)) {
+                    if (createTime.plusHours(1).isBefore(now)) {
                         toRemove.add(json);
                     }
                 } catch (Exception e) {
-                    log.warn("清理扫水数据失败，无法解析 JSON: {}", json);
+                    log.info("清理扫水数据失败，无法解析 JSON: {}", json);
                 }
             }
 
             if (!toRemove.isEmpty()) {
                 sweepList.removeAll(toRemove);
-                log.info("清理扫水数据：用户{}，清除记录{}条", username, toRemove.size());
+                log.info("清理扫水数据：用户{}，清除过期记录{}条", username, toRemove.size());
             }
         }
     }
