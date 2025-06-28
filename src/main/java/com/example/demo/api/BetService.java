@@ -18,6 +18,7 @@ import com.example.demo.model.dto.bet.SweepwaterBetDTO;
 import com.example.demo.model.dto.settings.BetAmountDTO;
 import com.example.demo.model.dto.settings.IntervalDTO;
 import com.example.demo.model.dto.settings.LimitDTO;
+import com.example.demo.model.dto.settings.ProfitDTO;
 import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
 import com.example.demo.model.vo.WebsiteVO;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -184,6 +185,25 @@ public class BetService {
         IntervalDTO intervalDTO = settingsBetService.getInterval(username);
         BetAmountDTO amountDTO = settingsService.getBetAmount(username);
         AdminLoginDTO admin = adminService.getAdmin(username);
+        ProfitDTO profit = settingsService.getProfit(username);
+        sweepwaters.removeIf(sweepwater -> {
+            try {
+                double water = Double.parseDouble(sweepwater.getWater());
+                if ("letBall".equals(sweepwater.getHandicapType())) {
+                    return water < profit.getRollingLetBall();
+                } else if ("overSize".equals(sweepwater.getHandicapType())) {
+                    return water < profit.getRollingSize();
+                }
+            } catch (NumberFormatException e) {
+                log.info("水位格式异常: {}, 已跳过该条投注", sweepwater.getWater());
+                return true; // 移除格式错误的
+            }
+            return false;
+        });
+
+        if (sweepwaters.isEmpty()) {
+            return ;
+        }
         // CPU核数*4或者最大100线程
         int cpuCoreCount = Math.min(Runtime.getRuntime().availableProcessors() * 4, 100);
         // 核心线程数就是内部BindLeagueVO数量，最大线程数取个合理值
@@ -465,14 +485,14 @@ public class BetService {
                 // 投注
                 Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betPreview"));
 
+                if (isA) {
+                    dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                } else {
+                    dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                }
                 if (betResult != null && parseBetSuccess(betResult, dto, isA)) {
-                    // 设置投注时间记录
+                    // 投注成功则记录投注时间
                     businessPlatformRedissonClient.getBucket(intervalKey).set(System.currentTimeMillis(), Duration.ofHours(24));
-                    if (isA) {
-                        dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
-                    } else {
-                        dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
-                    }
                     result.putOpt("isBet", true);
                     result.putOpt("success", true);
                     result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
@@ -612,7 +632,6 @@ public class BetService {
         betPreviewResult.putOpt("betInfo", betInfo);
         return betPreviewResult;
     }
-
 
     /**
      * 校验比分限制和总投注限制

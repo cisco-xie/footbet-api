@@ -48,7 +48,7 @@ public class SweepWaterThreadPoolHolder {
 
         // ✅ 扫水调度 orchestrator 线程池
         this.sweepOrchestratorExecutor = new ThreadPoolExecutor(
-                120, 240,
+                240, 480,
                 60L, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(500),
                 new ThreadFactoryBuilder().setNameFormat("sweep-orchestrator-%d").build(),
@@ -57,34 +57,34 @@ public class SweepWaterThreadPoolHolder {
 
         // 平台用户扫水主线程池（最外层）
         this.userSweepExecutor = new ThreadPoolExecutor(
-                24, 96,
+                500, 1000,
                 60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(200),
+                new LinkedBlockingQueue<>(1500),
                 new ThreadFactoryBuilder().setNameFormat("user-sweep-%d").build(),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
 
         // 联赛线程池
         this.leagueExecutor = new ThreadPoolExecutor(
-                cpuCoreCount, 100,
+                2000, 3000,
                 60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(1000),
+                new LinkedBlockingQueue<>(2000),
                 new ThreadFactoryBuilder().setNameFormat("league-pool-%d").build(),
                 new ThreadPoolExecutor.DiscardOldestPolicy()
         );
 
         // 赛事线程池
         this.eventExecutor = new ThreadPoolExecutor(
-                100, 200,
+                3000, 4000,
                 60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(1500),
+                new LinkedBlockingQueue<>(5000),
                 new ThreadFactoryBuilder().setNameFormat("event-pool-%d").build(),
                 new ThreadPoolExecutor.DiscardOldestPolicy()
         );
 
         // 球队赔率线程池
         this.teamOddsExecutor = new ThreadPoolExecutor(
-                200, 400,
+                800, 1200,
                 60L, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(2000),
                 new ThreadFactoryBuilder().setNameFormat("odds-pool-%d").build(),
@@ -101,12 +101,12 @@ public class SweepWaterThreadPoolHolder {
         );
 
         // 监控器初始化
-        orchestratorMonitor = new ThreadPoolMonitor((ThreadPoolExecutor) sweepOrchestratorExecutor, 30);
-        userSweepMonitor = new ThreadPoolMonitor((ThreadPoolExecutor) userSweepExecutor, 30);
-        leagueMonitor = new ThreadPoolMonitor((ThreadPoolExecutor) leagueExecutor, 30);
-        eventMonitor = new ThreadPoolMonitor((ThreadPoolExecutor) eventExecutor, 30);
-        oddsMonitor = new ThreadPoolMonitor((ThreadPoolExecutor) teamOddsExecutor, 30);
-        configMonitor = new ThreadPoolMonitor((ThreadPoolExecutor) configExecutor, 30);
+        orchestratorMonitor = new ThreadPoolMonitor("扫水定时任务线程", (ThreadPoolExecutor) sweepOrchestratorExecutor, 30);
+        userSweepMonitor = new ThreadPoolMonitor("扫水平台用户线程", (ThreadPoolExecutor) userSweepExecutor, 30);
+        leagueMonitor = new ThreadPoolMonitor("扫水联赛列表任务线程", (ThreadPoolExecutor) leagueExecutor, 30);
+        eventMonitor = new ThreadPoolMonitor("扫水赛事任务线程", (ThreadPoolExecutor) eventExecutor, 30);
+        oddsMonitor = new ThreadPoolMonitor("扫水球队赔率线程", (ThreadPoolExecutor) teamOddsExecutor, 30);
+        configMonitor = new ThreadPoolMonitor("扫水基础设置线程", (ThreadPoolExecutor) configExecutor, 30);
 
         orchestratorMonitor.start();
         userSweepMonitor.start();

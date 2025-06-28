@@ -1,5 +1,6 @@
 package com.example.demo.core.sites.pingbo;
 
+import cn.hutool.core.convert.Convert;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONArray;
@@ -291,10 +292,16 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                     letAwayJson.putOpt(letKey, awayOddsJson);
                                     positionLetBall++;
 
-                                    // 记录主队的赔率
-                                    apiUrlService.updateOddsCache(username, homeOddsId, letBallJsonArr.getDouble(3));
-                                    // 记录客队的赔率
-                                    apiUrlService.updateOddsCache(username, awayOddsId, letBallJsonArr.getDouble(4));
+                                    Double oddsHome = Convert.toDouble(letBallJsonArr.get(3), null);
+                                    if (oddsHome != null) {
+                                        // 记录主队的赔率
+                                        apiUrlService.updateOddsCache(username, homeOddsId, oddsHome);
+                                    }
+                                    Double oddsAway = Convert.toDouble(letBallJsonArr.get(4), null);
+                                    if (oddsAway != null) {
+                                        // 记录客队的赔率
+                                        apiUrlService.updateOddsCache(username, awayOddsId, oddsAway);
+                                    }
                                 };
                                 JSONObject sizeHomeJson = new JSONObject();
                                 JSONObject sizeAwayJson = new JSONObject();
@@ -334,10 +341,16 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                     sizeHomeJson.putOpt(sizeKey, homeOddsJson);
                                     sizeAwayJson.putOpt(sizeKey, awayOddsJson);
                                     positionSizeBall++;
-                                    // 记录主队的赔率
-                                    apiUrlService.updateOddsCache(username, homeOddsId, sizeBallJsonArr.getDouble(2));
-                                    // 记录客队的赔率
-                                    apiUrlService.updateOddsCache(username, awayOddsId, sizeBallJsonArr.getDouble(3));
+                                    Double oddsHome = Convert.toDouble(sizeBallJsonArr.get(2), null);
+                                    if (oddsHome != null) {
+                                        // 记录主队的赔率
+                                        apiUrlService.updateOddsCache(username, homeOddsId, oddsHome);
+                                    }
+                                    Double oddsAway = Convert.toDouble(sizeBallJsonArr.get(3), null);
+                                    if (oddsAway != null) {
+                                        // 记录客队的赔率
+                                        apiUrlService.updateOddsCache(username, awayOddsId, oddsAway);
+                                    }
                                 }
                                 /** 全场 end */
                                 JSONObject homeOddsJson = new JSONObject();
@@ -431,10 +444,16 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                     firstHalfLetHomeJson.putOpt(letKey, homeOddsJson);
                                     firstHalfLetAwayJson.putOpt(letKey, awayOddsJson);
                                     positionLetBall++;
-                                    // 记录主队的赔率
-                                    apiUrlService.updateOddsCache(username, homeOddsId, letBallJsonArr.getDouble(3));
-                                    // 记录客队的赔率
-                                    apiUrlService.updateOddsCache(username, awayOddsId, letBallJsonArr.getDouble(4));
+                                    Double oddsHome = Convert.toDouble(letBallJsonArr.get(3), null);
+                                    if (oddsHome != null) {
+                                        // 记录主队的赔率
+                                        apiUrlService.updateOddsCache(username, homeOddsId, oddsHome);
+                                    }
+                                    Double oddsAway = Convert.toDouble(letBallJsonArr.get(4), null);
+                                    if (oddsAway != null) {
+                                        // 记录客队的赔率
+                                        apiUrlService.updateOddsCache(username, awayOddsId, oddsAway);
+                                    }
                                 };
                                 JSONObject firstHalfSizeHomeJson = new JSONObject();
                                 JSONObject firstHalfSizeAwayJson = new JSONObject();
@@ -474,10 +493,16 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                     firstHalfSizeHomeJson.putOpt(sizeKey, homeOddsJson);
                                     firstHalfSizeAwayJson.putOpt(sizeKey, awayOddsJson);
                                     positionSizeBall++;
-                                    // 记录主队的赔率
-                                    apiUrlService.updateOddsCache(username, homeOddsId, sizeBallJsonArr.getDouble(2));
-                                    // 记录客队的赔率
-                                    apiUrlService.updateOddsCache(username, awayOddsId, sizeBallJsonArr.getDouble(3));
+                                    Double oddsHome = Convert.toDouble(sizeBallJsonArr.get(2), null);
+                                    if (oddsHome != null) {
+                                        // 记录主队的赔率
+                                        apiUrlService.updateOddsCache(username, homeOddsId, oddsHome);
+                                    }
+                                    Double oddsAway = Convert.toDouble(sizeBallJsonArr.get(3), null);
+                                    if (oddsAway != null) {
+                                        // 记录客队的赔率
+                                        apiUrlService.updateOddsCache(username, awayOddsId, oddsAway);
+                                    }
                                 }
                                 /** 上半场 end */
                                 JSONObject homeOddsJson = new JSONObject();

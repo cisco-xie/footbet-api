@@ -100,8 +100,8 @@ public class WebsitePingBoEventsHandler implements ApiHandler {
                             eventAwayJson.putOpt("id", JSONUtil.parseArray(team).getStr(0));
                             eventAwayJson.putOpt("name", JSONUtil.parseArray(team).getStr(2));
                             eventAwayJson.putOpt("isHome", false);
-                            teamsJson.put(eventAwayJson);
                             teamsJson.put(eventHomeJson);
+                            teamsJson.put(eventAwayJson);
                         });
                         leagueJson.putOpt("events", teamsJson);
                     }
@@ -133,8 +133,8 @@ public class WebsitePingBoEventsHandler implements ApiHandler {
                             eventAwayJson.putOpt("id", JSONUtil.parseArray(team).getStr(0));
                             eventAwayJson.putOpt("name", JSONUtil.parseArray(team).getStr(2));
                             eventAwayJson.putOpt("isHome", false);
-                            teamsJson.put(eventAwayJson);
                             teamsJson.put(eventHomeJson);
+                            teamsJson.put(eventAwayJson);
                         });
                         leagueJson.putOpt("events", teamsJson);
                     }

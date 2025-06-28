@@ -35,7 +35,7 @@ public class SchedulingConfig implements SchedulingConfigurer {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         int cores = Runtime.getRuntime().availableProcessors();
         executor.setCorePoolSize(cores * 10);       // 480
-        executor.setMaxPoolSize(cores * 10);        // 960
+        executor.setMaxPoolSize(cores * 20);        // 960
         executor.setQueueCapacity(2000);           // 防止任务排队阻塞
         executor.setThreadNamePrefix("sweep-task-");
         // ✅ 丢弃最旧任务，接受新任务
