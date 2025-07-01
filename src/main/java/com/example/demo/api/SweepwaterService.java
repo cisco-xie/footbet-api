@@ -454,6 +454,18 @@ public class SweepwaterService {
             String ecidA = event.getEcidA();
             String ecidB = event.getEcidB();
 
+            // 投注次数限制key
+            String limitKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, event.getIdA());
+            boolean betLimitA = betService.getBetLimit(limitKeyA, limit);
+
+            // 投注次数限制key
+            String limitKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, event.getIdB());
+            boolean betLimitB = betService.getBetLimit(limitKeyB, limit);
+            if (betLimitA && betLimitB) {
+                log.info("扫水,网站A:{}-联赛:{},和网站B:{}-联赛:{},的投注总次数都达到限制,不进行扫水和后续操作", WebsiteType.getById(websiteIdA).getDescription(), bindLeagueVO.getLeagueNameA(), WebsiteType.getById(websiteIdB).getDescription(), bindLeagueVO.getLeagueNameB());
+                return ;
+            }
+
             log.info("获取赛事数据,平台用户:{},网站A:{},网站B:{}", username,
                     WebsiteType.getById(websiteIdA).getDescription(),
                     WebsiteType.getById(websiteIdB).getDescription());
@@ -685,17 +697,6 @@ public class SweepwaterService {
             String leagueIdA, String leagueIdB,
             String eventIdA, String eventIdB,
             boolean isHomeA, boolean isHomeB) {
-        // 投注次数限制key
-        String limitKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventIdA);
-        boolean betLimitA = betService.getBetLimit(limitKeyA, limit);
-
-        // 投注次数限制key
-        String limitKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventIdB);
-        boolean betLimitB = betService.getBetLimit(limitKeyB, limit);
-        if (betLimitA && betLimitB) {
-            log.info("网站A:{}-联赛:{},和网站B:{}-联赛:{},的投注总次数都达到限制,不进行扫水和后续操作", WebsiteType.getById(websiteIdA).getDescription(), eventAJson.getStr("league"), WebsiteType.getById(websiteIdB).getDescription(), eventBJson.getStr("league"));
-            return null;
-        }
         List<SweepwaterDTO> results = new ArrayList<>();
         JSONArray eventsA = eventAJson.getJSONArray("events");
         JSONArray eventsB = eventBJson.getJSONArray("events");
