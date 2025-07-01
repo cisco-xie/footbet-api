@@ -8,7 +8,7 @@ public class Constants {
     /**
      * 新二盘口请求版本
      */
-    public static final String VER = "2025-05-08-Cubug_91";
+    public static final String VER = "2025-06-24-c1bug151_104";
 
     /**
      * 请求浏览器

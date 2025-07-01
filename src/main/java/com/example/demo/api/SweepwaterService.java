@@ -14,6 +14,7 @@ import com.example.demo.common.enmu.PingBoOddsFormatType;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.enmu.XinBaoOddsFormatType;
 import com.example.demo.common.utils.KeyUtil;
+import com.example.demo.common.utils.ToDayRangeUtil;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.core.holder.SweepWaterThreadPoolHolder;
 import com.example.demo.model.dto.AdminLoginDTO;
@@ -43,6 +44,7 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -204,6 +206,10 @@ public class SweepwaterService {
     }
 
     public List<SweepwaterDTO> getSweepwaters(String username) {
+        /*List<String> minuteKeys = ToDayRangeUtil.getRecentMinuteKeys(30);
+        for (String minuteKey : minuteKeys) {
+
+        }*/
         String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
         RList<String> list = businessPlatformRedissonClient.getList(key);
 
@@ -212,8 +218,8 @@ public class SweepwaterService {
         }
 
         int size = list.size();
-        // 获取最后 1000 条（如果不足就全部返回）
-        int fromIndex = Math.max(0, size - 1000);
+        // 获取最后 3000 条（如果不足就全部返回）
+        int fromIndex = Math.max(0, size - 3000);
         List<String> latestJsonList = list.range(fromIndex, size - 1);
 
         return latestJsonList.stream()
@@ -520,7 +526,7 @@ public class SweepwaterService {
             }
 
             TimeInterval oddsTimer = DateUtil.timer();
-            aggregateEventOdds(username, oddsScan, profit, interval, limit,
+            aggregateEventOdds(username, sweepwaterUsername, oddsScan, profit, interval, limit,
                     oddsRanges, timeFrames, typeFilter,
                     websiteMap.get(websiteIdA), websiteMap.get(websiteIdB),
                     eventAJson, eventBJson,
@@ -669,7 +675,7 @@ public class SweepwaterService {
      * @return 扫水结果列表
      */
     public List<SweepwaterDTO> aggregateEventOdds(
-            String username, OddsScanDTO oddsScan, ProfitDTO profit,
+            String username, String sweepwaterUsername, OddsScanDTO oddsScan, ProfitDTO profit,
             IntervalDTO interval, LimitDTO limit, List<OddsRangeDTO> oddsRanges,
             List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter,
             WebsiteVO websiteA, WebsiteVO websiteB,
@@ -731,7 +737,7 @@ public class SweepwaterService {
                 )) {
                     // 处理全场赔率
                     processFullCourtOdds(
-                            username, oddsScan, profit, interval, limit, oddsRanges,
+                            username, sweepwaterUsername, oddsScan, profit, interval, limit, oddsRanges,
                             processedEventA.getFullCourt(), processedEventB.getFullCourt(),
                             "fullCourt",
                             processedEventA.getTeamName(), processedEventB.getTeamName(),
@@ -744,7 +750,7 @@ public class SweepwaterService {
 
                     // 处理上半场赔率
                     processFullCourtOdds(
-                            username, oddsScan, profit, interval, limit, oddsRanges,
+                            username, sweepwaterUsername, oddsScan, profit, interval, limit, oddsRanges,
                             processedEventA.getFirstHalf(), processedEventB.getFirstHalf(),
                             "firstHalf",
                             processedEventA.getTeamName(), processedEventB.getTeamName(),
@@ -962,7 +968,7 @@ public class SweepwaterService {
     }
 
     // 提取的处理逻辑
-    private void processFullCourtOdds(String username, OddsScanDTO oddsScan, ProfitDTO profit, IntervalDTO interval, LimitDTO limit, List<OddsRangeDTO> oddsRanges,
+    private void processFullCourtOdds(String username, String sweepwaterUsername, OddsScanDTO oddsScan, ProfitDTO profit, IntervalDTO interval, LimitDTO limit, List<OddsRangeDTO> oddsRanges,
                                       JSONObject fullCourtA, JSONObject fullCourtB, String courtType,
                                       String nameA, String nameB, JSONObject eventAJson, JSONObject eventBJson, JSONObject teamA, JSONObject teamB,
                                       String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB,
@@ -1007,25 +1013,29 @@ public class SweepwaterService {
                                     String decimalOddsB = valueBJson.containsKey("decimalOdds") ? valueBJson.getStr("decimalOdds") : null;
                                     // 判断赔率是否在指定区间内
                                     if (oddsScan.getWaterLevelFrom() <= finalValue && finalValue <= oddsScan.getWaterLevelTo()) {
+                                        LocalDateTime now = LocalDateTime.now();
                                         JSONObject betInfoA = null;
                                         JSONObject betInfoB = null;
                                         try {
                                             betInfoA = buildBetInfo(websiteIdA, eventAJson.getJSONArray("events"), teamA, eventAJson.getStr("league"), key, valueAJson, teamA.getBool("isHome"), amountDTO);
-                                            betInfoB = buildBetInfo(websiteIdA, eventBJson.getJSONArray("events"), teamB, eventBJson.getStr("league"), key, valueBJson, teamB.getBool("isHome"), amountDTO);
+                                            betInfoB = buildBetInfo(websiteIdB, eventBJson.getJSONArray("events"), teamB, eventBJson.getStr("league"), key, valueBJson, teamB.getBool("isHome"), amountDTO);
                                         } catch (Exception e) {
                                             log.info("通过赔率自己解析betInfo失败: ", e);
                                         }
                                         // 查询缓存看谁的赔率是最新变动的
-                                        String oddsKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, valueAJson.getStr("id") + (valueAJson.getStr("choseTeam") == null ? "" : valueAJson.getStr("choseTeam")));
-                                        String oddsKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, valueBJson.getStr("id") + (valueBJson.getStr("choseTeam") == null ? "" : valueBJson.getStr("choseTeam")));
+                                        String oddsKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, sweepwaterUsername, valueAJson.getStr("id") + (valueAJson.getStr("choseTeam") == null ? "" : valueAJson.getStr("choseTeam")));
+                                        String oddsKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, sweepwaterUsername, valueBJson.getStr("id") + (valueBJson.getStr("choseTeam") == null ? "" : valueBJson.getStr("choseTeam")));
                                         Map<String, Boolean> latestChanged = isLatestChanged(oddsKeyA, oddsKeyB);
                                         boolean lastTimeA = latestChanged.get("lastTimeA");
                                         boolean lastTimeB = latestChanged.get("lastTimeB");
-                                        SweepwaterDTO sweepwaterDTO = createSweepwaterDTO(valueAJson.getStr("id"), valueBJson.getStr("id"), valueAJson.getStr("selectionId"), valueBJson.getStr("selectionId"), courtType, "draw", eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, nameA, nameB, null, valueA, valueB, finalValue, lastTimeA, lastTimeB, decimalOddsA, decimalOddsB, scoreA, scoreB,
+                                        SweepwaterDTO sweepwaterDTO = createSweepwaterDTO(valueAJson.getStr("id"), valueBJson.getStr("id"), now, valueAJson.getStr("selectionId"), valueBJson.getStr("selectionId"), courtType, "draw", eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, nameA, nameB, null, valueA, valueB, finalValue, lastTimeA, lastTimeB, decimalOddsA, decimalOddsB, scoreA, scoreB,
                                                 valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio"),
                                                 betInfoA, betInfoB
                                         );
                                         results.add(sweepwaterDTO);
+                                        // 生成格式为 "HHmm"（小时+分钟） todo 以分钟为单位进行切割扫水列表，分key保存
+                                        String minuteKey = now.format(DateTimeFormatter.ofPattern("HHmm"));
+                                        // String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username, minuteKey);
                                         String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
                                         businessPlatformRedissonClient.getList(sweepWaterKey).add(JSONUtil.toJsonStr(sweepwaterDTO));
                                         // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
@@ -1071,25 +1081,29 @@ public class SweepwaterService {
                                     String decimalOddsB = valueBJson.containsKey("decimalOdds") ? valueBJson.getStr("decimalOdds") : null;
                                     // 判断赔率是否在指定区间内
                                     if (oddsScan.getWaterLevelFrom() <= finalValue && finalValue <= oddsScan.getWaterLevelTo()) {
+                                        LocalDateTime now = LocalDateTime.now();
                                         JSONObject betInfoA = null;
                                         JSONObject betInfoB = null;
                                         try {
                                             betInfoA = buildBetInfo(websiteIdA, eventAJson.getJSONArray("events"), teamA, eventAJson.getStr("league"), key, valueAJson, teamA.getBool("isHome"), amountDTO);
-                                            betInfoB = buildBetInfo(websiteIdA, eventBJson.getJSONArray("events"), teamB, eventBJson.getStr("league"), key, valueBJson, teamB.getBool("isHome"), amountDTO);
+                                            betInfoB = buildBetInfo(websiteIdB, eventBJson.getJSONArray("events"), teamB, eventBJson.getStr("league"), key, valueBJson, teamB.getBool("isHome"), amountDTO);
                                         } catch (Exception e) {
-                                            log.info("通过赔率自己解析betInfo失败: ", e);
+                                            log.info("通过赔率手动解析betInfo失败: ", e);
                                         }
                                         // 查询缓存看谁的赔率是最新变动的
-                                        String oddsKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, valueAJson.getStr("id") + (valueAJson.getStr("choseTeam") == null ? "" : valueAJson.getStr("choseTeam")));
-                                        String oddsKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, username, valueBJson.getStr("id") + (valueBJson.getStr("choseTeam") == null ? "" : valueBJson.getStr("choseTeam")));
+                                        String oddsKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, sweepwaterUsername, valueAJson.getStr("id") + (valueAJson.getStr("choseTeam") == null ? "" : valueAJson.getStr("choseTeam")));
+                                        String oddsKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, sweepwaterUsername, valueBJson.getStr("id") + (valueBJson.getStr("choseTeam") == null ? "" : valueBJson.getStr("choseTeam")));
                                         Map<String, Boolean> latestChanged = isLatestChanged(oddsKeyA, oddsKeyB);
                                         boolean lastTimeA = latestChanged.get("lastTimeA");
                                         boolean lastTimeB = latestChanged.get("lastTimeB");
-                                        SweepwaterDTO sweepwaterDTO = createSweepwaterDTO(valueAJson.getStr("id"), valueBJson.getStr("id"), valueAJson.getStr("selectionId"), valueBJson.getStr("selectionId"), courtType, key, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, nameA, nameB, subKey, valueA, valueB, finalValue, lastTimeA, lastTimeB, decimalOddsA, decimalOddsB, scoreA, scoreB,
+                                        SweepwaterDTO sweepwaterDTO = createSweepwaterDTO(valueAJson.getStr("id"), valueBJson.getStr("id"), now, valueAJson.getStr("selectionId"), valueBJson.getStr("selectionId"), courtType, key, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, nameA, nameB, subKey, valueA, valueB, finalValue, lastTimeA, lastTimeB, decimalOddsA, decimalOddsB, scoreA, scoreB,
                                                 valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio"),
                                                 betInfoA, betInfoB
                                                 );
                                         results.add(sweepwaterDTO);
+                                        // 生成格式为 "HHmm"（小时+分钟） todo 以分钟为单位进行切割扫水列表，分key保存
+                                        String minuteKey = now.format(DateTimeFormatter.ofPattern("HHmm"));
+                                        // String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username, minuteKey);
                                         String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
                                         businessPlatformRedissonClient.getList(sweepWaterKey).add(JSONUtil.toJsonStr(sweepwaterDTO));
                                         // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
@@ -1130,6 +1144,7 @@ public class SweepwaterService {
      */
     public JSONObject buildBetInfo(String websiteId, JSONArray teams, JSONObject teamsOdds, String leagueName, String key, JSONObject oddsJson, boolean isHome, BetAmountDTO amount) {
         JSONObject betInfo = new JSONObject();
+        log.info("[手动设置投注信息][网站:{}][teams={}][teamsOdds={}][teamsOdds={}][key={}][oddsJson={}][isHome={}]", WebsiteType.getById(websiteId).getDescription(), teams, teamsOdds, leagueName, key, oddsJson, isHome);
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
             // eg.平博赔率的id是1611238334|0|2|1|1|-1.0，截取第一个赛事id=1611238334
             String[] parts = oddsJson.getStr("id").split("\\|");  // 按 | 分割
@@ -1150,10 +1165,10 @@ public class SweepwaterService {
                 // 让球盘
                 String wall = oddsJson.containsKey("wall") ? oddsJson.getStr("wall") : null;
                 if (StringUtils.isNotBlank(wall)) {
-                    if (homeTeam.getStr("wall").equals(wall)) {
+                    if ("hanging".equals(wall)) {
                         // 让球盘
                         marketName = homeTeam.getStr("name");
-                    } else if (awayTeam.getStr("wall").equals(wall)) {
+                    } else if ("foot".equals(wall)) {
                         // 让球盘
                         marketName = awayTeam.getStr("name");
                     }
@@ -1190,10 +1205,10 @@ public class SweepwaterService {
                 // 让球盘
                 String wall = oddsJson.containsKey("wall") ? oddsJson.getStr("wall") : null;
                 if (StringUtils.isNotBlank(wall)) {
-                    if (homeTeam.getStr("wall").equals(wall)) {
+                    if ("hanging".equals(wall)) {
                         // 让球盘
                         marketName = homeTeam.getStr("name");
-                    } else if (awayTeam.getStr("wall").equals(wall)) {
+                    } else if ("foot".equals(wall)) {
                         // 让球盘
                         marketName = awayTeam.getStr("name");
                     }
@@ -1206,7 +1221,7 @@ public class SweepwaterService {
                     marketName = "小盘";
                 }
             }
-            double handicap = oddsJson.getDouble("handicap");
+            String handicap = oddsJson.containsKey("handicap") ? oddsJson.getStr("handicap") : null;
             betInfo.putOpt("league", leagueName);
             betInfo.putOpt("team", homeTeam.getStr("name") + " -vs- " + awayTeam.getStr("name"));
             betInfo.putOpt("marketTypeName", "");
@@ -1230,10 +1245,10 @@ public class SweepwaterService {
                 // 让球盘
                 String wall = oddsJson.containsKey("wall") ? oddsJson.getStr("wall") : null;
                 if (StringUtils.isNotBlank(wall)) {
-                    if (homeTeam.getStr("wall").equals(wall)) {
+                    if ("hanging".equals(wall)) {
                         // 让球盘
                         marketName = homeTeam.getStr("name");
-                    } else if (awayTeam.getStr("wall").equals(wall)) {
+                    } else if ("foot".equals(wall)) {
                         // 让球盘
                         marketName = awayTeam.getStr("name");
                     }
@@ -1310,6 +1325,7 @@ public class SweepwaterService {
         Long lastOddsTimeA = oddsJsonA.getLong("time", 0L);
         Long lastOddsTimeB = oddsJsonB.getLong("time", 0L);
 
+        log.info("查询两个队的赔率时间-oddsKeyA:{}=={}, oddsKeyB:{}=={}", oddsKeyA, lastOddsTimeA, oddsKeyB, lastOddsTimeB);
         Map<String, Boolean> result = new HashMap<>();
         result.put("lastTimeA", lastOddsTimeA > lastOddsTimeB);
         result.put("lastTimeB", lastOddsTimeB > lastOddsTimeA);
@@ -1317,7 +1333,7 @@ public class SweepwaterService {
     }
 
     // 创建 SweepwaterDTO 对象的简化方法
-    private static SweepwaterDTO createSweepwaterDTO(String oddsIdA, String oddsIdB, String selectionIdA, String selectionIdB, String courtType, String handicapType, JSONObject eventAJson, JSONObject eventBJson,
+    private static SweepwaterDTO createSweepwaterDTO(String oddsIdA, String oddsIdB, LocalDateTime now, String selectionIdA, String selectionIdB, String courtType, String handicapType, JSONObject eventAJson, JSONObject eventBJson,
                                                      String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, String nameA, String nameB, String subKey,
                                                      double valueA, double valueB, double value, boolean lastTimeA, boolean lastTimeB, String decimalOddsA, String decimalOddsB, String scoreA, String scoreB,
                                                      String strongA, String strongB, String gTypeA, String gTypeB, String wTypeA, String wTypeB, String rTypeA, String rTypeB, String choseTeamA, String choseTeamB, String conA, String conB, String ratioA, String ratioB,
@@ -1375,7 +1391,7 @@ public class SweepwaterService {
         sweepwaterDTO.setRatioA(ratioA);
         sweepwaterDTO.setRatioB(ratioB);
 
-        sweepwaterDTO.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+        sweepwaterDTO.setCreateTime(LocalDateTimeUtil.format(now, DatePattern.NORM_DATETIME_PATTERN));
 
         return sweepwaterDTO;
     }

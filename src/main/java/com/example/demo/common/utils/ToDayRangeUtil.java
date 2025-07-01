@@ -2,6 +2,8 @@ package com.example.demo.common.utils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ToDayRangeUtil {
 
@@ -53,6 +55,25 @@ public class ToDayRangeUtil {
     public static LocalDateTime getTomorrow6am() {
         LocalDateTime today7am = LocalDateTime.now().withHour(7).withMinute(0).withSecond(0).withNano(0);
         return today7am.plusDays(1).withHour(6);
+    }
+
+    /**
+     * 获取最近指定minutes分钟内的时间,返回 HHmm 格式的时间字符串列表
+     * eg:假设现在是 17:58,minutes传入3,则返回 ["1756", "1757", "1758"]
+     * @param minutes
+     * @return
+     */
+    public static List<String> getRecentMinuteKeys(int minutes) {
+        List<String> keys = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HHmm");
+
+        for (int i = minutes - 1; i >= 0; i--) {
+            String key = now.minusMinutes(i).format(formatter);
+            keys.add(key);
+        }
+
+        return keys;
     }
 
     public static void main(String[] args) {

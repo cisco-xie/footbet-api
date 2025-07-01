@@ -405,75 +405,11 @@ public class BetService {
         // 构建投注参数并调用投注接口
         JSONObject params = buildBetParams(dto, amountDTO, isA);
 
-        // 投注
-        JSONObject betPreview = buildBetInfo(username, websiteId, params);
-        if (betPreview == null) {
-            log.info("用户 {} 投注预览失败，eventId={}", username, eventId);
-            result.putOpt("isBet", false);
-            result.putOpt("success", false);
-            return result;
-        } else {
-            log.info("用户 {} 投注预览成功，eventId={}", username, eventId);
-            if (isA) {
-                dto.setBetInfoA(betPreview.getJSONObject("betInfo"));
-            } else {
-                dto.setBetInfoB(betPreview.getJSONObject("betInfo"));
-            }
-        }
-
-        boolean lastOddsTime = isA ? dto.getLastOddsTimeA() : dto.getLastOddsTimeB();
-        if (isUnilateral) {
-            if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1 && lastOddsTime) {
-                // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
-                result.putOpt("isBet", false);
-                result.putOpt("success", false);
-                return result;
-            } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2 && !lastOddsTime) {
-                // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
-                result.putOpt("isBet", false);
-                result.putOpt("success", false);
-                return result;
-            }
-
-            if (limitDTO.getWebsiteLimit() != null && !limitDTO.getWebsiteLimit().contains(websiteId)) {
-                // 单边投注，当前网站不是所指定的网站，直接跳出不投注
-                result.putOpt("isBet", false);
-                result.putOpt("success", false);
-                return result;
-            }
-        }
         // 校验投注间隔key
         String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, eventId);
         // 投注次数限制key
         String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventId);
-        // 这里是校验间隔时间和投注次数，暂时注释掉，移动到扫水的时候校验限制
-        Object lastBetTimeObj = businessPlatformRedissonClient.getBucket(intervalKey).get();
-        if (lastBetTimeObj != null) {
-            long lastBetTime = Long.parseLong(lastBetTimeObj.toString());
-            if (System.currentTimeMillis() - lastBetTime < intervalDTO.getBetSuccessSec() * 1000L) {
-                log.info("用户 {} 投注间隔未到，eventId={}, 当前时间={}, 上次投注时间={}",
-                        username, eventId, LocalDateTime.now(), Instant.ofEpochMilli(lastBetTime));
-                result.putOpt("isBet", false);      // 是否进行了投注操作
-                result.putOpt("success", false);
-                return result;
-            }
-        }
 
-        // 校验投注次数限制
-        // 投注前锁定次数（确保不会超过）
-        if (!tryReserveBetLimit(limitKey, score, limitDTO)) {
-            log.info("用户 {} 当前比分 {} 投注次数超限，eventId={}", username, score, eventId);
-            result.putOpt("isBet", false);
-            result.putOpt("success", false);
-            return result;
-        }
-
-        if (simulateBet == 1) {
-            // 模拟投注
-            result.putOpt("isBet", true);
-            result.putOpt("success", false);
-            return result;
-        }
         // 投注（带重试机制,重试10次）
         int maxRetry = 10;
         int attempt = 0;
@@ -482,14 +418,79 @@ public class BetService {
         while (attempt < maxRetry && !success) {
             attempt++;
             try {
-                // 投注
-                Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betPreview"));
-
                 if (isA) {
                     dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                 } else {
                     dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                 }
+                // 投注
+                JSONObject betPreview = buildBetInfo(username, websiteId, params);
+                if (betPreview == null) {
+                    log.info("用户 {} 投注预览失败，eventId={}", username, eventId);
+                    result.putOpt("isBet", false);
+                    result.putOpt("success", false);
+                    return result;
+                } else {
+                    log.info("用户 {} 投注预览成功，eventId={}, isA={}, 预览结果={}, 原本手动解析的betInfo={}", username, eventId, isA, betPreview, isA ? dto.getBetInfoA() : dto.getBetInfoB());
+                    if (isA) {
+                        dto.setBetInfoA(betPreview.getJSONObject("betInfo"));
+                    } else {
+                        dto.setBetInfoB(betPreview.getJSONObject("betInfo"));
+                    }
+                }
+
+                boolean lastOddsTime = isA ? dto.getLastOddsTimeA() : dto.getLastOddsTimeB();
+                if (isUnilateral) {
+                    if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1 && lastOddsTime) {
+                        // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        return result;
+                    } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2 && !lastOddsTime) {
+                        // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        return result;
+                    }
+
+                    if (limitDTO.getWebsiteLimit() != null && !limitDTO.getWebsiteLimit().contains(websiteId)) {
+                        // 单边投注，当前网站不是所指定的网站，直接跳出不投注
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        return result;
+                    }
+                }
+                // 这里是校验间隔时间和投注次数，暂时注释掉，移动到扫水的时候校验限制
+                Object lastBetTimeObj = businessPlatformRedissonClient.getBucket(intervalKey).get();
+                if (lastBetTimeObj != null) {
+                    long lastBetTime = Long.parseLong(lastBetTimeObj.toString());
+                    if (System.currentTimeMillis() - lastBetTime < intervalDTO.getBetSuccessSec() * 1000L) {
+                        log.info("用户 {} 投注间隔未到，eventId={}, 当前时间={}, 上次投注时间={}",
+                                username, eventId, LocalDateTime.now(), Instant.ofEpochMilli(lastBetTime));
+                        result.putOpt("isBet", false);      // 是否进行了投注操作
+                        result.putOpt("success", false);
+                        return result;
+                    }
+                }
+
+                // 校验投注次数限制
+                // 投注前锁定次数（确保不会超过）
+                if (!tryReserveBetLimit(limitKey, score, limitDTO)) {
+                    log.info("用户 {} 当前比分 {} 投注次数超限，eventId={}", username, score, eventId);
+                    result.putOpt("isBet", false);
+                    result.putOpt("success", false);
+                    return result;
+                }
+
+                if (simulateBet == 1) {
+                    // 模拟投注
+                    result.putOpt("isBet", true);
+                    result.putOpt("success", false);
+                    return result;
+                }
+                // 投注
+                Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betPreview"));
+
                 if (betResult != null && parseBetSuccess(betResult, dto, isA)) {
                     // 投注成功则记录投注时间
                     businessPlatformRedissonClient.getBucket(intervalKey).set(System.currentTimeMillis(), Duration.ofHours(24));
@@ -543,11 +544,11 @@ public class BetService {
         JSONObject betPreviewJson = null;
 
         // 重试机制
-        while (attempt < maxRetry) {
+        // while (attempt < maxRetry) {
             Object betPreview = handicapApi.betPreview(username, websiteId, params);
             if (betPreview == null) {
                 attempt++;
-                log.info("[投注预览重试] 第 {} 次失败：返回为 null", attempt);
+                log.info("[网站:{}][投注预览重试] 第 {} 次失败：返回为 null", WebsiteType.getById(websiteId).getDescription(), attempt);
                 try {
                     Thread.sleep(300); // 添加延迟
                 } catch (InterruptedException e) {
@@ -555,23 +556,25 @@ public class BetService {
                     log.warn("投注预览重试等待被中断，终止重试流程");
                     return null;
                 }
-                continue;
+                // continue;
+                return null;
             }
 
             betPreviewJson = JSONUtil.parseObj(betPreview);
-            /*Boolean success = betPreviewJson.getBool("success", false);
+            Boolean success = betPreviewJson.getBool("success", false);
             if (!success) {
                 attempt++;
-                log.info("[投注预览重试] 第 {} 次失败：success=false，返回信息：{}", attempt, betPreviewJson);
-                continue;
-            }*/
+                log.info("[网站:{}][投注预览重试] 第 {} 次失败：success=false，返回信息：{}", WebsiteType.getById(websiteId).getDescription(), attempt, betPreviewJson);
+                // continue;
+                return null;
+            }
             // 成功跳出循环
-            break;
-        }
+            // break;
+        // }
 
         // 如果超过重试次数仍失败
         if (betPreviewJson == null) {
-            log.warn("投注预览重试10次依然失败");
+            log.warn("网站:{},投注预览重试10次依然失败", WebsiteType.getById(websiteId).getDescription());
             return null;
         }
 
@@ -603,7 +606,7 @@ public class BetService {
             betInfo.putOpt("handicap", data.getStr("handicap"));
             betInfo.putOpt("amount", params.getStr("stake"));
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
-            JSONObject serverresponse = betPreviewJson.getJSONObject("serverresponse");
+            JSONObject serverresponse = betPreviewJson.getJSONObject("data");
             String fastCheck = serverresponse.getStr("fast_check");
             String marketName = "";
             String marketTypeName = "";

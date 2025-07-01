@@ -98,14 +98,14 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
                 responseArray = new JSONArray(responseBody);
             } else {
                 JSONObject obj = new JSONObject(responseBody);
-                log.error("[平博][投注预览][响应为对象非数组][body={}]", obj);
+                log.error("[平博][投注预览][响应为对象非数组][params={}][body={}]", params, obj);
                 result.putOpt("code", 500);
                 result.putOpt("success", false);
                 result.putOpt("msg", "投注预览返回格式错误（应为数组）");
                 return result;
             }
         } catch (Exception e) {
-            log.error("[平博][投注][响应解析异常][body={}][异常={}]", responseBody, e.getMessage(), e);
+            log.error("[平博][投注][响应解析异常][params={}][body={}][异常={}]", params, responseBody, e.getMessage(), e);
             result.putOpt("code", 500);
             result.putOpt("success", false);
             result.putOpt("msg", "投注预览解析失败");
@@ -117,6 +117,7 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
 
         // 3. 空数组直接返回失败
         if (responseArray.isEmpty()) {
+            log.error("[平博][投注预览][投注预览失败，结果为空][params={}]", params);
             result.putOpt("code", status);
             result.putOpt("success", false);
             result.putOpt("msg", "投注预览失败，结果为空");
@@ -132,7 +133,8 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
 
             if ("ODDS_CHANGE".equals(itemStatus)) {
                 log.info("[平博][投注预览][赔率已变更]{}", resObj);
-                success = false;
+                // 赔率变更也投注
+                success = true;
             }
             if ("UNAVAILABLE".equals(itemStatus)) {
                 log.info("[平博][投注预览][注单暂时无效]{}", resObj);
@@ -142,9 +144,10 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
                 if ("BELOW_MIN_BET_AMOUNT".equals(resObj.getStr("errorCode"))) {
                     log.info("[平博][投注预览][低于最低限额]{}", resObj);
                     success = false;
+                } else {
+                    log.info("[平博][投注预览][注单内容处理错误]{}", resObj);
+                    success = false;
                 }
-                log.info("[平博][投注预览][注单内容处理错误]{}", resObj);
-                success = false;
             }
 
             filteredArray.add(resObj);

@@ -64,6 +64,7 @@ public class WebsiteZhiBoBetPreviewHandler implements ApiHandler {
         JSONObject responseJson = new JSONObject(response.body());
         log.info("[智博][投注预览]{}", responseJson);
         if (0 != responseJson.getInt("responseCode")) {
+            log.info("[智博][投注预览失败][params={}][body={}]", params, responseJson);
             JSONObject res = new JSONObject();
             res.putOpt("success", false);
             res.putOpt("msg", "投注预览失败:"+responseJson.getStr("responseMessage"));
@@ -72,12 +73,14 @@ public class WebsiteZhiBoBetPreviewHandler implements ApiHandler {
         JSONObject betTicket = responseJson.getJSONObject("betTicket");
         if (!betTicket.isEmpty()) {
             if (0 != betTicket.getInt("responseCode")) {
+                log.info("[智博][投注预览失败][params={}][body={}]", params, responseJson);
                 JSONObject res = new JSONObject();
                 res.putOpt("success", false);
                 res.putOpt("msg", "投注预览失败:"+betTicket.getStr("responseMessage"));
                 return res;
             }
         } else {
+            log.info("[智博][投注预览失败,betTicket为空][params={}][body={}]", params, responseJson);
             JSONObject res = new JSONObject();
             res.putOpt("success", false);
             res.putOpt("msg", "投注预览失败，betTicket为空");

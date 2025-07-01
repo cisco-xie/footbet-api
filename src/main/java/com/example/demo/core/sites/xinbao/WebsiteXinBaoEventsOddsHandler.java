@@ -291,7 +291,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 awayOverSizeOddsJson.putOpt("choseTeam", "H");
                 awayOverSizeOddsJson.putOpt("con", -Math.abs(getMiddleValue(game.getStr("ratio_rouo"))));
                 awayOverSizeOddsJson.putOpt("ratio", getRatio(game.getStr("ratio_rouo"), "小"));
-                homeOverSizeOddsJson.putOpt("handicap", game.getStr("ratio_rouo"));
+                awayOverSizeOddsJson.putOpt("handicap", game.getStr("ratio_rouo"));
 
                 homeOverSize.putOpt(getHandicapRange(game.getStr("ratio_rouo")), homeOverSizeOddsJson);
                 awayOverSize.putOpt(getHandicapRange(game.getStr("ratio_rouu")), awayOverSizeOddsJson);
