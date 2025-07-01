@@ -491,6 +491,11 @@ public class BetService {
                 // 投注
                 Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betPreview"));
 
+                if (isA) {
+                    dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                } else {
+                    dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                }
                 if (betResult != null && parseBetSuccess(betResult, dto, isA)) {
                     // 投注成功则记录投注时间
                     businessPlatformRedissonClient.getBucket(intervalKey).set(System.currentTimeMillis(), Duration.ofHours(24));

@@ -34,8 +34,8 @@ public class ConfigAccountVO {
     private String safetyCode;
     @Schema(description = "指定网址")
     private String specifyWebsite;
-    @Schema(description = "限注 0=不限制")
-    private Integer limitBet = 0;
+    @Schema(description = "投注金额倍数 默认1")
+    private double multiple = 1;
     // 代理类型 1HTTP 2SOCKS
     private Integer proxyType;
     // 代理IP
