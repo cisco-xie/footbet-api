@@ -24,6 +24,8 @@ public class SweepwaterDTO {
     private String handicapType;
     private String league;
     private String team;
+    private String teamA;
+    private String teamB;
     private String project;
     private String odds;
     private String oddsA;

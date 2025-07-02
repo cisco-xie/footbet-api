@@ -218,8 +218,8 @@ public class SweepwaterService {
         }
 
         int size = list.size();
-        // 获取最后 3000 条（如果不足就全部返回）
-        int fromIndex = Math.max(0, size - 3000);
+        // 获取最后 1000 条（如果不足就全部返回）
+        int fromIndex = Math.max(0, size - 1000);
         List<String> latestJsonList = list.range(fromIndex, size - 1);
 
         return latestJsonList.stream()
@@ -650,6 +650,7 @@ public class SweepwaterService {
     }
 
     private JSONObject findEventByLeagueId(JSONArray events, String leagueId) {
+        log.info("查找联赛: 联赛={}, leagueId={}", events, leagueId);
         for (Object eventObj : events) {
             JSONObject eventJson = (JSONObject) eventObj;
             if (leagueId.equals(eventJson.getStr("id"))) {
@@ -712,6 +713,7 @@ public class SweepwaterService {
 
             // 如果事件不符合时间范围要求则跳过
             if (!processedEventA.isValid()) {
+                log.info("扫水,网站A:{}-赛事:{},不符合设置的时间范围:{},跳过", WebsiteType.getById(websiteIdA).getDescription(), eventAJson.getStr("league"), JSONUtil.parseArray(timeFrames));
                 continue;
             }
 
@@ -726,6 +728,7 @@ public class SweepwaterService {
 
                 // 如果事件不符合时间范围要求则跳过
                 if (!processedEventB.isValid()) {
+                    log.info("扫水,网站B:{}-赛事:{},不符合设置的时间范围:{},跳过", WebsiteType.getById(websiteIdB).getDescription(), eventBJson.getStr("league"), JSONUtil.parseArray(timeFrames));
                     continue;
                 }
 
@@ -761,6 +764,8 @@ public class SweepwaterService {
                             eventIdA, eventIdB, results,
                             processedEventA.getScore(), processedEventB.getScore()
                     );
+                } else {
+                    log.info("扫水,网站A:{}-赛事:{}-队伍:{},网站B:{}-赛事:{}-队伍:{},队伍组合不符合设置的对立队伍,跳过", WebsiteType.getById(websiteIdA).getDescription(), eventAJson.getStr("league"), processedEventA.getTeamName(), WebsiteType.getById(websiteIdB).getDescription(), eventBJson.getStr("league"), processedEventB.getTeamName());
                 }
             }
         }
@@ -824,6 +829,9 @@ public class SweepwaterService {
     private boolean checkTimeFrameValidity(
             String session, int reTime, List<TimeFrameDTO> timeFrames) {
 
+        if (timeFrames == null || timeFrames.isEmpty()) {
+            return true;
+        }
         // 场间休息不处理
         if ("HT".equalsIgnoreCase(session)) {
             return false;
@@ -1029,7 +1037,9 @@ public class SweepwaterService {
                                         Map<String, Boolean> latestChanged = isLatestChanged(oddsKeyA, oddsKeyB);
                                         boolean lastTimeA = latestChanged.get("lastTimeA");
                                         boolean lastTimeB = latestChanged.get("lastTimeB");
-                                        SweepwaterDTO sweepwaterDTO = createSweepwaterDTO(valueAJson.getStr("id"), valueBJson.getStr("id"), now, valueAJson.getStr("selectionId"), valueBJson.getStr("selectionId"), courtType, "draw", eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, nameA, nameB, null, valueA, valueB, finalValue, lastTimeA, lastTimeB, decimalOddsA, decimalOddsB, scoreA, scoreB,
+                                        String handicapA = valueAJson.containsKey("handicap") ? valueAJson.getStr("handicap") : "";
+                                        String handicapB = valueBJson.containsKey("handicap") ? valueBJson.getStr("handicap") : "";
+                                        SweepwaterDTO sweepwaterDTO = createSweepwaterDTO(valueAJson.getStr("id"), valueBJson.getStr("id"), now, valueAJson.getStr("selectionId"), valueBJson.getStr("selectionId"), courtType, "draw", eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, nameA, nameB, handicapA, handicapB, valueA, valueB, finalValue, lastTimeA, lastTimeB, decimalOddsA, decimalOddsB, scoreA, scoreB,
                                                 valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio"),
                                                 betInfoA, betInfoB
                                         );
@@ -1097,7 +1107,9 @@ public class SweepwaterService {
                                         Map<String, Boolean> latestChanged = isLatestChanged(oddsKeyA, oddsKeyB);
                                         boolean lastTimeA = latestChanged.get("lastTimeA");
                                         boolean lastTimeB = latestChanged.get("lastTimeB");
-                                        SweepwaterDTO sweepwaterDTO = createSweepwaterDTO(valueAJson.getStr("id"), valueBJson.getStr("id"), now, valueAJson.getStr("selectionId"), valueBJson.getStr("selectionId"), courtType, key, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, nameA, nameB, subKey, valueA, valueB, finalValue, lastTimeA, lastTimeB, decimalOddsA, decimalOddsB, scoreA, scoreB,
+                                        String handicapA = valueAJson.containsKey("handicap") ? valueAJson.getStr("handicap") : "";
+                                        String handicapB = valueBJson.containsKey("handicap") ? valueBJson.getStr("handicap") : "";
+                                        SweepwaterDTO sweepwaterDTO = createSweepwaterDTO(valueAJson.getStr("id"), valueBJson.getStr("id"), now, valueAJson.getStr("selectionId"), valueBJson.getStr("selectionId"), courtType, key, eventAJson, eventBJson, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, nameA, nameB, handicapA, handicapB, valueA, valueB, finalValue, lastTimeA, lastTimeB, decimalOddsA, decimalOddsB, scoreA, scoreB,
                                                 valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio"),
                                                 betInfoA, betInfoB
                                                 );
@@ -1335,7 +1347,7 @@ public class SweepwaterService {
 
     // 创建 SweepwaterDTO 对象的简化方法
     private static SweepwaterDTO createSweepwaterDTO(String oddsIdA, String oddsIdB, LocalDateTime now, String selectionIdA, String selectionIdB, String courtType, String handicapType, JSONObject eventAJson, JSONObject eventBJson,
-                                                     String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, String nameA, String nameB, String subKey,
+                                                     String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, String nameA, String nameB, String handicapA, String handicapB,
                                                      double valueA, double valueB, double value, boolean lastTimeA, boolean lastTimeB, String decimalOddsA, String decimalOddsB, String scoreA, String scoreB,
                                                      String strongA, String strongB, String gTypeA, String gTypeB, String wTypeA, String wTypeB, String rTypeA, String rTypeB, String choseTeamA, String choseTeamB, String conA, String conB, String ratioA, String ratioB,
                                                      JSONObject betInfoA, JSONObject betInfoB
@@ -1353,6 +1365,8 @@ public class SweepwaterService {
         sweepwaterDTO.setLeagueNameB(eventBJson.getStr("league"));
         sweepwaterDTO.setProject(WebsiteType.getById(websiteIdA).getDescription() + " × " + WebsiteType.getById(websiteIdB).getDescription());
         sweepwaterDTO.setTeam(nameA + " × " + nameB);
+        sweepwaterDTO.setTeamA(nameA);
+        sweepwaterDTO.setTeamB(nameB);
         sweepwaterDTO.setOdds(valueA + " / " + valueB);
         sweepwaterDTO.setOddsA(String.format("%.2f", valueA));
         sweepwaterDTO.setOddsB(String.format("%.2f", valueB));
@@ -1369,8 +1383,8 @@ public class SweepwaterService {
         sweepwaterDTO.setEventIdB(eventIdB);
         sweepwaterDTO.setDecimalOddsA(decimalOddsA);
         sweepwaterDTO.setDecimalOddsB(decimalOddsB);
-        sweepwaterDTO.setHandicapA(subKey);
-        sweepwaterDTO.setHandicapB(subKey);
+        sweepwaterDTO.setHandicapA(handicapA);
+        sweepwaterDTO.setHandicapB(handicapB);
         sweepwaterDTO.setScoreA(scoreA);
         sweepwaterDTO.setScoreB(scoreB);
         sweepwaterDTO.setBetInfoA(betInfoA);

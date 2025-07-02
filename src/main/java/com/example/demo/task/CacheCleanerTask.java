@@ -33,7 +33,7 @@ public class CacheCleanerTask {
     /**
      * 清理超过1小时的扫水记录
      */
-    @Scheduled(fixedDelay = 10 * 60 * 1000) // 每10分钟执行
+    @Scheduled(fixedDelay = 5 * 60 * 1000) // 每10分钟执行
     public void cleanExpiredSweepwaterDTO() {
         log.info("开始执行清理扫水数据");
         List<AdminLoginDTO> adminUsers = adminService.getUsers(null);
@@ -49,8 +49,8 @@ public class CacheCleanerTask {
 
             // 先清理超过5千条的记录
             int currentSize = sweepList.size();
-            if (currentSize > 5_000) {
-                int removeCount = currentSize - 5_000;
+            if (currentSize > 3_000) {
+                int removeCount = currentSize - 3_000;
                 // Redis 列表有序，前面的为旧数据，裁剪前面的部分
                 List<String> excessList = sweepList.subList(0, removeCount);
                 sweepList.removeAll(new ArrayList<>(excessList)); // 拷贝防止 ConcurrentModificationException
