@@ -426,12 +426,12 @@ public class BetService {
                 // 投注
                 JSONObject betPreview = buildBetInfo(username, websiteId, params);
                 if (betPreview == null) {
-                    log.info("用户 {} 投注预览失败，eventId={}", username, eventId);
+                    log.info("用户 {}, 网站:{} 投注预览失败，eventId={}", username, WebsiteType.getById(websiteId).getDescription(), eventId);
                     result.putOpt("isBet", false);
                     result.putOpt("success", false);
                     return result;
                 } else {
-                    log.info("用户 {} 投注预览成功，eventId={}, isA={}, 预览结果={}, 原本手动解析的betInfo={}", username, eventId, isA, betPreview, isA ? dto.getBetInfoA() : dto.getBetInfoB());
+                    log.info("用户 {}, 网站:{} 投注预览成功，eventId={}, isA={}, 预览结果={}, 原本手动解析的betInfo={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, betPreview, isA ? dto.getBetInfoA() : dto.getBetInfoB());
                     if (isA) {
                         dto.setBetInfoA(betPreview.getJSONObject("betInfo"));
                     } else {
@@ -460,23 +460,19 @@ public class BetService {
                         return result;
                     }
                 }
-                // 这里是校验间隔时间和投注次数，暂时注释掉，移动到扫水的时候校验限制
-                Object lastBetTimeObj = businessPlatformRedissonClient.getBucket(intervalKey).get();
-                if (lastBetTimeObj != null) {
-                    long lastBetTime = Long.parseLong(lastBetTimeObj.toString());
-                    if (System.currentTimeMillis() - lastBetTime < intervalDTO.getBetSuccessSec() * 1000L) {
-                        log.info("用户 {} 投注间隔未到，eventId={}, 当前时间={}, 上次投注时间={}",
-                                username, eventId, LocalDateTime.now(), Instant.ofEpochMilli(lastBetTime));
-                        result.putOpt("isBet", false);      // 是否进行了投注操作
-                        result.putOpt("success", false);
-                        return result;
-                    }
+                // 这里是校验间隔时间
+                long intervalMillis = intervalDTO.getBetSuccessSec() * 1000L;
+
+                if (!tryLockIntervalKey(intervalKey, intervalMillis)) {
+                    result.putOpt("isBet", false);
+                    result.putOpt("success", false);
+                    return result;
                 }
 
                 // 校验投注次数限制
                 // 投注前锁定次数（确保不会超过）
                 if (!tryReserveBetLimit(limitKey, score, limitDTO)) {
-                    log.info("用户 {} 当前比分 {} 投注次数超限，eventId={}", username, score, eventId);
+                    log.info("用户 {}, 网站:{} 当前比分 {} 投注次数超限，eventId={}", username, WebsiteType.getById(websiteId).getDescription(), score, eventId);
                     result.putOpt("isBet", false);
                     result.putOpt("success", false);
                     return result;
@@ -513,7 +509,7 @@ public class BetService {
                     result.putOpt("betInfo", null);
                 }
             } catch (Exception e) {
-                log.warn("用户 {} 投注尝试第 {} 次失败：{}", username, attempt, e.getMessage(), e);
+                log.warn("用户 {}, 网站:{}, 投注尝试第 {} 次失败：{}", username, WebsiteType.getById(websiteId).getDescription(), attempt, e.getMessage(), e);
                 // 短暂等待再重试
                 try {
                     Thread.sleep(300);
@@ -527,9 +523,40 @@ public class BetService {
         if (!success) {
             // 撤销预占额度
             rollbackBetLimit(limitKey, score);
-            log.error("用户 {} 投注失败，已重试 {} 次，eventId={}", username, maxRetry, eventId);
+            // 撤销预占间隔
+            releaseIntervalKey(intervalKey);
+            log.error("用户 {}, 网站:{}, 投注失败，已重试 {} 次，eventId={}", username, WebsiteType.getById(websiteId).getDescription(), maxRetry, eventId);
         }
         return result;
+    }
+
+    /**
+     * 检测并设置间隔时间
+     * @param intervalKey
+     * @param intervalMillis
+     * @return
+     */
+    public boolean tryLockIntervalKey(String intervalKey, long intervalMillis) {
+        RBucket<Long> bucket = businessPlatformRedissonClient.getBucket(intervalKey);
+        Long lastTime = bucket.get();
+        long now = System.currentTimeMillis();
+
+        if (lastTime != null && now - lastTime < intervalMillis) {
+            return false; // 间隔时间未到
+        }
+
+        // 设置新时间并返回成功
+        bucket.set(now, Duration.ofHours(24)); // 可调整过期时间
+        log.info("设置投注间隔时间：key={}, now={}, 上次时间={}", intervalKey, now, lastTime);
+        return true;
+    }
+
+    /**
+     * 投注失败时释放投注时间
+     * @param intervalKey
+     */
+    public void releaseIntervalKey(String intervalKey) {
+        businessPlatformRedissonClient.getBucket(intervalKey).delete();
     }
 
     /**
