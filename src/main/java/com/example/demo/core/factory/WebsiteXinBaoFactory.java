@@ -54,6 +54,11 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler getEventListHandler() {
+        return new WebsiteXinBaoEventListHandler(websiteService, apiUrlService); // 返回具体的赛事列表处理类
+    }
+
+    @Override
     public ApiHandler getEventsHandler() {
         return new WebsiteXinBaoEventsHandler(websiteService, apiUrlService); // 返回具体的赛事列表处理类
     }

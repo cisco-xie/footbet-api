@@ -53,10 +53,7 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
         headers.add("content-type", "application/x-www-form-urlencoded");
 
         String showType;  // 滚球赛事
-//        String showType = "today";  // 今日赛事
-
         String rType;  // 滚球赛事
-//        String rType = "r";  // 今日赛事
         if (ZhiBoSchedulesType.LIVESCHEDULE.getId() == params.getInt("showType")) {
             showType = "live";  // 滚球赛事
             rType = "rb";  // 滚球赛事

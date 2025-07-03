@@ -565,6 +565,75 @@ public class HandicapApi {
      * @param showType
      * @return
      */
+    public Object eventList(String username, String websiteId, int showType) {
+        WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
+        Integer oddsType = websiteVO.getOddsType();
+        List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
+        for (ConfigAccountVO account : accounts) {
+            if (account.getIsTokenValid() == 0) {
+                // 未登录直接跳过
+                continue;
+            }
+            WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+
+            ApiHandler apiHandler = factory.getEventListHandler();
+            if (apiHandler == null) {
+                continue;
+            }
+            JSONObject params = new JSONObject();
+            params.putOpt("adminUsername", username);
+            params.putOpt("websiteId", websiteId);
+            params.putOpt("showType", showType);
+            // 根据不同站点传入不同的参数
+            if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("tokens"));
+                // 转换赔率类型
+                int oddsFormatType = 0;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = PingBoOddsFormatType.HKC.getId();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
+            } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+                params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+                // 转换赔率类型
+                int oddsFormatType = 0;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = ZhiBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = ZhiBoOddsFormatType.HKC.getId();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = ZhiBoOddsFormatType.RM.getId();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
+            } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("serverresponse"));
+            }
+            JSONObject result = apiHandler.execute(account, params);
+
+            if (result.getBool("success")) {
+                return result.get("leagues");
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 根据用户和网站获取赛事列表
+     * @param username
+     * @param websiteId
+     * @param showType
+     * @return
+     */
     public Object events(String username, String websiteId, int showType) {
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();

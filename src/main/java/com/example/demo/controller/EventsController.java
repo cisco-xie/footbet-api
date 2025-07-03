@@ -46,6 +46,16 @@ public class EventsController extends BaseController {
     private HandicapApi handicapApi;
 
     @Operation(summary = "获取网站赛事列表")
+    @GetMapping("/events")
+    public Result getWebsites(@RequestParam String websiteId, @RequestParam Integer type) {
+        AdminLoginDTO admin = getUser();
+        // 获取赛事数据
+        Object eventLive = handicapApi.eventList(admin.getUsername(), websiteId, type);
+        JSONArray result = JSONUtil.parseArray(eventLive);
+        return Result.success(result);
+    }
+
+    @Operation(summary = "获取网站赛事列表")
     @GetMapping("/events/{websiteId}")
     public Result getWebsites(@PathVariable String websiteId) {
         AdminLoginDTO admin = getUser();
@@ -105,6 +115,5 @@ public class EventsController extends BaseController {
         result.addAll(mergedMap.values());
         return Result.success(result);
     }
-
 
 }

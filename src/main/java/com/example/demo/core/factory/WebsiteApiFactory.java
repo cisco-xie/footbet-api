@@ -11,7 +11,8 @@ public interface WebsiteApiFactory {
     ApiHandler accept();                    // 同意协议
     ApiHandler getLoginHandler();           // 登录
     ApiHandler getInfoHandler();            // 账号详情
-    ApiHandler getEventsHandler();          // 赛事列表
+    ApiHandler getEventListHandler();       // 赛事列表-用于网站查看赛事列表
+    ApiHandler getEventsHandler();          // 赛事列表-用于球队字典查询
     ApiHandler getEventsOddsHandler();      // 赛事列表-带相关赔率
     ApiHandler getStatementsHandler();      // 账目列表
     ApiHandler getBetUnsettledHandler();    // 投注列表-未结算

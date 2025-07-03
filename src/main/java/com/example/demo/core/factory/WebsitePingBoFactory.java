@@ -57,6 +57,11 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler getEventListHandler() {
+        return new WebsitePingBoEventListHandler(websiteService, apiUrlService); // 返回具体的赛事列表处理类
+    }
+
+    @Override
     public ApiHandler getEventsHandler() {
         return new WebsitePingBoEventsHandler(websiteService, apiUrlService); // 返回具体的赛事列表处理类
     }
