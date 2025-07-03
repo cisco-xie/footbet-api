@@ -47,15 +47,15 @@ public class CacheCleanerTask {
 
             if (sweepList == null || sweepList.isEmpty()) continue;
 
-            // 先清理超过5千条的记录
-            int currentSize = sweepList.size();
+            // 先清理超过3千条的记录 移除：已在写入扫水数据时进行了实时控制
+            /*int currentSize = sweepList.size();
             if (currentSize > 3_000) {
                 int removeCount = currentSize - 3_000;
                 // Redis 列表有序，前面的为旧数据，裁剪前面的部分
                 List<String> excessList = sweepList.subList(0, removeCount);
                 sweepList.removeAll(new ArrayList<>(excessList)); // 拷贝防止 ConcurrentModificationException
                 log.info("清理扫水数据：用户{}，清除超量记录{}条", username, removeCount);
-            }
+            }*/
 
             // 再清理超过30分钟的记录
             List<String> toRemove = new ArrayList<>();

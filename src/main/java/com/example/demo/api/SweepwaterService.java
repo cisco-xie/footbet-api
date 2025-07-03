@@ -1045,10 +1045,9 @@ public class SweepwaterService {
                                         );
                                         results.add(sweepwaterDTO);
                                         // 生成格式为 "HHmm"（小时+分钟） todo 以分钟为单位进行切割扫水列表，分key保存
-                                        String minuteKey = now.format(DateTimeFormatter.ofPattern("HHmm"));
+                                        // String minuteKey = now.format(DateTimeFormatter.ofPattern("HHmm"));
                                         // String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username, minuteKey);
-                                        String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
-                                        businessPlatformRedissonClient.getList(sweepWaterKey).add(JSONUtil.toJsonStr(sweepwaterDTO));
+                                        saveSweepwater(username, sweepwaterDTO);
                                         // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                         tryBet(username, sweepwaterDTO);
                                     }
@@ -1115,10 +1114,9 @@ public class SweepwaterService {
                                                 );
                                         results.add(sweepwaterDTO);
                                         // 生成格式为 "HHmm"（小时+分钟） todo 以分钟为单位进行切割扫水列表，分key保存
-                                        String minuteKey = now.format(DateTimeFormatter.ofPattern("HHmm"));
+                                        // String minuteKey = now.format(DateTimeFormatter.ofPattern("HHmm"));
                                         // String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username, minuteKey);
-                                        String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
-                                        businessPlatformRedissonClient.getList(sweepWaterKey).add(JSONUtil.toJsonStr(sweepwaterDTO));
+                                        saveSweepwater(username, sweepwaterDTO);
                                         // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                         log.info("扫水匹配到数据-保存扫水数据");
                                         if ("letBall".equals(key)) {
@@ -1140,6 +1138,26 @@ public class SweepwaterService {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * 扫水数据写入后进行长度判断 + 裁剪逻辑
+     * @param username
+     * @param dto
+     */
+    private void saveSweepwater(String username, SweepwaterDTO dto) {
+        String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
+        RList<String> sweepList = businessPlatformRedissonClient.getList(sweepWaterKey);
+        // 写入扫水数据
+        sweepList.add(JSONUtil.toJsonStr(dto));
+        // 最大保留条数
+        int maxSize = 1000;
+        // 缓冲区（减少频繁 trim）
+        int buffer = 100;
+        // 超过阈值才裁剪
+        if (sweepList.size() > maxSize + buffer) {
+            sweepList.trim(sweepList.size() - maxSize, sweepList.size() - 1);
         }
     }
 
