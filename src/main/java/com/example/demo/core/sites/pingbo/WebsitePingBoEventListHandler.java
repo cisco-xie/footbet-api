@@ -372,13 +372,6 @@ public class WebsitePingBoEventListHandler implements ApiHandler {
      */
     @Override
     public JSONObject execute(ConfigAccountVO userConfig, JSONObject params) {
-        if (ZhiBoSchedulesType.TODAYSCHEDULE.getId() == params.getInt("showType")) {
-            // 查询今日赛事可以直接退出不用再次调用接口查询，因为平博的赛事列表接口会同时返回滚球和今日赛事
-            return new JSONObject()
-                    .putOpt("code", 200)
-                    .putOpt("success", false)
-                    .putOpt("msg", "无需查询");
-        }
         // 获取 完整API 路径
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
