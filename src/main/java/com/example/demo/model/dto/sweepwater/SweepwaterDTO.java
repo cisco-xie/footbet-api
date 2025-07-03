@@ -26,6 +26,8 @@ public class SweepwaterDTO {
     private String team;
     private String teamA;
     private String teamB;
+    private Boolean isHomeA;        // 是否是主队
+    private Boolean isHomeB;        // 是否是主队
     private String project;
     private String odds;
     private String oddsA;
