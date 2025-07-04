@@ -102,6 +102,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             return responseJson;
         }
 
+        String username = params.getStr("adminUsername");
         String oddsFormatType = params.getStr("oddsFormatType");
         JSONObject originalJson = JSONUtil.parseObj(original);
         Map<String, JSONObject> leagueMap = new LinkedHashMap<>(); // 保持顺序
@@ -184,10 +185,11 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                     JSONObject letBall = (JSONObject) team.getJSONObject(type).computeIfAbsent("letBall", k -> new JSONObject());
                     String ratio = gameJson.getStr("RATIO_" + prefix + "RE", "0");
                     String oddsKey = ratio.contains("/") ? ratio : ratio.replace(".0", "");
+                    String odds = calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_" + prefix + (isHome ? "REH" : "REC")));
 
                     JSONObject item = new JSONObject();
                     item.putOpt("id", gid);
-                    item.putOpt("odds", calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_" + prefix + (isHome ? "REH" : "REC"))));
+                    item.putOpt("odds", odds);
                     item.putOpt("oddFType", oddsFormatType);
                     item.putOpt("gtype", gameJson.getStr("MT_GTYPE"));
                     item.putOpt("wtype", prefix + "RE");
@@ -199,6 +201,12 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                     item.putOpt("wall", isHome ? "hanging" : "foot");
 
                     letBall.putOpt(getHandicapRange(oddsKey), item);
+
+                    // 记录主队的赔率
+                    String key = isHome ? "H" : "C";
+                    apiUrlService.updateOddsCache(username, gid + key, Double.parseDouble(odds));
+                    // 记录客队的赔率
+                    apiUrlService.updateOddsCache(username, gid + key, Double.parseDouble(odds));
                 }
 
                 // 大小盘
@@ -206,10 +214,11 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                     JSONObject overSize = (JSONObject) team.getJSONObject(type).computeIfAbsent("overSize", k -> new JSONObject());
                     String ratio = gameJson.getStr("RATIO_" + prefix + "ROUO", "0");
                     String oddsKey = ratio.contains("/") ? ratio : ratio.replace(".0", "");
+                    String odds = calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_" + prefix + (isHome ? "ROUC" : "ROUH")));
 
                     JSONObject item = new JSONObject();
                     item.putOpt("id", gid);
-                    item.putOpt("odds", calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_" + prefix + (isHome ? "ROUC" : "ROUH"))));
+                    item.putOpt("odds", odds);
                     item.putOpt("oddFType", oddsFormatType);
                     item.putOpt("gtype", gameJson.getStr("MT_GTYPE"));
                     item.putOpt("wtype", prefix + "ROU");
@@ -220,6 +229,12 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                     item.putOpt("handicap", ratio);
 
                     overSize.putOpt(getHandicapRange(oddsKey), item);
+
+                    // 记录主队的赔率
+                    String key = isHome ? "H" : "C";
+                    apiUrlService.updateOddsCache(username, gid + key, Double.parseDouble(odds));
+                    // 记录客队的赔率
+                    apiUrlService.updateOddsCache(username, gid + key, Double.parseDouble(odds));
                 }
             };
 
