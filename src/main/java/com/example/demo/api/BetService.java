@@ -468,6 +468,7 @@ public class BetService {
                 long intervalMillis = intervalDTO.getBetSuccessSec() * 1000L;
 
                 if (!tryLockIntervalKey(intervalKey, intervalMillis)) {
+                    log.info("投注间隔时间未到, 用户 {}, 网站:{}：key={}", username, WebsiteType.getById(websiteId).getDescription(), intervalKey);
                     result.putOpt("isBet", false);
                     result.putOpt("success", false);
                     return result;
@@ -541,16 +542,25 @@ public class BetService {
      * @return
      */
     public boolean tryLockIntervalKey(String intervalKey, long intervalMillis) {
-        RBucket<Long> bucket = businessPlatformRedissonClient.getBucket(intervalKey);
-        Long lastTime = bucket.get();
+        RBucket<String> bucket = businessPlatformRedissonClient.getBucket(intervalKey);
+        String lastTimeStr = bucket.get();
         long now = System.currentTimeMillis();
 
+        Long lastTime = null;
+        if (lastTimeStr != null) {
+            try {
+                lastTime = Long.parseLong(lastTimeStr);
+            } catch (NumberFormatException e) {
+                log.warn("投注间隔键解析失败：key={}, value={}", intervalKey, lastTimeStr);
+            }
+        }
+
         if (lastTime != null && now - lastTime < intervalMillis) {
-            return false; // 间隔时间未到
+            return false;
         }
 
         // 设置新时间并返回成功
-        bucket.set(now, Duration.ofHours(24)); // 可调整过期时间
+        bucket.set(String.valueOf(now), Duration.ofHours(24)); // 存成字符串
         log.info("设置投注间隔时间：key={}, now={}, 上次时间={}", intervalKey, now, lastTime);
         return true;
     }
