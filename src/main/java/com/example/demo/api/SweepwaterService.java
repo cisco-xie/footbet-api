@@ -612,7 +612,8 @@ public class SweepwaterService {
             String websiteId, String leagueId, String ecid,
             ExecutorService teamOddsExecutor) {
 
-        String cacheKey = websiteId + ":" + (StringUtils.isNotBlank(ecid) ? ecid : "noEcid");
+        // String cacheKey = websiteId + ":" + (StringUtils.isNotBlank(ecid) ? ecid : "noEcid");
+        String cacheKey = websiteId;
 
         if (ecidCache.containsKey(cacheKey)) {
             log.info("从缓存中获取赔率: 平台用户={}, 网站={}, key={}, 联赛={}, ecid={}",
