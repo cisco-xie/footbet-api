@@ -512,7 +512,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
     }
 
     /**
-     * 计算handicap
+     * 替换handicap符号
      * @param handicap
      * @return
      */

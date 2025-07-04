@@ -410,12 +410,16 @@ public class BetService {
         // 投注次数限制key
         String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventId);
 
-        // 投注（带重试机制,重试10次）
-        int maxRetry = 10;
+        // 投注（带重试机制,默认重试0次,也就是不重试）
+        int maxRetry = 0;
         int attempt = 0;
         boolean success = false;
 
-        while (attempt < maxRetry && !success) {
+        if (1 == limitDTO.getRetry()) {
+            // 获取重试次数
+            maxRetry = limitDTO.getRetryCount();
+        }
+        while (attempt <= maxRetry && !success) {
             attempt++;
             try {
                 if (isA) {
@@ -423,7 +427,7 @@ public class BetService {
                 } else {
                     dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                 }
-                // 投注
+                // 投注预览
                 JSONObject betPreview = buildBetInfo(username, websiteId, params);
                 if (betPreview == null) {
                     log.info("用户 {}, 网站:{} 投注预览失败，eventId={}", username, WebsiteType.getById(websiteId).getDescription(), eventId);

@@ -815,6 +815,7 @@ public class HandicapApi {
                     oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
                 }
                 params.putOpt("oddsFormatType", oddsFormatType);
+                params.putOpt("showType", ZhiBoSchedulesType.LIVESCHEDULE.getId());
             }
             try {
                 JSONObject result = apiHandler.execute(account, params);

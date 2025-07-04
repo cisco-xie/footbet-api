@@ -17,4 +17,8 @@ public class LimitVO {
     private Integer unilateralBetType;
     @Schema(description = "指定网站(智博, 平博, 新二)")
     private List<String> websiteLimit;
+    @Schema(description = "投注失败重试")
+    private Integer retry;
+    @Schema(description = "重试次数")
+    private Integer retryCount;
 }
