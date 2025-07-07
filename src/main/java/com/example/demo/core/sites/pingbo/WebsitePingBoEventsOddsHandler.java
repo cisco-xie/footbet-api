@@ -296,13 +296,19 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
 
                                     Double oddsHome = Convert.toDouble(letBallJsonArr.get(3), null);
                                     if (oddsHome != null) {
+                                        // 替换赔率id中最后一个“|”后面的部分为“H”
+                                        int lastPipeIndex = homeOddsId.lastIndexOf("|");
+                                        String homeOddsKey = homeOddsId.substring(0, lastPipeIndex + 1) + "H";
                                         // 记录主队的赔率
-                                        apiUrlService.updateOddsCache(username, homeOddsId, oddsHome);
+                                        apiUrlService.updateOddsCache(username, homeOddsKey, oddsHome);
                                     }
                                     Double oddsAway = Convert.toDouble(letBallJsonArr.get(4), null);
                                     if (oddsAway != null) {
+                                        // 替换赔率id中最后一个“|”后面的部分为“H”
+                                        int lastPipeIndex = awayOddsId.lastIndexOf("|");
+                                        String awayOddsKey = awayOddsId.substring(0, lastPipeIndex + 1) + "C";
                                         // 记录客队的赔率
-                                        apiUrlService.updateOddsCache(username, awayOddsId, oddsAway);
+                                        apiUrlService.updateOddsCache(username, awayOddsKey, oddsAway);
                                     }
                                 };
                                 JSONObject sizeHomeJson = new JSONObject();
@@ -348,12 +354,18 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                     Double oddsHome = Convert.toDouble(sizeBallJsonArr.get(2), null);
                                     if (oddsHome != null) {
                                         // 记录主队的赔率
-                                        apiUrlService.updateOddsCache(username, homeOddsId, oddsHome);
+                                        int lastPipeIndex = homeOddsId.lastIndexOf("|");
+                                        String homeOddsKey = homeOddsId.substring(0, lastPipeIndex + 1) + "H";
+                                        // 记录客队的赔率
+                                        apiUrlService.updateOddsCache(username, homeOddsKey, oddsHome);
                                     }
                                     Double oddsAway = Convert.toDouble(sizeBallJsonArr.get(3), null);
                                     if (oddsAway != null) {
                                         // 记录客队的赔率
-                                        apiUrlService.updateOddsCache(username, awayOddsId, oddsAway);
+                                        int lastPipeIndex = awayOddsId.lastIndexOf("|");
+                                        String awayOddsKey = awayOddsId.substring(0, lastPipeIndex + 1) + "C";
+                                        // 记录客队的赔率
+                                        apiUrlService.updateOddsCache(username, awayOddsKey, oddsAway);
                                     }
                                 }
                                 /** 全场 end */
@@ -453,12 +465,18 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                     Double oddsHome = Convert.toDouble(letBallJsonArr.get(3), null);
                                     if (oddsHome != null) {
                                         // 记录主队的赔率
-                                        apiUrlService.updateOddsCache(username, homeOddsId, oddsHome);
+                                        int lastPipeIndex = homeOddsId.lastIndexOf("|");
+                                        String homeOddsKey = homeOddsId.substring(0, lastPipeIndex + 1) + "H";
+                                        // 记录客队的赔率
+                                        apiUrlService.updateOddsCache(username, homeOddsKey, oddsHome);
                                     }
                                     Double oddsAway = Convert.toDouble(letBallJsonArr.get(4), null);
                                     if (oddsAway != null) {
+                                        // 记录主队的赔率
+                                        int lastPipeIndex = awayOddsId.lastIndexOf("|");
+                                        String awayOddsKey = awayOddsId.substring(0, lastPipeIndex + 1) + "C";
                                         // 记录客队的赔率
-                                        apiUrlService.updateOddsCache(username, awayOddsId, oddsAway);
+                                        apiUrlService.updateOddsCache(username, awayOddsKey, oddsAway);
                                     }
                                 };
                                 JSONObject firstHalfSizeHomeJson = new JSONObject();
@@ -504,12 +522,18 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                     Double oddsHome = Convert.toDouble(sizeBallJsonArr.get(2), null);
                                     if (oddsHome != null) {
                                         // 记录主队的赔率
-                                        apiUrlService.updateOddsCache(username, homeOddsId, oddsHome);
+                                        int lastPipeIndex = homeOddsId.lastIndexOf("|");
+                                        String homeOddsKey = homeOddsId.substring(0, lastPipeIndex + 1) + "H";
+                                        // 记录客队的赔率
+                                        apiUrlService.updateOddsCache(username, homeOddsKey, oddsHome);
                                     }
                                     Double oddsAway = Convert.toDouble(sizeBallJsonArr.get(3), null);
                                     if (oddsAway != null) {
+                                        // 记录主队的赔率
+                                        int lastPipeIndex = awayOddsId.lastIndexOf("|");
+                                        String awayOddsKey = awayOddsId.substring(0, lastPipeIndex + 1) + "C";
                                         // 记录客队的赔率
-                                        apiUrlService.updateOddsCache(username, awayOddsId, oddsAway);
+                                        apiUrlService.updateOddsCache(username, awayOddsKey, oddsAway);
                                     }
                                 }
                                 /** 上半场 end */

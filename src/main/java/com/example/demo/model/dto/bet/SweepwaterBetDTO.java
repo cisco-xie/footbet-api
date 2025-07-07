@@ -24,6 +24,8 @@ public class SweepwaterBetDTO {
     private String handicapType;
     private String league;
     private String team;
+    private String reTimeA;         // 比赛当前用时
+    private String reTimeB;         // 比赛当前用时
     private String project;
     private String odds;
     private String oddsA;

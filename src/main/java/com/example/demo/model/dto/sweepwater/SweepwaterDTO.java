@@ -26,6 +26,8 @@ public class SweepwaterDTO {
     private String team;
     private String teamA;
     private String teamB;
+    private String reTimeA;         // 比赛当前用时
+    private String reTimeB;         // 比赛当前用时
     private Boolean isHomeA;        // 是否是主队
     private Boolean isHomeB;        // 是否是主队
     private String project;

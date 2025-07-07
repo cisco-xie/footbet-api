@@ -427,21 +427,6 @@ public class BetService {
                 } else {
                     dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                 }
-                // 投注预览
-                JSONObject betPreview = buildBetInfo(username, websiteId, params);
-                if (betPreview == null) {
-                    log.info("用户 {}, 网站:{} 投注预览失败，eventId={}", username, WebsiteType.getById(websiteId).getDescription(), eventId);
-                    result.putOpt("isBet", false);
-                    result.putOpt("success", false);
-                    return result;
-                } else {
-                    log.info("用户 {}, 网站:{} 投注预览成功，eventId={}, isA={}, 预览结果={}, 原本手动解析的betInfo={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, betPreview, isA ? dto.getBetInfoA() : dto.getBetInfoB());
-                    if (isA) {
-                        dto.setBetInfoA(betPreview.getJSONObject("betInfo"));
-                    } else {
-                        dto.setBetInfoB(betPreview.getJSONObject("betInfo"));
-                    }
-                }
 
                 boolean lastOddsTime = isA ? dto.getLastOddsTimeA() : dto.getLastOddsTimeB();
                 if (isUnilateral) {
@@ -464,6 +449,7 @@ public class BetService {
                         return result;
                     }
                 }
+
                 // 这里是校验间隔时间
                 long intervalMillis = intervalDTO.getBetSuccessSec() * 1000L;
 
@@ -489,6 +475,22 @@ public class BetService {
                     result.putOpt("success", false);
                     return result;
                 }
+                // 投注预览
+                JSONObject betPreview = buildBetInfo(username, websiteId, params);
+                if (betPreview == null) {
+                    log.info("用户 {}, 网站:{} 投注预览失败，eventId={}", username, WebsiteType.getById(websiteId).getDescription(), eventId);
+                    result.putOpt("isBet", false);
+                    result.putOpt("success", false);
+                    return result;
+                } else {
+                    log.info("用户 {}, 网站:{} 投注预览成功，eventId={}, isA={}, 预览结果={}, 原本手动解析的betInfo={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, betPreview, isA ? dto.getBetInfoA() : dto.getBetInfoB());
+                    if (isA) {
+                        dto.setBetInfoA(betPreview.getJSONObject("betInfo"));
+                    } else {
+                        dto.setBetInfoB(betPreview.getJSONObject("betInfo"));
+                    }
+                }
+
                 // 投注
                 Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betPreview"));
 

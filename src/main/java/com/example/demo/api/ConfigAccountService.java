@@ -194,6 +194,34 @@ public class ConfigAccountService {
     }
 
     /**
+     * 启停账户
+     * @param username 用户名
+     * @param websiteId 网站 ID
+     * @param isEnable 启用状态（1启用，0停用）
+     */
+    public void autoLoginEnable(String username, String websiteId, Integer isEnable) {
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_ACCOUNT_PREFIX, username, websiteId);
+        RList<String> accountList = businessPlatformRedissonClient.getList(key);
+        RLock lock = businessPlatformRedissonClient.getLock("lock:" + key);
+
+        try {
+            lock.lock(10, TimeUnit.SECONDS);
+
+            List<String> updated = new ArrayList<>();
+            for (String json : accountList) {
+                ConfigAccountVO account = JSONUtil.toBean(json, ConfigAccountVO.class);
+                account.setAutoLogin(isEnable);
+                updated.add(JSONUtil.toJsonStr(account));
+            }
+            accountList.clear();
+            accountList.addAll(updated);
+
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
      * 退出所有账户 - 即清空所有 token
      * @param username 用户名
      * @param websiteId 网站 ID

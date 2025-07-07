@@ -139,21 +139,7 @@ public class BindDictService {
     public void deleteBindDict(String username) {
         // 获取所有绑定信息的前缀
         String keyPattern = KeyUtil.genKey(RedisConstants.PLATFORM_BIND_DICT_TEAM_PREFIX, username, "*");
-
-        // 获取所有匹配的键
-        Iterable<String> keysIterable = businessPlatformRedissonClient.getKeys().getKeysByPattern(keyPattern);
-
-        // 将Iterable转换为Set
-        Set<String> keys = new HashSet<>();
-        for (String key : keysIterable) {
-            keys.add(key);
-        }
-
-        // 删除所有匹配的键
-        for (String key : keys) {
-            businessPlatformRedissonClient.getBucket(key).delete();
-        }
+        businessPlatformRedissonClient.getKeys().deleteByPattern(keyPattern);
     }
-
 
 }

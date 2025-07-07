@@ -169,6 +169,8 @@ public class WebsiteZhiBoEventsOddsHandler implements ApiHandler {
                             String cleaned = period.replaceAll(".*?2H", "").replaceAll("<[^>]+>", "").replaceAll("'", "").trim(); // 得到 "45+2"
                             String minute = cleaned.split("\\+")[0].trim(); // 取 "+" 前的部分
                             reTime = Integer.parseInt(minute); // 得到分钟
+                            // 下半场时长需要加上上半场45分钟(固定加45分钟，不用管上半场有没有附加赛之类的)
+                            reTime += 45;
                         }
                     }
                     homeTeam.putOpt("id", eventJsonOld.getStr("id"));

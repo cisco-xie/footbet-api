@@ -111,4 +111,12 @@ public class AccountController extends BaseController {
         return Result.success();
     }
 
+    @Operation(summary = "一键启停自动登录 - 指定网站的账号列表")
+    @GetMapping("/enable/auto-login/{websiteId}/{enable}")
+    public Result autoLoginEnable(@PathVariable String websiteId, @PathVariable Integer enable) {
+        AdminLoginDTO admin = getUser();
+        accountService.autoLoginEnable(admin.getUsername(), websiteId, enable);
+        return Result.success();
+    }
+
 }
