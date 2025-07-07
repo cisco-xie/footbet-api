@@ -107,6 +107,67 @@ public class WebsiteXinBaoEventListHandler implements ApiHandler {
         JSONArray result = new JSONArray();
         JSONObject originalJson = JSONUtil.parseObj(original);
 
+        // 全场让球key
+        String ratioFull;          // 让球分
+        String keyHomeOddsFullLetBall;
+        String keyAwayOddsFullLetBall;
+        // 全场大小key
+        String homeRatioFullOverSize;  // 大小球分
+        String awayRatioFullOverSize;  // 大小球分
+        String keyHomeOddsFullOverSize;
+        String keyAwayOddsFullOverSize;
+        // 半场让球key
+        String ratioFirst;          // 让球分
+        String keyHomeOddsFirstLetBall;
+        String keyAwayOddsFirstLetBall;
+        // 半场大小key
+        String homeRatioFirstOverSize;  // 大小球分
+        String awayRatioFirstOverSize;  // 大小球分
+        String keyHomeOddsFirstOverSize;
+        String keyAwayOddsFirstOverSize;
+        if (ZhiBoSchedulesType.LIVESCHEDULE.getId() == params.getInt("showType")) {
+            ratioFull = "RATIO_RE";
+            ratioFirst = "RATIO_HRE";
+            homeRatioFullOverSize = "RATIO_ROUO";
+            awayRatioFullOverSize = "RATIO_ROUU";
+            homeRatioFirstOverSize = "RATIO_HROUO";
+            awayRatioFirstOverSize = "RATIO_HROUU";
+
+            keyHomeOddsFullLetBall = "IOR_REH";    // 滚球类型获取赔率字段key中有E字符
+            keyAwayOddsFullLetBall = "IOR_REC";    // 滚球类型获取赔率字段key中有E字符
+
+            keyHomeOddsFullOverSize = "IOR_ROUC";    // 滚球类型获取赔率字段key中有R字符
+            keyAwayOddsFullOverSize = "IOR_ROUH";    // 滚球类型获取赔率字段key中有R字符
+
+            keyHomeOddsFirstLetBall = "IOR_HREH";    // 滚球类型获取赔率字段key中有E字符
+            keyAwayOddsFirstLetBall = "IOR_HREC";    // 滚球类型获取赔率字段key中有E字符
+
+            keyHomeOddsFirstOverSize = "IOR_HROUC";    // 滚球类型获取赔率字段key中有R字符
+            keyAwayOddsFirstOverSize = "IOR_HROUH";    // 滚球类型获取赔率字段key中有R字符
+        } else {
+            ratioFull = "RATIO_R";
+            ratioFirst = "RATIO_HR";
+            homeRatioFullOverSize= "RATIO_OUO";
+            awayRatioFullOverSize = "RATIO_OUU";
+            homeRatioFirstOverSize = "RATIO_HOUO";
+            awayRatioFirstOverSize = "RATIO_HOUU";
+
+            keyHomeOddsFullLetBall = "IOR_RH";     // 赛前类型获取赔率字段key中没有E字符
+            keyAwayOddsFullLetBall = "IOR_RC";    // 赛前类型获取赔率字段key
+
+            keyHomeOddsFullOverSize = "IOR_OUC";    // 赛前类型获取赔率字段key
+            keyAwayOddsFullOverSize = "IOR_OUH";    // 赛前类型获取赔率字段key
+
+            keyHomeOddsFirstLetBall = "IOR_HRH";    // 赛前类型获取赔率字段key
+            keyAwayOddsFirstLetBall = "IOR_HRC";    // 赛前类型获取赔率字段key
+
+            keyHomeOddsFirstOverSize = "IOR_HOUC";    // 滚球类型获取赔率字段key
+            keyAwayOddsFirstOverSize = "IOR_HOUH";    // 滚球类型获取赔率字段key
+        }
+
+        String finalRatioFull = ratioFull;
+        String finalRatioOverSize = homeRatioFullOverSize;
+        String finalAwayRatioOverSize = awayRatioFullOverSize;
         originalJson.forEach(json -> {
             JSONObject gameJson = JSONUtil.parseObj(json.getValue());
             String lid = gameJson.getStr("LID");        // 联赛LID
@@ -161,25 +222,27 @@ public class WebsiteXinBaoEventListHandler implements ApiHandler {
                 score = gameJson.getStr("SCORE_H") + "-" + gameJson.getStr("SCORE_C");
             }
             // 全场让球
-            if (gameJson.containsKey("IOR_REH") && StringUtils.isNotBlank(gameJson.getStr("IOR_REH"))) {
+            if (gameJson.containsKey(keyHomeOddsFullLetBall) && StringUtils.isNotBlank(gameJson.getStr(keyHomeOddsFullLetBall))) {
+                type = "fullCourt";
                 JSONObject leagueJson = buildBaseLeagueJson(gameJson, lid, gid, ecid, league, session, half, reTime, type, score);
-                String homeOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_REH"));
-                String awayOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_REC"));
+                String homeOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble(keyHomeOddsFullLetBall));
+                String awayOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble(keyAwayOddsFullLetBall));
                 String homeHandicap = "";
-                if ("0".equals(gameJson.getStr("RATIO_RE"))) {
-                    homeHandicap = gameJson.getStr("RATIO_RE");
+                if ("0".equals(gameJson.getStr(finalRatioFull))) {
+                    homeHandicap = gameJson.getStr(finalRatioFull);
                 } else {
-                    homeHandicap = "-" + gameJson.getStr("RATIO_RE");
+                    homeHandicap = "-" + gameJson.getStr(finalRatioFull);
                 }
                 leagueJson.putOpt("handicapType", "letBall");       // 盘口类型
                 leagueJson.putOpt("homeOdds", homeOdds); // 投注赔率
                 leagueJson.putOpt("homeOddFType", oddsFormatType);
                 leagueJson.putOpt("homeGtype", gameJson.getStr("MT_GTYPE"));
+                // 理论上wtype和rtype也需要根据滚球或者赛前类型进行对应修改，但是因为只投注滚球，所有这就不改了
                 leagueJson.putOpt("homeWtype", "RE");
                 leagueJson.putOpt("homeRtype", "REH");
                 leagueJson.putOpt("homeChoseTeam", "H");
-                leagueJson.putOpt("homeCon", getMiddleValue(gameJson.getStr("RATIO_RE")));
-                int ratioHome = getRatio(gameJson.getStr("RATIO_RE"), "主队");
+                leagueJson.putOpt("homeCon", getMiddleValue(gameJson.getStr(finalRatioFull)));
+                int ratioHome = getRatio(gameJson.getStr(finalRatioFull), "主队");
                 leagueJson.putOpt("homeRatio", ratioHome);
                 leagueJson.putOpt("homeHandicap", homeHandicap);
                 leagueJson.putOpt("homeWall", "hanging");   // 主队上盘，客队下盘，hanging=上盘,foot=下盘
@@ -190,19 +253,20 @@ public class WebsiteXinBaoEventListHandler implements ApiHandler {
                 leagueJson.putOpt("awayWtype", "RE");
                 leagueJson.putOpt("awayRtype", "REC");
                 leagueJson.putOpt("awayChoseTeam", "C");
-                leagueJson.putOpt("awayCon", -Math.abs(getMiddleValue(gameJson.getStr("RATIO_RE"))));
-                int ratioAway = getRatio(gameJson.getStr("RATIO_RE"), "客队");
+                leagueJson.putOpt("awayCon", -Math.abs(getMiddleValue(gameJson.getStr(finalRatioFull))));
+                int ratioAway = getRatio(gameJson.getStr(finalRatioFull), "客队");
                 leagueJson.putOpt("awayRatio", ratioAway);
-                leagueJson.putOpt("awayHandicap", gameJson.getInt("RATIO_RE"));
+                leagueJson.putOpt("awayHandicap", gameJson.getInt(finalRatioFull));
                 leagueJson.putOpt("awayWall", "foot");   // 主队上盘，客队下盘，hanging=上盘,foot=下盘
                 // 将所有合并后的联赛放入 result 数组中
                 result.add(leagueJson);
             }
             // 全场大小
-            if (gameJson.containsKey("IOR_ROUH") && StringUtils.isNotBlank(gameJson.getStr("IOR_ROUH"))) {
+            if (gameJson.containsKey(keyHomeOddsFullOverSize) && StringUtils.isNotBlank(gameJson.getStr(keyHomeOddsFullOverSize))) {
+                type = "fullCourt";
                 JSONObject leagueJson = buildBaseLeagueJson(gameJson, lid, gid, ecid, league, session, half, reTime, type, score);
-                String homeOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_ROUC"));
-                String awayOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_ROUH"));
+                String homeOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble(keyHomeOddsFullOverSize));
+                String awayOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble(keyAwayOddsFullOverSize));
 
                 leagueJson.putOpt("handicapType", "overSize");       // 盘口类型
                 leagueJson.putOpt("homeOdds", homeOdds); // 投注赔率
@@ -211,9 +275,9 @@ public class WebsiteXinBaoEventListHandler implements ApiHandler {
                 leagueJson.putOpt("homeWtype", "ROU");
                 leagueJson.putOpt("homeRtype", "ROUC");
                 leagueJson.putOpt("homeChoseTeam", "C");
-                leagueJson.putOpt("homeCon", getMiddleValue(gameJson.getStr("RATIO_ROUO")));
-                leagueJson.putOpt("homeRatio", getRatio(gameJson.getStr("RATIO_ROUO"), "大"));
-                leagueJson.putOpt("homeHandicap", gameJson.getStr("RATIO_ROUO"));
+                leagueJson.putOpt("homeCon", getMiddleValue(gameJson.getStr(finalRatioOverSize)));
+                leagueJson.putOpt("homeRatio", getRatio(gameJson.getStr(finalRatioOverSize), "大"));
+                leagueJson.putOpt("homeHandicap", gameJson.getStr(finalRatioOverSize));
 
                 leagueJson.putOpt("awayOdds", awayOdds); // 投注赔率
                 leagueJson.putOpt("awayOddFType", oddsFormatType);
@@ -221,24 +285,25 @@ public class WebsiteXinBaoEventListHandler implements ApiHandler {
                 leagueJson.putOpt("awayWtype", "ROU");
                 leagueJson.putOpt("awayRtype", "ROUH");
                 leagueJson.putOpt("awayChoseTeam", "H");
-                leagueJson.putOpt("awayCon", -Math.abs(getMiddleValue(gameJson.getStr("RATIO_ROUU"))));
-                leagueJson.putOpt("awayRatio", getRatio(gameJson.getStr("RATIO_ROUU"), "小"));
-                leagueJson.putOpt("awayHandicap", gameJson.getStr("RATIO_ROUU"));
+                leagueJson.putOpt("awayCon", -Math.abs(getMiddleValue(gameJson.getStr(finalAwayRatioOverSize))));
+                leagueJson.putOpt("awayRatio", getRatio(gameJson.getStr(finalAwayRatioOverSize), "小"));
+                leagueJson.putOpt("awayHandicap", gameJson.getStr(finalAwayRatioOverSize));
                 // 将所有合并后的联赛放入 result 数组中
                 result.add(leagueJson);
             }
 
             // 半场让球
-            if (gameJson.containsKey("IOR_HREH") && StringUtils.isNotBlank(gameJson.getStr("IOR_HREH"))) {
+            if (gameJson.containsKey(keyHomeOddsFirstLetBall) && StringUtils.isNotBlank(gameJson.getStr(keyHomeOddsFirstLetBall))) {
+                type = "firstHalf";
                 JSONObject leagueJson = buildBaseLeagueJson(gameJson, lid, gid, ecid, league, session, half, reTime, type, score);
-                String homeOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_HREH"));
-                String awayOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_HREC"));
+                String homeOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble(keyHomeOddsFirstLetBall));
+                String awayOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble(keyAwayOddsFirstLetBall));
 
                 String homeHandicap = "";
-                if ("0".equals(gameJson.getStr("RATIO_HRE"))) {
-                    homeHandicap = gameJson.getStr("RATIO_HRE");
+                if ("0".equals(gameJson.getStr(ratioFirst))) {
+                    homeHandicap = gameJson.getStr(ratioFirst);
                 } else {
-                    homeHandicap = "-" + gameJson.getStr("RATIO_HRE");
+                    homeHandicap = "-" + gameJson.getStr(ratioFirst);
                 }
                 leagueJson.putOpt("handicapType", "letBall");       // 盘口类型
                 leagueJson.putOpt("homeOdds", homeOdds); // 投注赔率
@@ -247,8 +312,8 @@ public class WebsiteXinBaoEventListHandler implements ApiHandler {
                 leagueJson.putOpt("homeWtype", "HRE");
                 leagueJson.putOpt("homeRtype", "HREH");
                 leagueJson.putOpt("homeChoseTeam", "H");
-                leagueJson.putOpt("homeCon", getMiddleValue(gameJson.getStr("RATIO_HRE")));
-                int ratioHome = getRatio(gameJson.getStr("RATIO_HRE"), "主队");
+                leagueJson.putOpt("homeCon", getMiddleValue(gameJson.getStr(ratioFirst)));
+                int ratioHome = getRatio(gameJson.getStr(ratioFirst), "主队");
                 leagueJson.putOpt("homeRatio", ratioHome);
                 leagueJson.putOpt("homeHandicap", homeHandicap);
                 leagueJson.putOpt("homeWall", "hanging");   // 主队上盘，客队下盘，hanging=上盘,foot=下盘
@@ -259,20 +324,21 @@ public class WebsiteXinBaoEventListHandler implements ApiHandler {
                 leagueJson.putOpt("awayWtype", "HRE");
                 leagueJson.putOpt("awayRtype", "HREC");
                 leagueJson.putOpt("awayChoseTeam", "C");
-                leagueJson.putOpt("awayCon", -Math.abs(getMiddleValue(gameJson.getStr("RATIO_HRE"))));
-                int ratioAway = getRatio(gameJson.getStr("RATIO_HRE"), "客队");
+                leagueJson.putOpt("awayCon", -Math.abs(getMiddleValue(gameJson.getStr(ratioFirst))));
+                int ratioAway = getRatio(gameJson.getStr(ratioFirst), "客队");
                 leagueJson.putOpt("awayRatio", ratioAway);
-                leagueJson.putOpt("awayHandicap", gameJson.getStr("RATIO_HRE"));
+                leagueJson.putOpt("awayHandicap", gameJson.getStr(ratioFirst));
                 leagueJson.putOpt("awayWall", "hanging");   // 主队上盘，客队下盘，hanging=上盘,foot=下盘
                 // 将所有合并后的联赛放入 result 数组中
                 result.add(leagueJson);
             }
 
             // 半场大小
-            if (gameJson.containsKey("IOR_HROUH") && StringUtils.isNotBlank(gameJson.getStr("IOR_HROUH"))) {
+            if (gameJson.containsKey(keyHomeOddsFirstOverSize) && StringUtils.isNotBlank(gameJson.getStr(keyHomeOddsFirstOverSize))) {
+                type = "firstHalf";
                 JSONObject leagueJson = buildBaseLeagueJson(gameJson, lid, gid, ecid, league, session, half, reTime, type, score);
-                String homeOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_HROUC"));
-                String awayOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_HROUH"));
+                String homeOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble(keyHomeOddsFirstOverSize));
+                String awayOdds = calculateOddsValue(oddsFormatType, gameJson.getDouble(keyAwayOddsFirstOverSize));
 
                 leagueJson.putOpt("handicapType", "overSize");       // 盘口类型
                 leagueJson.putOpt("homeOdds", homeOdds); // 投注赔率
@@ -280,18 +346,18 @@ public class WebsiteXinBaoEventListHandler implements ApiHandler {
                 leagueJson.putOpt("homeWtype", "HROU");
                 leagueJson.putOpt("homeRtype", "HROUC");
                 leagueJson.putOpt("homeChoseTeam", "C");
-                leagueJson.putOpt("homeCon", getMiddleValue(gameJson.getStr("RATIO_HROUO")));
-                leagueJson.putOpt("homeRatio", getRatio(gameJson.getStr("RATIO_HROUO"), "大"));
-                leagueJson.putOpt("homeHandicap", gameJson.getStr("RATIO_HROUO"));
+                leagueJson.putOpt("homeCon", getMiddleValue(gameJson.getStr(homeRatioFirstOverSize)));
+                leagueJson.putOpt("homeRatio", getRatio(gameJson.getStr(homeRatioFirstOverSize), "大"));
+                leagueJson.putOpt("homeHandicap", gameJson.getStr(homeRatioFirstOverSize));
 
                 leagueJson.putOpt("awayOdds", awayOdds); // 投注赔率
                 leagueJson.putOpt("awayGtype", gameJson.getStr("MT_GTYPE"));
                 leagueJson.putOpt("awayWtype", "HROU");
                 leagueJson.putOpt("awayRtype", "HROUH");
                 leagueJson.putOpt("awayChoseTeam", "H");
-                leagueJson.putOpt("awayCon", -Math.abs(getMiddleValue(gameJson.getStr("RATIO_HROUU"))));
-                leagueJson.putOpt("awayRatio", getRatio(gameJson.getStr("RATIO_HROUU"), "小"));
-                leagueJson.putOpt("awayHandicap", gameJson.getStr("RATIO_HROUU"));
+                leagueJson.putOpt("awayCon", -Math.abs(getMiddleValue(gameJson.getStr(awayRatioFirstOverSize))));
+                leagueJson.putOpt("awayRatio", getRatio(gameJson.getStr(awayRatioFirstOverSize), "小"));
+                leagueJson.putOpt("awayHandicap", gameJson.getStr(awayRatioFirstOverSize));
                 // 将所有合并后的联赛放入 result 数组中
                 result.add(leagueJson);
             }

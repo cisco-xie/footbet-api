@@ -428,6 +428,12 @@ public class BetService {
                     dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                 }
 
+                if (dto.getLastOddsTimeA() == dto.getLastOddsTimeB()) {
+                    // 如果两个都是旧或者新,则不进行投注,需要在前端显示
+                    result.putOpt("isBet", true);
+                    result.putOpt("success", false);
+                    return result;
+                }
                 boolean lastOddsTime = isA ? dto.getLastOddsTimeA() : dto.getLastOddsTimeB();
                 if (isUnilateral) {
                     if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1 && lastOddsTime) {
