@@ -82,6 +82,13 @@ public class TestController extends BaseController {
         return Result.success();
     }
 
+    @Operation(summary = "未结单列表")
+    @GetMapping("/unset")
+    public Result unsettled(@RequestParam String websiteId, @RequestParam String accountId) {
+        AdminLoginDTO admin = getUser();
+        return Result.success(api.unsettled(admin.getUsername(), websiteId, accountId));
+    }
+
     @Operation(summary = "去重")
     @GetMapping("/dedup")
     public Result dedup(@RequestParam String websiteId) {

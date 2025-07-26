@@ -1,5 +1,8 @@
 package com.example.demo.controller;
 
+import cn.hutool.http.HttpRequest;
+import cn.hutool.http.HttpResponse;
+import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import com.example.demo.api.ConfigAccountService;
 import com.example.demo.api.WebsiteService;
@@ -7,6 +10,7 @@ import com.example.demo.common.enmu.SystemError;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.enmu.XinBaoOddsFormatType;
 import com.example.demo.common.utils.WebDriverFactory;
+import com.example.demo.config.HttpProxyConfig;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
@@ -14,12 +18,17 @@ import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.ConfigAccountVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
 import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.devtools.DevTools;
-import org.openqa.selenium.devtools.v132.network.Network;
+import org.openqa.selenium.devtools.v114.network.Network;
+import org.openqa.selenium.devtools.v114.network.model.CookieSameSite;
+import org.openqa.selenium.devtools.v114.network.model.CookieSourceScheme;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,8 +36,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.File;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.*;
 import java.util.NoSuchElementException;
@@ -71,27 +85,100 @@ public class ProxyController extends BaseController {
      * @param driver
      * @param cookie
      */
-    private void setCookies(WebDriver driver, String cookie, String siteUrl) {
+    /*private void setCookies(WebDriver driver, String cookie, String siteUrl) throws URISyntaxException {
+        log.info("🍪 准备跳转网站 [{}] 以设置 Cookie", siteUrl);
         StringTokenizer st = new StringTokenizer(cookie, ";");
         driver.get(siteUrl);
+        new WebDriverWait(driver, Duration.ofSeconds(15)).until(
+                wd -> ((JavascriptExecutor) wd).executeScript("return document.readyState").equals("complete"));
+
+        String currentHost = new URI(driver.getCurrentUrl()).getHost();
+        log.info("🍪 网站跳转成功，当前页面 URL: {}", driver.getCurrentUrl());
+        // 清除旧Cookie避免冲突
+        driver.manage().deleteAllCookies();
+        log.info("🍪 旧 Cookie 清除完成");
+        int cookieCount = 0;
         while (st.hasMoreTokens()) {
             String token = st.nextToken().trim();
             int idx = token.indexOf("=");
             if (idx > 0) {
                 String name = token.substring(0, idx);
                 String value = token.substring(idx + 1);
-                // 提取根域名，确保跨子域有效
-                String domain = extractDomainFromUrl(siteUrl);
-
-                Cookie seleniumCookie = new Cookie.Builder(name, value)
-                        .domain(domain)     // 使用从 URL 提取的域名
-                        .path("/")          // 确保 Cookie 在根路径下有效
-                        .isSecure(true)     // 设置为 Secure，确保 HTTPS 环境下有效
-                        .sameSite("None")   // 允许跨域 Cookie
-                        .build();
-                driver.manage().addCookie(seleniumCookie);
+                try {
+                    Cookie seleniumCookie = new Cookie.Builder(name, value)
+                            .domain(currentHost)     // 使用从 URL 提取的域名
+                            .path("/")          // 确保 Cookie 在根路径下有效
+                            .isSecure(true)     // 设置为 Secure，确保 HTTPS 环境下有效
+                            .sameSite("None")   // 允许跨域 Cookie
+                            .build();
+                    driver.manage().addCookie(seleniumCookie);
+                    cookieCount++;
+                    log.info("🍪 添加 Cookie 成功: {}={}", name, value);
+                } catch (Exception e) {
+                    log.info("⚠️ 添加 Cookie 失败: {}={}. 错误: {}", name, value, e.getMessage());
+                }
             }
         }
+        log.info("🍪 共添加 Cookie {} 个", cookieCount);
+    }*/
+
+    private void setCookies(WebDriver driver, String cookie, String siteUrl) throws URISyntaxException {
+        log.info("🍪 准备跳转网站 [{}] 以设置 Cookie", siteUrl);
+        StringTokenizer st = new StringTokenizer(cookie, ";");
+        driver.get(siteUrl);
+
+        new WebDriverWait(driver, Duration.ofSeconds(15)).until(
+                wd -> ((JavascriptExecutor) wd).executeScript("return document.readyState").equals("complete"));
+
+        String currentHost = new URI(driver.getCurrentUrl()).getHost();
+        log.info("🍪 网站跳转成功，当前页面 URL: {}", driver.getCurrentUrl());
+        log.info("🍪 当前页面 Host: {}", currentHost);
+
+        driver.manage().deleteAllCookies();
+        log.info("🍪 旧 Cookie 清除完成");
+
+        // 使用 DevTools 添加 cookie
+        DevTools devTools = ((ChromeDriver) driver).getDevTools();
+        devTools.createSession();
+        devTools.send(Network.enable(Optional.empty(), Optional.empty(), Optional.empty()));
+
+        int cookieCount = 0;
+        while (st.hasMoreTokens()) {
+            String token = st.nextToken().trim();
+            int idx = token.indexOf("=");
+            if (idx > 0) {
+                String name = token.substring(0, idx);
+                String value = token.substring(idx + 1);
+                try {
+                    Boolean success = devTools.send(Network.setCookie(
+                            name,
+                            value,
+                            Optional.empty(),                  // url
+                            Optional.of(currentHost),         // domain
+                            Optional.of("/"),                 // path
+                            Optional.of(true),                // secure
+                            Optional.of(false),               // httpOnly
+                            Optional.of(CookieSameSite.NONE),// sameSite
+                            Optional.empty(),                 // expires (TimeSinceEpoch),如果有过期时间需要构造TimeSinceEpoch对象
+                            Optional.empty(),                 // priority
+                            Optional.empty(),                 // sameParty
+                            Optional.of(CookieSourceScheme.SECURE), // sourceScheme
+                            Optional.of(443),                 // sourcePort
+                            Optional.empty()                  // partitionKey
+                    ));
+                    devTools.send(Network.setBlockedURLs(List.of("*.png", "*.jpg", "*.jpeg", "*.gif", "*.woff", "*.svg", "*.ttf", "*.otf", "*.webp")));
+                    if (Boolean.TRUE.equals(success)) {
+                        cookieCount++;
+                        log.info("🍪 添加 Cookie 成功: {}={}", name, value);
+                    } else {
+                        log.warn("⚠️ DevTools 设置 Cookie 失败: {}={}", name, value);
+                    }
+                } catch (Exception e) {
+                    log.warn("⚠️ DevTools 添加 Cookie 异常: {}={}. 错误: {}", name, value, e.getMessage());
+                }
+            }
+        }
+        log.info("🍪 共添加 Cookie {} 个", cookieCount);
     }
 
     /**
@@ -112,42 +199,98 @@ public class ProxyController extends BaseController {
             throw new RuntimeException("Invalid URL syntax", e);
         }
     }
+    /**
+     * 从 URL 中提取域名（去除子域部分）
+     * 例如：从 https://www.ps3838.com 提取 www.ps3838.com
+     */
+    private String extractHostFromUrl(String siteUrl) {
+        try {
+            URI uri = new URI(siteUrl);
+            return uri.getHost(); // eg: www.ps3838.com
+        } catch (URISyntaxException e) {
+            throw new RuntimeException("URL 解析失败: " + siteUrl, e);
+        }
+    }
 
     /**
      * 等待页面加载完成
      * @param driver
      */
     private void waitForPageToLoad(WebDriver driver) {
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-        wait.until(d -> {
-            // 检查是否存在登录弹窗（class="ui-dialog" 的 <div> 元素）
-            List<WebElement> dialogElements = d.findElements(By.className("ui-dialog"));
-            if (!dialogElements.isEmpty()) {
-                // 如果找到了 ui-dialog，则说明需要重新登录
-                log.info("检测到登录弹窗，触发重新登录");
-                // 处理重新登录的逻辑，抛出异常或其他处理
-                throw new BusinessException(SystemError.USER_1016);
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10)); // 控制等待时间
+
+        // 先截图当前页面，方便调试
+        try {
+            // Thread.sleep(5000); // 页面 JS 渲染用一点时间
+            File initialScreenshot = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
+            Files.copy(initialScreenshot.toPath(), Paths.get("/tmp/screenshot-before-wait.png"), StandardCopyOption.REPLACE_EXISTING);
+            log.info("初始截图保存到 /tmp/screenshot-before-wait.png");
+        } catch (IOException ioe) {
+            log.warn("初始截图失败: {}", ioe.getMessage());
+        }
+
+        try {
+            boolean success = wait.until(d -> {
+                try {
+                    String bodyText = driver.findElement(By.tagName("body")).getText();
+                    if (bodyText.contains("会话超时,请重新登录") || bodyText.contains("请重新登录")) {
+                        log.warn("⚠️ 页面疑似未登录，跳转失败");
+                        throw new BusinessException(SystemError.USER_1016);
+                    }
+
+                    List<WebElement> dialogs = d.findElements(By.className("ui-dialog"));
+                    if (!dialogs.isEmpty()) {
+                        log.warn("⚠️ 检测到登录弹窗，需重新登录");
+                        throw new BusinessException(SystemError.USER_1016);
+                    }
+
+                    // 表格加载判断
+                    List<WebElement> trs = d.findElements(By.tagName("tr"));
+                    if (trs.isEmpty()) {
+                        String source = d.getPageSource();
+                        log.info("⏳ 页面尚未加载表格 <tr> 元素，当前 HTML 长度: {}", source.length());
+                        if (source.length() < 100) {
+                            log.warn("⚠️ 页面内容太短（{}），疑似加载失败", bodyText.length());
+                            throw new TimeoutException("页面内容太短");
+                        }
+                        return false;
+                    }
+
+                    return true;
+                } catch (BusinessException be) {
+                    throw be; // 立即抛出中止等待
+                } catch (Exception e) {
+                    log.warn("等待页面加载异常: {}", e.getMessage());
+                    return false;
+                }
+            });
+
+            if (success) {
+                log.info("✅ 页面加载完成，表格已就绪");
+                // 页面加载成功后，再截图一张
+                try {
+                    File successScreenshot = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
+                    Files.copy(successScreenshot.toPath(), Paths.get("/tmp/screenshot-after-wait.png"), StandardCopyOption.REPLACE_EXISTING);
+                    log.info("成功加载后截图保存到 /tmp/screenshot-after-wait.png");
+                } catch (IOException ioe) {
+                    log.warn("成功加载后截图失败: {}", ioe.getMessage());
+                }
             }
 
-            // 检查页面中是否已经加载了表格的第一个 <tr> 元素
-            return ExpectedConditions.presenceOfElementLocated(By.tagName("tr")).apply(d) != null;
-        });
-//        wait.until(d -> {
-//            try {
-//                // 重新获取 table，防止 StaleElementReferenceException
-//                WebElement table = d.findElement(By.className("info-div-table"));
-//
-//                // 使用 JS 获取表格内容
-//                String tableContent = (String) ((JavascriptExecutor) d).executeScript("return arguments[0].innerHTML;", table);
-//
-//                System.out.println("当前表格内容：" + tableContent.trim());
-//
-//                // 确保表格有内容，并且内容至少包含一个 <tr> 元素
-//                return tableContent.trim().length() > 10;
-//            } catch (NoSuchElementException | StaleElementReferenceException e) {
-//                return false; // 继续等待
-//            }
-//        });
+        } catch (TimeoutException e) {
+            // 超时了，截图当前状态
+            try {
+                File timeoutScreenshot = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
+                Files.copy(timeoutScreenshot.toPath(), Paths.get("/tmp/screenshot-timeout.png"), StandardCopyOption.REPLACE_EXISTING);
+                log.info("超时截图保存到 /tmp/screenshot-timeout.png");
+            } catch (IOException ioe) {
+                log.warn("超时截图失败: {}", ioe.getMessage());
+            }
+
+            String pageSource = driver.getPageSource();
+            log.warn("❌ 页面加载超时，HTML 长度: {}", pageSource.length());
+            throw new TimeoutException("页面加载超时");
+        }
     }
 
     private void waitForPageToLoadXinBao(WebDriver driver) {
@@ -171,57 +314,186 @@ public class ProxyController extends BaseController {
     public Result proxySeleniumUnsettled(@RequestParam String websiteId, @RequestParam String accountId) throws Exception {
         AdminLoginDTO admin = getUser();
         String baseUrl = websiteService.getWebsiteBaseUrl(admin.getUsername(), websiteId);
+        ConfigAccountVO account = accountService.getAccountById(admin.getUsername(), websiteId, accountId);
+        if (account.getIsTokenValid() == 0) {
+            throw new BusinessException(SystemError.USER_1016);
+        }
         WebDriver driver = WebDriverFactory.createNewWebDriver(); // 从配置中获取共享实例
 
         try {
             // 根据 websiteId 判断执行不同的方法
             if (WebsiteType.PINGBO.getId().equals(websiteId)) {
-                return Result.success(proxySeleniumForWebsitePingBo(admin, websiteId, accountId, baseUrl, driver));
+                // return Result.success(proxySeleniumForWebsitePingBo(admin, websiteId, account, baseUrl, driver));
+                return Result.success(extractBetsFromHtml(fetchPingBoHtml(account, baseUrl)));
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
-                return Result.success(proxySeleniumForWebsiteXinBao(admin, websiteId, accountId, baseUrl, driver));
+                return Result.success(proxySeleniumForWebsiteXinBao(admin, websiteId, account, baseUrl, driver));
             } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
-                return Result.success(proxySeleniumForWebsiteZhiBo(admin, websiteId, accountId, baseUrl, driver));
+                return Result.success(proxySeleniumForWebsiteZhiBo(admin, websiteId, account, baseUrl, driver));
             } else {
                 throw new RuntimeException("未知的网站");
             }
         } finally {
             // ✅ 无论成功或异常，都关闭资源
-            if (driver != null) {
-                driver.quit();
-            }
+            driver.quit();
         }
     }
 
-    private String proxySeleniumForWebsitePingBo(AdminLoginDTO admin, String websiteId, String accountId, String baseUrl, WebDriver driver) throws Exception {
+    /**
+     * 抓取平博未结注单页面，Hutool + Jsoup 抓取方式
+     * @param account
+     * @param baseUrl
+     * @return
+     */
+    public String fetchPingBoHtml(ConfigAccountVO account, String baseUrl) {
         try {
-            ConfigAccountVO account = accountService.getAccountById(admin.getUsername(), websiteId, accountId);
-            if (account.getIsTokenValid() == 0) {
+            log.info("🟢 [PingBo-Http] 开始抓取页面...");
+
+            // 1. 构建 Cookie
+            String cookie = buildCookie(account);
+
+            // 2. 发起请求
+            HttpRequest request = HttpRequest.get(baseUrl + "/zh-cn/account/my-bets-full")
+                    .timeout(30_000)
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/114.0 Safari/537.36")
+                    .header("Cookie", cookie)
+                    .header("Accept", "text/html,application/xhtml+xml")
+                    .header("Accept-Language", "zh-CN,zh;q=0.9");
+
+            // 引入配置代理
+            HttpProxyConfig.configureProxy(request, account);
+
+            String html = request.execute().body();
+            log.info("🟢 [PingBo-Http] 页面抓取成功，HTML 长度: {}", html.length());
+            log.info("🟢 [PingBo-Http] 页面前300字: {}", html.substring(0, Math.min(300, html.length())));
+
+            // 3. 校验是否未登录（关键逻辑）
+            if (html.contains("请重新登录") || html.contains("会话超时") || html.contains("class=\"ui-dialog\"")) {
+                log.warn("⚠️ [PingBo-Http] 页面疑似未登录，包含登录提示词");
                 throw new BusinessException(SystemError.USER_1016);
             }
+
+            // 4. Jsoup 解析 + 清理
+            Document document = Jsoup.parse(html);
+
+            document.select("form.form-inline").remove();
+            document.select("div.truncated-currencies").remove();
+
+            document.select("link[href^='/'], script[src^='/'], img[src^='/']").forEach(element -> {
+                if (element.hasAttr("href")) {
+                    element.attr("href", baseUrl + element.attr("href"));
+                }
+                if (element.hasAttr("src")) {
+                    element.attr("src", baseUrl + element.attr("src"));
+                }
+            });
+
+            return document.html();
+        } catch (BusinessException be) {
+            throw be; // 保留业务异常
+        } catch (Exception e) {
+            log.error("❌ [PingBo-Http] 抓取失败", e);
+            throw new BusinessException(SystemError.SYS_500);
+        }
+    }
+
+    /**
+     * 提取平博投注记录中的表格数据为 JSON 数组
+     * @param html 页面 HTML 内容
+     * @return JSON 数组，包含每行投注记录
+     */
+    public static JSONArray extractBetsFromHtml(String html) {
+        JSONArray bets = new JSONArray();
+        Document doc = Jsoup.parse(html);
+
+        // 查找表格
+        Element table = doc.selectFirst("table:has(tr)");
+        if (table == null) {
+            log.warn("❌ 未找到含有 <tr> 的表格");
+            return bets;
+        }
+
+        log.info("✅ 找到投注表格，准备提取数据...");
+
+        // 处理表头
+        Elements headers = table.select("thead tr th");
+        List<String> headerNames = new ArrayList<>();
+        for (Element th : headers) {
+            String name = th.text().trim();
+            headerNames.add(name);
+        }
+
+        log.info("📌 表头共 {} 个字段: {}", headerNames.size(), headerNames);
+
+        // 提取表体
+        Elements rows = table.select("tbody tr");
+        log.info("📄 共检测到 {} 行投注记录", rows.size());
+
+        for (int r = 0; r < rows.size(); r++) {
+            Element row = rows.get(r);
+            Elements tds = row.select("td");
+            if (tds.isEmpty()) {
+                log.warn("⚠️ 第 {} 行为空，跳过", r + 1);
+                continue;
+            }
+
+            JSONObject bet = new JSONObject();
+            for (int i = 0; i < tds.size(); i++) {
+                String key = (i < headerNames.size()) ? headerNames.get(i) : "col" + i;
+                String value = tds.get(i).text().trim();
+                bet.set(key, value);
+            }
+
+            log.info("✅ 第 {} 行解析结果: {}", r + 1, bet.toString());
+            bets.add(bet);
+        }
+
+        log.info("✅ 完成提取，共 {} 条投注记录", bets.size());
+        return bets;
+    }
+
+    private String proxySeleniumForWebsitePingBo(AdminLoginDTO admin, String websiteId, ConfigAccountVO account, String baseUrl, WebDriver driver) throws Exception {
+        try {
+            log.info("🟢 [PingBo] 开始抓取【平博】投注记录，用户：{}，账号：{}", admin.getUsername(), account.getAccount());
+            log.info("🟢 [PingBo] Base URL: {}", baseUrl);
+
             // 构建完整的cookie字符串
             String cookie = buildCookie(account);
+            log.info("🟢 [PingBo] 构建 Cookie 完成: {}", cookie);
 
             // 设置 Cookie
             setCookies(driver, cookie, baseUrl);
+            log.info("🟢 [PingBo] 设置 Cookie 完成，准备跳转页面");
 
             // 导航到目标页面并等待加载完成
             int retries = 3;
             while (retries > 0) {
                 try {
-                    driver.get(baseUrl + "/zh-cn/account/my-bets-full");
+                    String targetUrl = baseUrl + "/zh-cn/account/my-bets-full";
+                    log.info("🟢 [PingBo] 第 {} 次请求页面: {}", 4 - retries, targetUrl);
+                    driver.get(targetUrl);
+                    log.info("🟢 [PingBo] 页面跳转成功，开始等待页面加载");
+                    log.info("🟢 [PingBo] 当前页面实际 URL：{}", driver.getCurrentUrl());
+                    Thread.sleep(300); // 加一点缓冲，避免“空白页”
+                    log.info("🟢 [PingBo] 页面 HTML 长度: {}", driver.getPageSource().length());
                     waitForPageToLoad(driver);
+                    log.info("🟢 [PingBo] 页面标题：{}", driver.getTitle());
                     break; // 成功则退出循环
                 } catch (TimeoutException e) {
                     retries--;
+                    log.warn("❌️ [PingBo] 页面加载超时，重试次数剩余: {}", retries);
                     if (retries == 0) {
                         throw new BusinessException(SystemError.UNSETTLE_1330);
                     }
-                    log.info("页面加载超时，剩余重试次数: " + retries);
+                } catch (Exception e) {
+                    log.info("加载页面时发生异常: ", e);
                 }
             }
 
             // 获取页面源代码
             String pageSource = driver.getPageSource();
+            log.info("🟢 [PingBo] 页面加载完成，源码长度: {}", pageSource.length());
+            log.info("🟢 [PingBo] 页面前300字: {}", pageSource.substring(0, Math.min(300, pageSource.length())));
+
             // 解析 HTML
             Document document = Jsoup.parse(pageSource);
 
@@ -239,16 +511,13 @@ public class ProxyController extends BaseController {
             // 获取页面源代码
             return document.html();
         } catch (Exception e) {
+            log.info("❌ [PingBo] 页面抓取失败", e);
             throw new BusinessException(SystemError.SYS_500);
         }
     }
 
-    private String proxySeleniumForWebsiteXinBao(AdminLoginDTO admin, String websiteId, String accountId, String baseUrl, WebDriver driver) throws Exception {
+    private String proxySeleniumForWebsiteXinBao(AdminLoginDTO admin, String websiteId, ConfigAccountVO account, String baseUrl, WebDriver driver) throws Exception {
         try {
-            ConfigAccountVO account = accountService.getAccountById(admin.getUsername(), websiteId, accountId);
-            if (account.getIsTokenValid() == 0) {
-                throw new BusinessException(SystemError.USER_1016);
-            }
             // 获取 serverresponse 对象，避免多次重复访问
             JSONObject serverResponse = account.getToken().getJSONObject("serverresponse");
 
@@ -289,7 +558,18 @@ public class ProxyController extends BaseController {
             // 找到“投注记录”按钮并点击
             WebElement betRecordButton = driver.findElement(By.id("header_todaywagers"));
             if (betRecordButton != null) {
-                betRecordButton.click();
+                try {
+                    // 尝试直接点击
+                    betRecordButton.click();
+                } catch (ElementClickInterceptedException e) {
+                    log.info("新二网站出现遮挡");
+                    // 处理遮挡情况
+                    handlePopups(driver);
+                    // 再次尝试点击
+                    new WebDriverWait(driver, Duration.ofSeconds(3))
+                            .until(ExpectedConditions.elementToBeClickable(betRecordButton))
+                            .click();
+                }
 
                 wait.until(ExpectedConditions.jsReturnsValue("return document.readyState === 'complete'"));
                 // 等待目标页面加载完成，直到 'all_outside' 元素可见
@@ -326,13 +606,95 @@ public class ProxyController extends BaseController {
         }
     }
 
-    private String proxySeleniumForWebsiteZhiBo(AdminLoginDTO admin, String websiteId, String accountId, String baseUrl, WebDriver driver) throws Exception {
-        try {
-            // 获取账号信息
-            ConfigAccountVO account = accountService.getAccountById(admin.getUsername(), websiteId, accountId);
-            if (account.getIsTokenValid() == 0) {
-                throw new BusinessException(SystemError.USER_1016);
+    /**
+     * 处理新二页面遮挡元素
+     * 通用弹窗处理方案（支持多种弹窗类型）
+     * 处理多种弹窗类型（mask/popup/ann等） 6+种动态策略（含智能降级）
+     * 不确定弹窗类型/未来可能新增弹窗 执行效率 中（需尝试多种策略）
+     */
+    private void handlePopups(WebDriver driver) {
+        // 1. 定义所有可能的关闭方式（按优先级排序）
+        List<By> closeStrategies = Arrays.asList(
+                // 标准关闭按钮选择器
+                By.cssSelector("#ann [id^='close_btn'], #ann .btn_gray_full, #ann .close"), // 以close_btn开头或特定class
+                By.cssSelector("[class*='mask'] [class*='close'], [class*='popup'] [class*='close']"), // 通用弹窗关闭按钮
+                By.cssSelector("button:contains('确认'), button:contains('关闭'), button:contains('知道了')"), // 文本匹配
+
+                // 如果找不到按钮，尝试点击弹窗外的遮罩层
+                By.cssSelector("div[class*='mask'][style*='display: block']")
+        );
+
+        // 2. 尝试各种关闭策略
+        for (By strategy : closeStrategies) {
+            try {
+                List<WebElement> closeElements = driver.findElements(strategy);
+                for (WebElement el : closeElements) {
+                    if (el.isDisplayed()) {
+                        try {
+                            el.click();
+                            log.info("使用策略关闭弹窗: " + strategy);
+                            Thread.sleep(300); // 等待弹窗消失动画
+                            return;
+                        } catch (Exception e) {
+                            continue; // 尝试下一个元素
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                continue; // 尝试下一个策略
             }
+        }
+
+        // 3. 最终回退方案
+        try {
+            // 3.1 尝试通过ESC键关闭
+            driver.findElement(By.tagName("body")).sendKeys(Keys.ESCAPE);
+            Thread.sleep(300);
+
+            // 3.2 使用JS移除所有遮挡元素
+            ((JavascriptExecutor)driver).executeScript(
+                    "document.querySelectorAll('div[class*=\"mask\"], div[class*=\"popup\"]').forEach(el => {"
+                            + "el.style.transition = 'opacity 0.3s';"
+                            + "el.style.opacity = '0';"
+                            + "setTimeout(() => el.remove(), 300);"
+                            + "});"
+            );
+
+            log.info("使用强制方式关闭弹窗");
+        } catch (Exception e) {
+            log.info("所有弹窗关闭策略均失败", e);
+        }
+    }
+
+    /**
+     * 处理新二页面遮挡元素
+     * 仅处理特定#ann弹窗 3种固定策略
+     * 确定只有#ann弹窗 执行效率 高（无多余尝试）
+     */
+    private void handleObstructionEasy(WebDriver driver) {
+        try {
+            // 方案1：尝试关闭公告蒙层（如果有关闭按钮）
+            List<WebElement> closeButtons = driver.findElements(By.cssSelector("#ann .close, #ann .btn-close"));
+            if (!closeButtons.isEmpty()) {
+                closeButtons.get(0).click();
+                return;
+            }
+
+            // 方案2：等待蒙层自动消失
+            new WebDriverWait(driver, Duration.ofSeconds(5))
+                    .until(ExpectedConditions.invisibilityOfElementLocated(By.id("ann")));
+
+            // 方案3：如果仍然存在，使用JS移除
+            ((JavascriptExecutor)driver).executeScript(
+                    "const ann = document.getElementById('ann');" +
+                            "if(ann) ann.style.display = 'none';");
+        } catch (Exception e) {
+            log.warn("处理遮挡元素时出现异常", e);
+        }
+    }
+
+    private String proxySeleniumForWebsiteZhiBo(AdminLoginDTO admin, String websiteId, ConfigAccountVO account, String baseUrl, WebDriver driver) throws Exception {
+        try {
             String username = account.getAccount();  // 账号
             String password = account.getPassword();  // 密码
 
@@ -404,9 +766,33 @@ public class ProxyController extends BaseController {
      */
     private boolean isDataListLoaded(WebDriver driver, WebDriverWait wait) {
         try {
+            log.info("等待 URL 包含 'betList'...");
+            wait.until(ExpectedConditions.urlContains("betList"));
+
+            String currentUrl = driver.getCurrentUrl();
+            log.info("当前 URL: {}", currentUrl);
+
+            log.info("等待页面出现 data-list 元素...");
             wait.until(ExpectedConditions.presenceOfElementLocated(By.className("data-list")));
+
+            log.info("页面加载成功 ✅");
             return true;
         } catch (TimeoutException e) {
+            String currentUrl = driver.getCurrentUrl();
+            String source = driver.getPageSource();
+            String preview = source.length() > 300 ? source.substring(0, 300) : source;
+
+            log.info("页面加载失败 ❌，当前 URL: {}", currentUrl);
+            log.info("页面源码前300字:\n{}", preview);
+
+            // isn88 可能提示 IP 限制、代理拦截、需要重新登录
+            if (source.contains("请重新登录") || source.contains("非法访问") || source.contains("访问受限") || currentUrl.contains("error")) {
+                log.info("isn88 页面提示错误或跳转异常，疑似被拦截");
+            }
+
+            return false;
+        } catch (Exception ex) {
+            log.info("加载 isn88 页面时出现异常", ex);
             return false;
         }
     }

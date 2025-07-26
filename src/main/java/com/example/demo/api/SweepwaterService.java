@@ -89,7 +89,6 @@ public class SweepwaterService {
     @Resource
     private SweepWaterThreadPoolHolder threadPoolHolder;
 
-
     // 赛事缓存
     // private final ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures = new ConcurrentHashMap<>();
     private final Cache<String, CompletableFuture<JSONArray>> ecidFetchFuturesA =
