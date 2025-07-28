@@ -1,29 +1,34 @@
 package com.example.demo.core.sites.pingbo;
 
-import cn.hutool.http.HttpRequest;
-import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONObject;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
-import com.example.demo.config.HttpProxyConfig;
+import com.example.demo.common.enmu.SystemError;
+import com.example.demo.config.OkHttpProxyDispatcher;
+import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.model.vo.ConfigAccountVO;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 智博网站 - 登录 API具体实现
  */
+@Slf4j
 @Component
 public class WebsitePingBoAcceptHandler implements ApiHandler {
 
+    private final OkHttpProxyDispatcher dispatcher;
     private final WebsiteService websiteService;
     private final ApiUrlService apiUrlService;
 
     @Autowired
-    public WebsitePingBoAcceptHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
+    public WebsitePingBoAcceptHandler(OkHttpProxyDispatcher dispatcher, WebsiteService websiteService, ApiUrlService apiUrlService) {
+        this.dispatcher = dispatcher;
         this.websiteService = websiteService;
         this.apiUrlService = apiUrlService;
     }
@@ -34,51 +39,52 @@ public class WebsitePingBoAcceptHandler implements ApiHandler {
      * @return HttpEntity 请求体
      */
     @Override
-    public HttpEntity<String> buildRequest(JSONObject params) {
+    public Map<String, String> buildHeaders(JSONObject params) {
         // 构造请求头
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("accept", "*/*");
-        headers.add("content-type", "application/x-www-form-urlencoded");
+        Map<String, String> headers = new HashMap<>();
+        headers.put("accept", "*/*");
+        headers.put("content-type", "application/x-www-form-urlencoded");
 
-        return new HttpEntity<>(headers);
+        return headers;
+    }
+
+    @Override
+    public String buildRequest(JSONObject params) {
+        // 构造请求参数
+        return null;
     }
 
     /**
      * 解析响应体
-     * @param response 响应内容
+     * @param result 响应内容
      * @return 解析后的数据
      */
     @Override
-    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, OkHttpProxyDispatcher.HttpResult result) {
+        JSONObject res = new JSONObject();
 
-        // 检查响应状态
-        if (response.getStatus() != 200) {
-            JSONObject res = new JSONObject();
-            if (response.getStatus() == 403) {
-                res.putOpt("code", 403);
-                res.putOpt("success", false);
-                res.putOpt("msg", "账户登录失败");
-                return res;
-            }
-            res.putOpt("code", response.getStatus());
+        // 空响应或状态错误
+        if (result == null || result.getStatus() != 200) {
+            int status = result != null ? result.getStatus() : -1;
+            res.putOpt("code", status);
             res.putOpt("success", false);
-            res.putOpt("msg", "账户登录失败");
+            res.putOpt("msg", status == 403 ? "账户登录失败" : "协议请求失败");
             return res;
         }
 
-        JSONObject responseJson = new JSONObject();
-        // 解析响应
-        boolean responseBool = Boolean.parseBoolean(response.body());
+        // 正常响应，解析 body
+        String body = result.getBody();
+        boolean responseBool = Boolean.parseBoolean(body);
 
-        // 如果响应中包含错误信息，抛出异常或者其他处理
         if (!responseBool) {
-            responseJson.putOpt("success", false);
-            responseJson.putOpt("msg", "协议同意失败");
-            return responseJson;
+            res.putOpt("success", false);
+            res.putOpt("msg", "协议同意失败");
+            return res;
         }
-        responseJson.putOpt("success", true);
-        responseJson.putOpt("msg", "协议同意成功");
-        return responseJson;
+
+        res.putOpt("success", true);
+        res.putOpt("msg", "协议同意成功");
+        return res;
     }
 
     /**
@@ -94,7 +100,8 @@ public class WebsitePingBoAcceptHandler implements ApiHandler {
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
         String apiUrl = apiUrlService.getApiUrl(siteId, "accept");
         // 构建请求
-        HttpEntity<String> requestBody = buildRequest(params);
+        Map<String, String> requestHeaders = buildHeaders(params);
+        String requestBody = buildRequest(params);
 
         // 构造请求体
         String queryParams = String.format("locale=zh_CN&_=%s&withCredentials=true&promoEmail=false",
@@ -104,15 +111,16 @@ public class WebsitePingBoAcceptHandler implements ApiHandler {
         // 拼接完整的 URL
         String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, queryParams);
 
-        // 发送请求
-        HttpResponse response = null;
-        HttpRequest request = HttpRequest.get(fullUrl)
-                .addHeaders(requestBody.getHeaders().toSingleValueMap());
-        // 引入配置代理
-        HttpProxyConfig.configureProxy(request, userConfig);
-        response = request.execute();
+        // 使用代理发起 GET 请求
+        OkHttpProxyDispatcher.HttpResult resultHttp;
+        try {
+            resultHttp = dispatcher.execute("GET", fullUrl, requestBody, requestHeaders, userConfig, false);
+        } catch (Exception e) {
+            log.error("请求异常，用户:{}, 账号:{}, 参数:{}, 错误:{}", username, userConfig.getAccount(), requestBody, e.getMessage(), e);
+            throw new BusinessException(SystemError.SYS_400);
+        }
 
         // 解析响应并返回
-        return parseResponse(params, response);
+        return parseResponse(params, resultHttp);
     }
 }

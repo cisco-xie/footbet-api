@@ -3,6 +3,7 @@ package com.example.demo.core.factory;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.enmu.WebsiteType;
+import com.example.demo.config.OkHttpProxyDispatcher;
 import com.example.demo.core.sites.pingbo.*;
 import com.example.demo.core.sites.zhibo.WebsiteZhiBoInfoHandler;
 import com.example.demo.core.sites.zhibo.WebsiteZhiBoStatementHandler;
@@ -14,6 +15,9 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class WebsitePingBoFactory implements WebsiteApiFactory {
+
+    @Resource
+    private OkHttpProxyDispatcher dispatcher;
 
     @Resource
     private WebsiteService websiteService;
@@ -38,47 +42,47 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler changePwd() {
-        return new WebsitePingBoChangePwdHandler(websiteService, apiUrlService); // 返回具体的修改密码处理类
+        return new WebsitePingBoChangePwdHandler(dispatcher, websiteService, apiUrlService); // 返回具体的修改密码处理类
     }
 
     @Override
     public ApiHandler accept() {
-        return new WebsitePingBoAcceptHandler(websiteService, apiUrlService);   // 返回具体的接受协议处理类
+        return new WebsitePingBoAcceptHandler(dispatcher, websiteService, apiUrlService);   // 返回具体的接受协议处理类
     }
 
     @Override
     public ApiHandler getLoginHandler() {
-        return new WebsitePingBoLoginHandler(websiteService, apiUrlService); // 返回具体的登录处理类
+        return new WebsitePingBoLoginHandler(dispatcher, websiteService, apiUrlService); // 返回具体的登录处理类
     }
 
     @Override
     public ApiHandler getInfoHandler() {
-        return new WebsitePingBoInfoHandler(websiteService, apiUrlService); // 返回具体的详情处理类
+        return new WebsitePingBoInfoHandler(dispatcher, websiteService, apiUrlService); // 返回具体的详情处理类
     }
 
     @Override
     public ApiHandler getEventListHandler() {
-        return new WebsitePingBoEventListHandler(websiteService, apiUrlService); // 返回具体的赛事列表处理类
+        return new WebsitePingBoEventListHandler(dispatcher, websiteService, apiUrlService); // 返回具体的赛事列表处理类
     }
 
     @Override
     public ApiHandler getEventsHandler() {
-        return new WebsitePingBoEventsHandler(websiteService, apiUrlService); // 返回具体的赛事列表处理类
+        return new WebsitePingBoEventsHandler(dispatcher, websiteService, apiUrlService); // 返回具体的赛事列表处理类
     }
 
     @Override
     public ApiHandler getEventsOddsHandler() {
-        return new WebsitePingBoEventsOddsHandler(websiteService, apiUrlService); // 返回具体的赛事列表处理类
+        return new WebsitePingBoEventsOddsHandler(dispatcher, websiteService, apiUrlService); // 返回具体的赛事列表处理类
     }
 
     @Override
     public ApiHandler getStatementsHandler() {
-        return new WebsitePingBoStatementHandler(websiteService, apiUrlService); // 返回具体的账目列表处理类
+        return new WebsitePingBoStatementHandler(dispatcher, websiteService, apiUrlService); // 返回具体的账目列表处理类
     }
 
     @Override
     public ApiHandler getBetUnsettledHandler() {
-        return new WebsitePingBoBetUnsettledHandler(websiteService, apiUrlService); // 返回具体的未结算投注列表处理类
+        return new WebsitePingBoBetUnsettledHandler(dispatcher, websiteService, apiUrlService); // 返回具体的未结算投注列表处理类
     }
 
     @Override
@@ -88,11 +92,11 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler bet() {
-        return new WebsitePingBoBetHandler(websiteService, apiUrlService); // 返回具体的投注处理类
+        return new WebsitePingBoBetHandler(dispatcher, websiteService, apiUrlService); // 返回具体的投注处理类
     }
 
     @Override
     public ApiHandler betPreview() {
-        return new WebsitePingBoBetPreviewHandler(websiteService, apiUrlService); // 返回具体的投注预览处理类
+        return new WebsitePingBoBetPreviewHandler(dispatcher, websiteService, apiUrlService); // 返回具体的投注预览处理类
     }
 }

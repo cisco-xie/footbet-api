@@ -1,36 +1,64 @@
 package com.example.demo.core.sites.xinbao;
 
 import cn.hutool.core.util.XmlUtil;
-import cn.hutool.http.HttpRequest;
-import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONObject;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.constants.Constants;
-import com.example.demo.config.HttpProxyConfig;
+import com.example.demo.common.enmu.SystemError;
+import com.example.demo.config.OkHttpProxyDispatcher;
+import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.model.vo.ConfigAccountVO;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Document;
 
 import javax.xml.xpath.XPathConstants;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 智博网站 - 账户额度 API具体实现
  */
+@Slf4j
 @Component
 public class WebsiteXinBaoInfoHandler implements ApiHandler {
 
+    private final OkHttpProxyDispatcher dispatcher;
     private final WebsiteService websiteService;
     private final ApiUrlService apiUrlService;
 
     @Autowired
-    public WebsiteXinBaoInfoHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
+    public WebsiteXinBaoInfoHandler(OkHttpProxyDispatcher dispatcher, WebsiteService websiteService, ApiUrlService apiUrlService) {
+        this.dispatcher = dispatcher;
         this.websiteService = websiteService;
         this.apiUrlService = apiUrlService;
+    }
+
+    /**
+     * 构建请求头
+     * @param params 请求参数
+     * @return HttpEntity 请求体
+     */
+    @Override
+    public Map<String, String> buildHeaders(JSONObject params) {
+        // 构造请求头
+        Map<String, String> headers = new HashMap<>();
+        headers.put("accept", "*/*");
+        headers.put("content-type", "application/x-www-form-urlencoded");
+        headers.put("Accept-Language", "zh-CN,zh;q=0.9,pt-BR;q=0.8,pt;q=0.7");
+        headers.put("Connection", "keep-alive");
+        headers.put("Sec-Fetch-Dest", "empty");
+        headers.put("Sec-Fetch-Mode", "cors");
+        headers.put("Sec-Fetch-Site", "same-origin");
+        headers.put("sec-ch-ua", Constants.SEC_CH_UA);
+        headers.put("User-Agent", Constants.USER_AGENT);
+        headers.put("sec-ch-ua-mobile", "?0");
+        headers.put("sec-ch-ua-platform", "\"Windows\"");
+
+        return headers;
     }
 
     /**
@@ -39,18 +67,12 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
      * @return HttpEntity 请求体
      */
     @Override
-    public HttpEntity<String> buildRequest(JSONObject params) {
-        // 构造请求头
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("accept", "*/*");
-        headers.add("content-type", "application/x-www-form-urlencoded");
-
+    public String buildRequest(JSONObject params) {
         // 构造请求体
-        String requestBody = String.format("p=get_member_data&uid=%s&ver=%s&langx=zh-cn&change=credit",
+        return String.format("p=get_member_data&uid=%s&ver=%s&langx=zh-cn&change=credit",
                 params.getStr("uid"),
                 Constants.VER
         );
-        return new HttpEntity<>(requestBody, headers);
     }
 
     /**
@@ -59,7 +81,7 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
      * @return 解析后的数据
      */
     @Override
-    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, OkHttpProxyDispatcher.HttpResult response) {
         // 检查响应状态
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();
@@ -69,8 +91,8 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         }
 
         // 解析响应
-        Document docResult = XmlUtil.readXML(response.body());
-        JSONObject responseJson = new JSONObject(response.body());
+        Document docResult = XmlUtil.readXML(response.getBody());
+        JSONObject responseJson = new JSONObject(response.getBody());
 
         if (responseJson.getJSONObject("serverresponse").getStr("code").equals("error")) {
             responseJson.putOpt("success", false);
@@ -96,7 +118,8 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
         String apiUrl = apiUrlService.getApiUrl(siteId, "info");
         // 构建请求
-        HttpEntity<String> requestBody = buildRequest(params);
+        Map<String, String> requestHeaders = buildHeaders(params);
+        String requestBody = buildRequest(params);
 
         // 构造请求体
         String queryParams = String.format("ver=%s",
@@ -107,16 +130,14 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, queryParams);
 
         // 发送请求
-        HttpResponse response = null;
-        HttpRequest request = HttpRequest.post(fullUrl)
-                .addHeaders(requestBody.getHeaders().toSingleValueMap())
-                .body(requestBody.getBody())
-                .timeout(5000);
-        // 引入配置代理
-        HttpProxyConfig.configureProxy(request, userConfig);
-        response = request.execute();
-
+        OkHttpProxyDispatcher.HttpResult resultHttp;
+        try {
+            resultHttp = dispatcher.executeFull("POST", fullUrl, requestBody, requestHeaders, userConfig);
+        } catch (Exception e) {
+            log.error("请求异常，用户:{}, 账号:{}, 参数:{}, 错误:{}", username, userConfig.getAccount(), requestBody, e.getMessage(), e);
+            throw new BusinessException(SystemError.SYS_400);
+        }
         // 解析响应并返回
-        return parseResponse(params, response);
+        return parseResponse(params, resultHttp);
     }
 }

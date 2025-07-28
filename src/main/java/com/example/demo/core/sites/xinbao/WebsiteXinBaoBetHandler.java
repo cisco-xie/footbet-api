@@ -1,23 +1,23 @@
 package com.example.demo.core.sites.xinbao;
 
-import cn.hutool.http.HttpRequest;
-import cn.hutool.http.HttpResponse;
-import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.constants.Constants;
-import com.example.demo.common.enmu.XinBaoOddsFormatType;
-import com.example.demo.config.HttpProxyConfig;
+import com.example.demo.common.enmu.SystemError;
+import com.example.demo.config.OkHttpProxyDispatcher;
+import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.model.vo.ConfigAccountVO;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 智博网站 - 投注 API具体实现
@@ -27,13 +27,41 @@ import org.springframework.stereotype.Component;
 @Component
 public class WebsiteXinBaoBetHandler implements ApiHandler {
 
+    private final OkHttpProxyDispatcher dispatcher;
     private final WebsiteService websiteService;
     private final ApiUrlService apiUrlService;
 
     @Autowired
-    public WebsiteXinBaoBetHandler(WebsiteService websiteService, ApiUrlService apiUrlService) {
+    public WebsiteXinBaoBetHandler(OkHttpProxyDispatcher dispatcher, WebsiteService websiteService, ApiUrlService apiUrlService) {
+        this.dispatcher = dispatcher;
         this.websiteService = websiteService;
         this.apiUrlService = apiUrlService;
+    }
+
+    /**
+     * 构建请求头
+     * @param params 请求参数
+     * @return HttpEntity 请求体
+     */
+    @Override
+    public Map<String, String> buildHeaders(JSONObject params) {
+        // 构造请求头
+        Map<String, String> headers = new HashMap<>();
+        headers.put("accept", "*/*");
+        headers.put("content-type", "application/x-www-form-urlencoded");
+        headers.put("Accept-Language", "zh-CN,zh;q=0.9,pt-BR;q=0.8,pt;q=0.7");
+        headers.put("Connection", "keep-alive");
+        headers.put("Sec-Fetch-Dest", "empty");
+        headers.put("Sec-Fetch-Mode", "cors");
+        headers.put("Sec-Fetch-Site", "same-origin");
+        headers.put("sec-ch-ua", Constants.SEC_CH_UA);
+        headers.put("User-Agent", Constants.USER_AGENT);
+        headers.put("sec-ch-ua-mobile", "?0");
+        headers.put("sec-ch-ua-platform", "\"Windows\"");
+        // headers.put("Origin", "https://m061.mos077.com");
+        // headers.put("Referer", "https://m061.mos077.com/");
+
+        return headers;
     }
 
     /**
@@ -42,25 +70,7 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
      * @return HttpEntity 请求体
      */
     @Override
-    public HttpEntity<String> buildRequest(JSONObject params) {
-        // 构造请求头
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("accept", "*/*");
-        headers.add("content-type", "application/x-www-form-urlencoded");
-        headers.add("Accept-Language", "zh-CN,zh;q=0.9,pt-BR;q=0.8,pt;q=0.7");
-        headers.add("Connection", "keep-alive");
-        headers.add("Origin", "https://m061.mos077.com");
-        headers.add("Referer", "https://m061.mos077.com/");
-        headers.add("Sec-Fetch-Dest", "empty");
-        headers.add("Sec-Fetch-Mode", "cors");
-        headers.add("Sec-Fetch-Site", "same-origin");
-        headers.add("sec-ch-ua", Constants.SEC_CH_UA);
-        headers.add("User-Agent", Constants.USER_AGENT);
-        headers.add("sec-ch-ua-mobile", "?0");
-        headers.add("sec-ch-ua-platform", "\"Windows\"");
-//        String cookies = "b-user-id=85477736-98f0-11a4-4d7f-e21dbea69097; b-user-id=ODU0Nzc3MzYtOThmMC0xMWE0LTRkN2YtZTIxZGJlYTY5MDk3; odd_f_type_36826212=VFE9PQ==; box4pwd_notshow_36826212=MzY4MjYyMTJfTg==; CookieChk=WQ; iorChgSw=WQ==; myGameVer_36826212=XzIxMTIyOA==; box4pwd_notshow_37015545=MzcwMTU1NDVfTg==; myGameVer_37015545=XzIxMTIyOA==; box4pwd_notshow_37587241=Mzc1ODcyNDFfTg==; myGameVer_37587241=XzIxMTIyOA==; ft_myGame_37587241=e30=; lastBetCredit_sw_37587241=WQ==; lastBetCredit_37587241=NTA=; protocolstr=aHR0cHM=; test=aW5pdA; bk_myGame_37587241=e30=; login_37587241=MTc0NzIxMDAzNA; cu=Tg==; cuipv6=Tg==; ipv6=Tg==";
-//        headers.add("cookie", cookies);
-
+    public String buildRequest(JSONObject params) {
         String oddsFormatType = params.getStr("oddsFormatType");
         String golds = params.getStr("golds");
         String gid = params.getStr("gid");
@@ -73,7 +83,7 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
         String ratio = params.getStr("ratio");
         String autoOdd = params.getStr("autoOdd");
         // 构造请求体
-        String requestBody = String.format("p=FT_bet&uid=%s&ver=%s&langx=zh-cn&odd_f_type=%s&golds=%s&gid=%s&gtype=%s&wtype=%s&rtype=%s&chose_team=%s&ioratio=%s&con=%s&ratio=%s&autoOdd=%s" +
+        return String.format("p=FT_bet&uid=%s&ver=%s&langx=zh-cn&odd_f_type=%s&golds=%s&gid=%s&gtype=%s&wtype=%s&rtype=%s&chose_team=%s&ioratio=%s&con=%s&ratio=%s&autoOdd=%s" +
                         "&timestamp=%s&timestamp2=&isRB=Y&imp=N&ptype=&isYesterday=N&f=1M",
                 params.getStr("uid"),
                 Constants.VER,
@@ -90,7 +100,6 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
                 autoOdd,
                 System.currentTimeMillis()
         );
-        return new HttpEntity<>(requestBody, headers);
     }
 
     /**
@@ -99,7 +108,7 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
      * @return 解析后的数据
      */
     @Override
-    public JSONObject parseResponse(JSONObject params, HttpResponse response) {
+    public JSONObject parseResponse(JSONObject params, OkHttpProxyDispatcher.HttpResult response) {
         // 1. 检查响应状态码
         if (response.getStatus() != 200) {
             return new JSONObject()
@@ -109,7 +118,7 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
         }
 
         // 2. 获取响应内容
-        String responseBody = response.body().trim();
+        String responseBody = response.getBody().trim();
         JSONObject responseJson;
 
         // 3. 判断是否为 JSON 格式
@@ -152,7 +161,8 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
         String apiUrl = apiUrlService.getApiUrl(siteId, "bet");
         // 构建请求
-        HttpEntity<String> requestBody = buildRequest(params);
+        Map<String, String> requestHeaders = buildHeaders(params);
+        String requestBody = buildRequest(params);
 
         // 构造请求体
         String queryParams = String.format("ver=%s",
@@ -167,16 +177,15 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
         // log.info("即将发送请求:\n{}", curlCommand);
 
         // 发送请求
-        HttpResponse response = null;
-        HttpRequest request = HttpRequest.post(fullUrl)
-                .addHeaders(requestBody.getHeaders().toSingleValueMap())
-                .body(requestBody.getBody());
-        // 引入配置代理
-        HttpProxyConfig.configureProxy(request, userConfig);
-        response = request.execute();
-
+        OkHttpProxyDispatcher.HttpResult resultHttp;
+        try {
+            resultHttp = dispatcher.executeFull("POST", fullUrl, requestBody, requestHeaders, userConfig);
+        } catch (Exception e) {
+            log.error("请求异常，用户:{}, 账号:{}, 参数:{}, 错误:{}", username, userConfig.getAccount(), requestBody, e.getMessage(), e);
+            throw new BusinessException(SystemError.SYS_400);
+        }
         // 解析响应并返回
-        return parseResponse(params, response);
+        return parseResponse(params, resultHttp);
     }
 
     /**

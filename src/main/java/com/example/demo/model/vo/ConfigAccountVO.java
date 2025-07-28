@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
+import org.apache.commons.lang3.StringUtils;
 
 import java.math.BigDecimal;
 
@@ -71,5 +72,18 @@ public class ConfigAccountVO {
 
     public void setProxyPassword(String proxyPassword) {
         this.proxyPassword = proxyPassword == null ? null : proxyPassword.trim();
+    }
+
+    public boolean hasAuth() {
+        return proxyType != null && proxyType != 0 && StringUtils.isNotBlank(proxyUsername) && StringUtils.isNotBlank(proxyPassword);
+    }
+
+    public String getProxyKey() {
+        if (proxyType == null || proxyType == 0) {
+            return "no-proxy"; // ✅ 与默认客户端对应
+        }
+        // 用 host:port + 类型 + 用户名 拼出一个唯一 key
+        return proxyType + "://" + proxyHost + ":" + proxyPort +
+                (hasAuth() ? "?auth=" + proxyUsername : "");
     }
 }

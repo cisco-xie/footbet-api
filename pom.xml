@@ -123,6 +123,13 @@
             <artifactId>httpclient5</artifactId>
             <version>5.4.1</version>
         </dependency>
+
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>4.12.0</version>
+        </dependency>
+
         <!-- 精选需要的selenium模块 start -->
         <dependency>
             <groupId>org.seleniumhq.selenium</groupId>
