@@ -1,6 +1,7 @@
 package com.example.demo.task;
 
 import cn.hutool.core.thread.ThreadUtil;
+import cn.hutool.core.util.IdUtil;
 import com.example.demo.api.AdminService;
 import com.example.demo.api.BetService;
 import com.example.demo.api.SweepwaterService;
@@ -146,7 +147,8 @@ public class AutoSweepwaterTask {
 
         // 使用工作窃取线程池替代固定线程池
         ExecutorService executorAdminUserService = threadPoolHolder.getUserSweepExecutor();
-
+        // 轮次id，用于记录本轮的id
+        String roundId = IdUtil.getSnowflakeNextIdStr();
         try {
             List<CompletableFuture<Void>> adminFutures = adminUsers.stream()
                     .map(adminUser -> {
@@ -160,15 +162,15 @@ public class AutoSweepwaterTask {
                             long delay = startTime - submitTime; // 延迟时间
 
                             try {
-                                log.info("本轮扫水-用户:{} 任务延迟启动: {}ms", adminUser.getUsername(), delay);
+                                log.info("本轮扫水-用户:{},轮次id:{} 任务延迟启动: {}ms", adminUser.getUsername(), roundId, delay);
 
                                 long sweepStart = System.currentTimeMillis();
-                                sweepwaterService.sweepwater(adminUser.getUsername(), sweepwaterUsers);
+                                sweepwaterService.sweepwater(adminUser.getUsername(), sweepwaterUsers, roundId);
                                 long cost = System.currentTimeMillis() - sweepStart;
 
-                                log.info("本轮扫水-用户:{} 扫水任务耗时: {}ms", adminUser.getUsername(), cost);
+                                log.info("本轮扫水-用户:{},轮次id:{} 扫水任务耗时: {}ms", adminUser.getUsername(), roundId, cost);
                             } catch (Exception e) {
-                                log.error("本轮扫水-用户:{} 执行 sweepwater 异常", adminUser.getUsername(), e);
+                                log.error("本轮扫水-用户:{},轮次id:{} 执行 sweepwater 异常", adminUser.getUsername(), roundId, e);
                             }
                         }, executorAdminUserService);
                     })
@@ -178,8 +180,8 @@ public class AutoSweepwaterTask {
         } catch (Exception e) {
             log.error("自动扫水 执行异常", e);
         } finally {
-            // 复用线程池无需关闭
-            // PriorityTaskExecutor.shutdownExecutor(executorAdminUserService);
+            // 清理本轮网站赔率缓存
+            sweepwaterService.clearCacheForRound(roundId);
         }
     }
 

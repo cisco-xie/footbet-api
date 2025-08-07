@@ -324,10 +324,10 @@ public class OkHttpProxyDispatcher {
                     }
 
                     // 2. 确定编码
-                    String charset = determineCharset(response, bytes);
+                    // String charset = determineCharset(response, bytes);
 
                     // 3. 使用正确编码解码
-                    String respBody = new String(bytes, charset);
+                    // String respBody = new String(bytes, charset);
                     // 强制 UTF-8 解码
                     String html = new String(bytes, StandardCharsets.UTF_8);
 
@@ -355,7 +355,7 @@ public class OkHttpProxyDispatcher {
                     }
                     state.reset();
                     log.info("[OkHttpProxyDispatcher] 请求成功，URL={}", url);
-                    return new HttpResult(respBody, respHeaders, code, cookieToken, cost);
+                    return new HttpResult(html, respHeaders, code, cookieToken, cost);
 
                 }
             } catch (Exception e) {

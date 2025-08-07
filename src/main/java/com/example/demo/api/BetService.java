@@ -28,9 +28,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.*;
 import org.springframework.stereotype.Component;
 
-import java.math.BigDecimal;
 import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
@@ -74,48 +72,75 @@ public class BetService {
      * @return
      */
     public List<SweepwaterBetDTO> getRealTimeBets(String username, String teamName) {
+        // 构造 pattern，例如: bet:xxx:realtime:2025-07-29:*
         String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
         String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, "realtime", date, "*");
 
+        // 获取所有匹配的 key（注意这个方法内部使用 scan，不是 keys，不会阻塞）
         Iterable<String> keys = businessPlatformRedissonClient.getKeys().getKeysByPattern(pattern);
-        if (!keys.iterator().hasNext()) {
+
+        // 收集 key 到列表中
+        List<String> keyList = new ArrayList<>();
+        for (String key : keys) {
+            keyList.add(key);
+        }
+
+        // 提前判断
+        if (keyList.isEmpty()) {
             return Collections.emptyList();
         }
 
-        RBatch batch = businessPlatformRedissonClient.createBatch();
-        List<RFuture<String>> futures = new ArrayList<>();
-        for (String key : keys) {
-            RBucketAsync<String> bucket = batch.getBucket(key);
-            futures.add(bucket.getAsync());
-        }
+        int batchSize = 100; // 每批最多并发读取100条，避免过大导致内存抖动
+        List<CompletableFuture<Void>> batchFutures = new ArrayList<>();
+        List<SweepwaterBetDTO> resultList = Collections.synchronizedList(new ArrayList<>());
 
-        batch.execute();
+        // 分批处理 keys
+        for (int i = 0; i < keyList.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, keyList.size());
+            List<String> subKeys = keyList.subList(i, end);
 
-        List<SweepwaterBetDTO> result = new ArrayList<>();
-        for (RFuture<String> future : futures) {
-            try {
-                String json = future.toCompletableFuture().join();
-                if (json != null) {
-                    result.add(JSONUtil.toBean(json, SweepwaterBetDTO.class));
-                }
-            } catch (Exception e) {
-                log.warn("读取投注单缓存失败", e);
-            }
-        }
-
-        // ✅ 筛选 队伍 数据
-        return result.stream()
-                .filter(dto -> {
-                    if (StringUtils.isBlank(teamName)) {
-                        return true; // teamName 为空，直接不过滤
+            // 每批作为一个并发任务执行
+            CompletableFuture<Void> batchFuture = CompletableFuture.runAsync(() -> {
+                try {
+                    RBatch batch = businessPlatformRedissonClient.createBatch();
+                    List<RFuture<Object>> futures = new ArrayList<>();
+                    for (String k : subKeys) {
+                        futures.add(batch.getBucket(k).getAsync());
                     }
-                    String team = dto.getTeam();
-                    return (team != null && team.contains(teamName));
-                })
-                // 排序:id倒叙
+
+                    // 提交批次执行
+                    batch.execute();
+
+                    // 收集结果
+                    for (RFuture<Object> future : futures) {
+                        try {
+                            Object json = future.toCompletableFuture().join();
+                            if (json != null) {
+                                SweepwaterBetDTO dto = JSONUtil.toBean((String) json, SweepwaterBetDTO.class);
+                                resultList.add(dto);
+                            }
+                        } catch (Exception ex) {
+                            log.warn("解析投注单失败", ex);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("批量获取投注单异常", e);
+                }
+            });
+
+            batchFutures.add(batchFuture);
+        }
+
+        // 等待所有批次完成
+        CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0])).join();
+
+        // 最终过滤 & 排序
+        return resultList.stream()
+                .filter(dto -> StringUtils.isBlank(teamName) || (dto.getTeam() != null && dto.getTeam().contains(teamName)))
                 .sorted(Comparator.comparing(SweepwaterBetDTO::getId).reversed())
                 .collect(Collectors.toList());
     }
+
 
     /**
      * 获取投注记录

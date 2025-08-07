@@ -16,6 +16,7 @@
 
 package com.example.demo.controller;
 
+import cn.hutool.core.util.IdUtil;
 import com.example.demo.api.BetService;
 import com.example.demo.api.ConfigAccountService;
 import com.example.demo.api.HandicapApi;
@@ -70,7 +71,7 @@ public class TestController extends BaseController {
     @GetMapping("/sweepwater")
     public Result sweepwater() {
         AdminLoginDTO admin = getUser();
-        sweepwaterService.sweepwater(admin.getUsername(), null);
+        sweepwaterService.sweepwater(null, null, IdUtil.getSnowflakeNextIdStr());
         return Result.success();
     }
 

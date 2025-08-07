@@ -12,11 +12,13 @@ import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.model.vo.ConfigAccountVO;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Document;
 
 import javax.xml.xpath.XPathConstants;
+import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -107,7 +109,7 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
         }
 
         // 解析响应
-        Document docResult = XmlUtil.readXML(response.getBody());
+        // Document docResult = XmlUtil.readXML(new StringReader(response.getBody()));
         JSONObject responseJson = new JSONObject(response.getBody());
         if (!"100".equals(responseJson.getJSONObject("serverresponse").getStr("msg"))) {
             responseJson.putOpt("success", false);
@@ -124,7 +126,8 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
             }
             return responseJson;
         }
-        Object token = XmlUtil.getByXPath("//serverresponse/uid", docResult, XPathConstants.STRING);
+        // Object token = XmlUtil.getByXPath("//serverresponse/uid", docResult, XPathConstants.STRING);
+        String token = responseJson.getJSONObject("serverresponse").getStr("uid");
         if (ObjectUtil.isEmpty(token)) {
             responseJson.putOpt("success", false);
             responseJson.putOpt("msg", "账户登录失败");
