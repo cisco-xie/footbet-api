@@ -313,7 +313,7 @@ public class WebsiteSboLoginHandler implements ApiHandler {
             }
             JSONObject responseJson = new JSONObject();
             responseJson.putOpt("success", true);
-            responseJson.putOpt("token", new JSONObject(JSONUtil.parseObj(step11Result.getStr("body"))).putOpt("cookies", cookieStore));
+            responseJson.putOpt("token", new JSONObject(JSONUtil.parseObj(step11Result.getStr("body"))).putOpt("cookie", cookieStore));
             responseJson.putOpt("msg", "账户登录成功");
             return responseJson;
 

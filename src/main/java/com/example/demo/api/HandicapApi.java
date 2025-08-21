@@ -536,7 +536,6 @@ public class HandicapApi {
             // 未登录直接跳过
             return null;
         }
-        TimeInterval timer = DateUtil.timer();
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
 
         ApiHandler apiHandler = factory.getInfoHandler();
@@ -553,10 +552,12 @@ public class HandicapApi {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putAll(account.getToken().getJSONObject("serverresponse"));
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            params.putOpt("cookie", account.getToken().getJSONObject("token").getStr("cookie"));
         }
         JSONObject result = apiHandler.execute(account, params);
         account.setBetCredit(result.getBigDecimal("betCredit"));
-        account.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
+        account.setExecuteMsg(result.get("msg") + "：" + result.getLong("durationMs") + " ms");
         accountService.saveAccount(username, websiteId, account);
         return result;
     }
