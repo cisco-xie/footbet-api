@@ -162,7 +162,7 @@ public class OkHttpProxyDispatcher {
 
                 // 添加默认伪装头（若 headers 中未指定）
                 if (!requestBuilder.build().headers().names().contains("User-Agent")) {
-                    requestBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+                    requestBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36");
                 }
                 if (!requestBuilder.build().headers().names().contains("Accept")) {
                     requestBuilder.header("Accept", "*/*");

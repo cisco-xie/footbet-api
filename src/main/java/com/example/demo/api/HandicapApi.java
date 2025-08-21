@@ -203,6 +203,9 @@ public class HandicapApi {
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId) || WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putOpt("username", account.getAccount());
             params.putOpt("password", account.getPassword());
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            params.putOpt("username", account.getAccount());
+            params.putOpt("password", account.getPassword());
         }
         JSONObject result = apiHandler.execute(account, params);
         log.info("登录账号,网站:{}, 账号:{}, 登录结果：{}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), result);

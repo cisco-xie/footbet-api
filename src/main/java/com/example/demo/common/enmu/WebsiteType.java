@@ -15,7 +15,8 @@ import java.util.Map;
 public enum WebsiteType {
     ZHIBO("1874804932787851264", "", "智博"),
     PINGBO("1874805533324103680", "", "平博"),
-    XINBAO("1877702689064243200", "", "新2");
+    XINBAO("1877702689064243200", "", "新2"),
+    SBO("1877702689064243001", "", "盛帆");
 
     private final String id;
     private final String games;

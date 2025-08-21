@@ -53,6 +53,14 @@ public class TestController extends BaseController {
         return Result.success();
     }
 
+    @Operation(summary = "登录单个盘口账号")
+    @GetMapping("/login/{websiteId}/{accountId}")
+    public Result singleLogin(@PathVariable String websiteId, @PathVariable String accountId) {
+        AdminLoginDTO admin = getUser();
+        api.singleLogin(admin.getUsername(), websiteId, accountId);
+        return Result.success();
+    }
+
     @Operation(summary = "获取所有盘口账号额度")
     @GetMapping("/info")
     public Result info() {
