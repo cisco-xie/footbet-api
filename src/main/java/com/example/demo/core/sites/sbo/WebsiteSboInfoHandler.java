@@ -89,6 +89,7 @@ public class WebsiteSboInfoHandler implements ApiHandler {
             return responseJson;
         }
         responseJson.putOpt("success", true);
+        responseJson.putOpt("durationMs", result.getDurationMs());
         responseJson.putOpt("msg", "获取账户额度成功");
         return responseJson;
     }
