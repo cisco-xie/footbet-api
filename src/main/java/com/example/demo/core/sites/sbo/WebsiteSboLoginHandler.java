@@ -308,7 +308,7 @@ public class WebsiteSboLoginHandler implements ApiHandler {
 
             // 第十步：调用getTokens接口
             JSONObject step11Result = executeStep11(userConfig, sportsBookUrl, params, cookieStore);
-            if (!step11Result.getBool("success", false) && 200 != step11Result.getInt("")) {
+            if (!step11Result.getBool("success", false) && 200 != step11Result.getInt("status")) {
                 return new JSONObject().set("success", false).set("msg", "获取token失败");
             }
             JSONObject responseJson = new JSONObject();
@@ -444,7 +444,7 @@ public class WebsiteSboLoginHandler implements ApiHandler {
 
         OkHttpProxyDispatcher.HttpResult response;
         try {
-            response = dispatcher.execute("GET", step5Url, buildRequest(params), buildHeaders(params), userConfig, false);
+            response = dispatcher.execute("GET", step5Url, null, buildHeaders(params), userConfig, false);
 
             // 保存cookie
             updateCookieStore(response, cookieStore);
