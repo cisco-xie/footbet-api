@@ -4,9 +4,8 @@ import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.config.OkHttpProxyDispatcher;
-import com.example.demo.core.sites.sbo.WebsiteSboInfoHandler;
+import com.example.demo.core.sites.sbo.WebsiteSboBalanceHandler;
 import com.example.demo.core.sites.sbo.WebsiteSboLoginHandler;
-import com.example.demo.core.sites.xinbao.*;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
@@ -56,7 +55,7 @@ public class WebsiteSboFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler getInfoHandler() {
-        return new WebsiteSboInfoHandler(dispatcher, websiteService, apiUrlService); // 返回具体的详情处理类
+        return new WebsiteSboBalanceHandler(dispatcher, websiteService, apiUrlService); // 返回具体的详情处理类
     }
 
     @Override

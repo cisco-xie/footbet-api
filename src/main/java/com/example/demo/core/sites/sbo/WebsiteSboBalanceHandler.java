@@ -21,14 +21,14 @@ import java.util.Map;
  */
 @Slf4j
 @Component
-public class WebsiteSboInfoHandler implements ApiHandler {
+public class WebsiteSboBalanceHandler implements ApiHandler {
 
     private final OkHttpProxyDispatcher dispatcher;
     private final WebsiteService websiteService;
     private final ApiUrlService apiUrlService;
 
     @Autowired
-    public WebsiteSboInfoHandler(OkHttpProxyDispatcher dispatcher, WebsiteService websiteService, ApiUrlService apiUrlService) {
+    public WebsiteSboBalanceHandler(OkHttpProxyDispatcher dispatcher, WebsiteService websiteService, ApiUrlService apiUrlService) {
         this.dispatcher = dispatcher;
         this.websiteService = websiteService;
         this.apiUrlService = apiUrlService;
