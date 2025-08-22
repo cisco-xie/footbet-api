@@ -4,6 +4,7 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
+import com.example.demo.common.constants.Constants;
 import com.example.demo.common.enmu.SystemError;
 import com.example.demo.config.OkHttpProxyDispatcher;
 import com.example.demo.core.exception.BusinessException;
@@ -52,7 +53,7 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         headers.put("pragma", "no-cache");
         headers.put("priority", "u=1, i");
         headers.put("referer", "https://www.u16888.com/");
-        headers.put("sec-ch-ua", "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Google Chrome\";v=\"138\"");
+        headers.put("sec-ch-ua", Constants.SEC_CH_UA);
         headers.put("sec-ch-ua-mobile", "?0");
         headers.put("sec-ch-ua-platform", "\"Windows\"");
         headers.put("sec-fetch-dest", "empty");
@@ -114,14 +115,13 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         headers.put("pragma", "no-cache");
         headers.put("priority", "u=0, i");
         headers.put("referer", "https://www.u16888.com/");
-        headers.put("sec-ch-ua", "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Google Chrome\";v=\"138\"");
+        headers.put("sec-ch-ua", Constants.SEC_CH_UA);
         headers.put("sec-ch-ua-mobile", "?0");
         headers.put("sec-ch-ua-platform", "\"Windows\"");
         headers.put("sec-fetch-dest", "document");
         headers.put("sec-fetch-mode", "navigate");
         headers.put("sec-fetch-site", "same-site");
         headers.put("upgrade-insecure-requests", "1");
-        headers.put("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36");
 
         if (params.containsKey("cookie")) {
             headers.put("cookie", params.getStr("cookie"));
@@ -141,14 +141,13 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         headers.put("pragma", "no-cache");
         headers.put("priority", "u=0, i");
         headers.put("referer", "https://www.u16888.com/");
-        headers.put("sec-ch-ua", "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Google Chrome\";v=\"138\"");
+        headers.put("sec-ch-ua", Constants.SEC_CH_UA);
         headers.put("sec-ch-ua-mobile", "?0");
         headers.put("sec-ch-ua-platform", "\"Windows\"");
         headers.put("sec-fetch-dest", "document");
         headers.put("sec-fetch-mode", "navigate");
         headers.put("sec-fetch-site", "same-site");
         headers.put("upgrade-insecure-requests", "1");
-        headers.put("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36");
 
         if (params.containsKey("cookie")) {
             headers.put("cookie", params.getStr("cookie"));

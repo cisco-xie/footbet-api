@@ -1,5 +1,6 @@
 package com.example.demo.config;
 
+import com.example.demo.common.constants.Constants;
 import com.example.demo.model.vo.ConfigAccountVO;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -162,7 +163,7 @@ public class OkHttpProxyDispatcher {
 
                 // 添加默认伪装头（若 headers 中未指定）
                 if (!requestBuilder.build().headers().names().contains("User-Agent")) {
-                    requestBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36");
+                    requestBuilder.header("User-Agent", Constants.USER_AGENT);
                 }
                 if (!requestBuilder.build().headers().names().contains("Accept")) {
                     requestBuilder.header("Accept", "*/*");

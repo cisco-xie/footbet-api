@@ -5,6 +5,7 @@ import com.example.demo.api.WebsiteService;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.config.OkHttpProxyDispatcher;
 import com.example.demo.core.sites.sbo.WebsiteSboBalanceHandler;
+import com.example.demo.core.sites.sbo.WebsiteSboEventListHandler;
 import com.example.demo.core.sites.sbo.WebsiteSboLoginHandler;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
@@ -60,7 +61,7 @@ public class WebsiteSboFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler getEventListHandler() {
-        return null; // 返回具体的赛事列表处理类
+        return new WebsiteSboEventListHandler(dispatcher, websiteService, apiUrlService); // 返回具体的赛事列表处理类
     }
 
     @Override

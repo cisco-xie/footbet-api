@@ -634,6 +634,9 @@ public class HandicapApi {
                     oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
                 }
                 params.putOpt("oddsFormatType", oddsFormatType);
+            } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+                params.putOpt("token", account.getToken().getJSONObject("token").getStr("authToken"));
+                params.putOpt("oddsToken", account.getToken().getJSONObject("token").getStr("oddsToken"));
             }
             JSONObject result = apiHandler.execute(account, params);
 
