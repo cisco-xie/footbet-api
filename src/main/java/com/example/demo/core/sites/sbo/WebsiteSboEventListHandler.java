@@ -9,16 +9,21 @@ import com.example.demo.api.WebsiteService;
 import com.example.demo.common.constants.SboCdnApiConstants;
 import com.example.demo.common.enmu.SystemError;
 import com.example.demo.config.OkHttpProxyDispatcher;
+import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.model.vo.ConfigAccountVO;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.*;
 
 /**
  * 盛帆网站 - 赛事列表 API具体实现 用于操作页面查看赛事列表
@@ -168,11 +173,14 @@ public class WebsiteSboEventListHandler implements ApiHandler {
         JSONObject finalResult = new JSONObject();
         JSONArray matchesWithFullData = new JSONArray();
 
+        // 声明线程池在外面，确保finally中可以关闭
+        ExecutorService eventsExecutor = null;
+
         try {
-            // --- 第一步：获取赛事基本列表 (您原有的逻辑) ---
+            // --- 第一步：获取赛事基本列表 ---
             log.info("开始执行第一步：获取赛事基本列表");
             String presetFilter = "Live";
-            String date = "All"; // 或者 "Total"
+            String date = "All";
             String variables_step1 = "{\"query\":{\"sport\":\"Soccer\",\"filter\":{\"presetFilter\":\""+presetFilter+"\",\"date\":\""+date+"\"},\"oddsCategory\":\"All\",\"eventIds\":[],\"tournamentIds\":[],\"tournamentNames\":[],\"timeZone\":\"UTC__4\"}}";
             String extensions_step1 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"0576c8c29422ff37868b131240f644d4cfedb1be2151afbc1c57dbcb997fe9cb\"}}";
 
@@ -186,7 +194,6 @@ public class WebsiteSboEventListHandler implements ApiHandler {
             OkHttpProxyDispatcher.HttpResult resultStep1 = dispatcher.execute("GET", fullUrl_step1, null, requestHeaders, userConfig, false);
             JSONObject step1Response = this.parseResponse(params, resultStep1);
             if (!step1Response.getBool("success", false) && resultStep1.getStatus() != 200) {
-                // 第一步失败直接返回错误
                 return step1Response;
             }
             JSONArray eventList = step1Response.getJSONObject("data").getJSONArray("events");
@@ -197,15 +204,60 @@ public class WebsiteSboEventListHandler implements ApiHandler {
             JSONArray liveScoresList = step2Response.getJSONObject("data").getJSONArray("events");
             log.info("第二步成功，获取到 {} 场赛事的比分", liveScoresList.size());
 
-            // 创建一个Map便于根据ID查找比分信息，避免后续嵌套循环
+            // 创建Map便于根据ID查找比分信息
             Map<Long, JSONObject> liveScoreMap = new HashMap<>();
             for (int i = 0; i < liveScoresList.size(); i++) {
                 JSONObject scoreEvent = liveScoresList.getJSONObject(i);
                 liveScoreMap.put(scoreEvent.getLong("id"), scoreEvent);
             }
 
-            // --- 第三步：遍历赛事列表，获取每场的赔率 ---
-            log.info("开始执行第三步：逐个获取赛事赔率 (共 {} 场)...", eventList.size());
+            // --- 第三步：使用线程池并行获取赔率 ---
+            log.info("开始执行第三步：并行获取赛事赔率 (共 {} 场)...", eventList.size());
+
+            // 创建线程池
+            int cpuCoreCount = Runtime.getRuntime().availableProcessors();
+            int corePoolSize = Math.min(eventList.size(), cpuCoreCount * 4);
+            int maxPoolSize = Math.min(eventList.size(), 100); // 限制最大线程数
+
+            eventsExecutor = new ThreadPoolExecutor(
+                    corePoolSize,
+                    maxPoolSize,
+                    60L, TimeUnit.SECONDS,
+                    new LinkedBlockingQueue<>(500),
+                    new ThreadFactoryBuilder().setNameFormat("odds-task-%d").build(),
+                    new ThreadPoolExecutor.CallerRunsPolicy()
+            );
+
+            // 使用ConcurrentHashMap和CopyOnWriteArrayList保证线程安全
+            Map<Long, JSONObject> oddsResultMap = new ConcurrentHashMap<>();
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+            for (int i = 0; i < eventList.size(); i++) {
+                JSONObject basicEventInfo = eventList.getJSONObject(i);
+                Long eventId = basicEventInfo.getLong("id");
+
+                // 为每个赛事创建一个异步任务
+                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                    try {
+                        JSONObject oddsInfo = step3GetOddsForEvent(userConfig, params, requestHeaders, eventId, presetFilter);
+                        oddsResultMap.put(eventId, oddsInfo);
+                    } catch (Exception e) {
+                        log.error("获取赛事 {} 赔率失败: {}", eventId, e.getMessage());
+                        JSONObject errorResult = new JSONObject();
+                        errorResult.putOpt("success", false);
+                        errorResult.putOpt("error", e.getMessage());
+                        oddsResultMap.put(eventId, errorResult);
+                    }
+                }, eventsExecutor);
+
+                futures.add(future);
+            }
+
+            // 等待所有任务完成
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            log.info("第三步完成，所有赔率数据获取完毕");
+
+            // --- 合并所有数据 ---
             for (int i = 0; i < eventList.size(); i++) {
                 JSONObject basicEventInfo = eventList.getJSONObject(i);
                 Long eventId = basicEventInfo.getLong("id");
@@ -219,42 +271,43 @@ public class WebsiteSboEventListHandler implements ApiHandler {
                     combinedEventData.putOpt("scoreInfo", JSONUtil.createObj().putOpt("error", "未找到比分数据"));
                 }
 
-                // 2. 获取该赛事的赔率
-                JSONObject oddsInfo = step3GetOddsForEvent(userConfig, params, requestHeaders, eventId, presetFilter);
-                combinedEventData.putOpt("oddsInfo", oddsInfo);
+                // 2. 添加赔率信息
+                JSONObject oddsInfo = oddsResultMap.get(eventId);
+                if (oddsInfo != null) {
+                    combinedEventData.putOpt("oddsInfo", oddsInfo);
+                } else {
+                    combinedEventData.putOpt("oddsInfo", JSONUtil.createObj().putOpt("error", "赔率获取失败"));
+                }
 
                 // 3. 将整合好的数据加入最终列表
                 matchesWithFullData.add(combinedEventData);
-
-                // 避免请求过快，添加延迟 (根据API限制调整)
-                // try { Thread.sleep(100); } catch (InterruptedException e) { ... }
             }
-            log.info("第三步完成");
 
             // --- 构建最终成功的响应 ---
             finalResult.putOpt("success", true);
             finalResult.putOpt("code", 200);
             finalResult.putOpt("msg", "获取赛事完整数据成功");
-            // 将原始第一步的data结构保留，但用新的完整数据替换events
             JSONObject dataObj = step1Response.getJSONObject("data").clone();
             dataObj.putOpt("events", matchesWithFullData);
             finalResult.putOpt("data", dataObj);
 
         } catch (BusinessException e) {
-            // 处理已知的业务异常
             log.error("业务流程异常: {}", e.getMessage(), e);
             finalResult.putOpt("success", false);
             finalResult.putOpt("code", 400);
             finalResult.putOpt("msg", e.getMessage());
         } catch (Exception e) {
-            // 处理其他未知异常
             log.error("执行完整流程未知异常: {}", e.getMessage(), e);
             finalResult.putOpt("success", false);
             finalResult.putOpt("code", 500);
             finalResult.putOpt("msg", "系统内部错误，获取赛事数据失败");
+        } finally {
+            // 确保关闭线程池
+            assert eventsExecutor != null;
+            PriorityTaskExecutor.shutdownExecutor(eventsExecutor);
         }
 
-        log.info("赛事列表:{}", finalResult);
+        log.info("赛事列表处理完成，共 {} 场比赛", matchesWithFullData.size());
         return finalResult;
     }
 
