@@ -8,6 +8,7 @@ import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.constants.SboCdnApiConstants;
 import com.example.demo.common.enmu.SystemError;
+import com.example.demo.common.enmu.ZhiBoSchedulesType;
 import com.example.demo.config.OkHttpProxyDispatcher;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.core.exception.BusinessException;
@@ -19,10 +20,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.*;
 
 /**
@@ -171,16 +169,25 @@ public class WebsiteSboEventListHandler implements ApiHandler {
         Map<String, String> requestHeaders = buildHeaders(params);
 
         JSONObject finalResult = new JSONObject();
-        JSONArray matchesWithFullData = new JSONArray();
+        JSONArray flattenedOddsArray = new JSONArray(); // 改为平铺的赔率数组
 
+        String presetFilter;
+        String date;
+        if (ZhiBoSchedulesType.LIVESCHEDULE.getId() == params.getInt("showType")) {
+            // key为l的则是滚球列表数据
+            presetFilter = "Live";
+            date = "All";
+        } else {
+            // key为的则是今日列表数据
+            presetFilter = "All";
+            date = "Today";
+        }
         // 声明线程池在外面，确保finally中可以关闭
         ExecutorService eventsExecutor = null;
 
         try {
             // --- 第一步：获取赛事基本列表 ---
             log.info("开始执行第一步：获取赛事基本列表");
-            String presetFilter = "Live";
-            String date = "All";
             String variables_step1 = "{\"query\":{\"sport\":\"Soccer\",\"filter\":{\"presetFilter\":\""+presetFilter+"\",\"date\":\""+date+"\"},\"oddsCategory\":\"All\",\"eventIds\":[],\"tournamentIds\":[],\"tournamentNames\":[],\"timeZone\":\"UTC__4\"}}";
             String extensions_step1 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"0576c8c29422ff37868b131240f644d4cfedb1be2151afbc1c57dbcb997fe9cb\"}}";
 
@@ -200,24 +207,23 @@ public class WebsiteSboEventListHandler implements ApiHandler {
             log.info("第一步成功，获取到 {} 场赛事", eventList.size());
 
             // --- 第二步：获取实时比分 ---
-            JSONObject step2Response = step2GetLiveScores(userConfig, params, requestHeaders, presetFilter, date);
-            JSONArray liveScoresList = step2Response.getJSONObject("data").getJSONArray("events");
-            log.info("第二步成功，获取到 {} 场赛事的比分", liveScoresList.size());
-
-            // 创建Map便于根据ID查找比分信息
-            Map<Long, JSONObject> liveScoreMap = new HashMap<>();
-            for (int i = 0; i < liveScoresList.size(); i++) {
-                JSONObject scoreEvent = liveScoresList.getJSONObject(i);
-                liveScoreMap.put(scoreEvent.getLong("id"), scoreEvent);
-            }
+//            JSONObject step2Response = step2GetLiveScores(userConfig, params, requestHeaders, presetFilter, date);
+//            JSONArray liveScoresList = step2Response.getJSONObject("data").getJSONArray("events");
+//            log.info("第二步成功，获取到 {} 场赛事的比分", liveScoresList.size());
+//
+//            // 创建Map便于根据ID查找比分信息
+//            Map<Long, JSONObject> liveScoreMap = new HashMap<>();
+//            for (int i = 0; i < liveScoresList.size(); i++) {
+//                JSONObject scoreEvent = liveScoresList.getJSONObject(i);
+//                liveScoreMap.put(scoreEvent.getLong("id"), scoreEvent);
+//            }
 
             // --- 第三步：使用线程池并行获取赔率 ---
             log.info("开始执行第三步：并行获取赛事赔率 (共 {} 场)...", eventList.size());
 
-            // 创建线程池
             int cpuCoreCount = Runtime.getRuntime().availableProcessors();
             int corePoolSize = Math.min(eventList.size(), cpuCoreCount * 4);
-            int maxPoolSize = Math.min(eventList.size(), 100); // 限制最大线程数
+            int maxPoolSize = Math.min(eventList.size(), 100);
 
             eventsExecutor = new ThreadPoolExecutor(
                     corePoolSize,
@@ -228,25 +234,32 @@ public class WebsiteSboEventListHandler implements ApiHandler {
                     new ThreadPoolExecutor.CallerRunsPolicy()
             );
 
-            // 使用ConcurrentHashMap和CopyOnWriteArrayList保证线程安全
-            Map<Long, JSONObject> oddsResultMap = new ConcurrentHashMap<>();
+            // 存储每个赛事的完整信息（基础信息+比分+赔率）
+            Map<Long, JSONObject> eventFullInfoMap = new ConcurrentHashMap<>();
             List<CompletableFuture<Void>> futures = new ArrayList<>();
 
             for (int i = 0; i < eventList.size(); i++) {
                 JSONObject basicEventInfo = eventList.getJSONObject(i);
                 Long eventId = basicEventInfo.getLong("id");
 
-                // 为每个赛事创建一个异步任务
                 CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                     try {
+                        // 获取基础赛事信息
+                        JSONObject eventData = basicEventInfo.clone();
+                        // 获取赔率信息
                         JSONObject oddsInfo = step3GetOddsForEvent(userConfig, params, requestHeaders, eventId, presetFilter);
-                        oddsResultMap.put(eventId, oddsInfo);
+                        eventData.putOpt("oddsInfo", oddsInfo);
+                        eventFullInfoMap.put(eventId, eventData);
                     } catch (Exception e) {
-                        log.error("获取赛事 {} 赔率失败: {}", eventId, e.getMessage());
-                        JSONObject errorResult = new JSONObject();
-                        errorResult.putOpt("success", false);
-                        errorResult.putOpt("error", e.getMessage());
-                        oddsResultMap.put(eventId, errorResult);
+                        log.error("处理赛事 {} 数据失败: {}", eventId, e.getMessage());
+                        JSONObject errorEvent = null;
+                        try {
+                            errorEvent = basicEventInfo.clone();
+                        } catch (CloneNotSupportedException ex) {
+                            throw new RuntimeException(ex);
+                        }
+                        errorEvent.putOpt("error", e.getMessage());
+                        eventFullInfoMap.put(eventId, errorEvent);
                     }
                 }, eventsExecutor);
 
@@ -255,41 +268,158 @@ public class WebsiteSboEventListHandler implements ApiHandler {
 
             // 等待所有任务完成
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-            log.info("第三步完成，所有赔率数据获取完毕");
+            log.info("第三步完成，所有数据获取完毕");
 
-            // --- 合并所有数据 ---
+            // --- 平铺数据结构：将赔率数组展开 ---
+            log.info("开始平铺数据结构...");
+            int totalOddsCount = 0;
+
+            // 按照eventList的顺序来遍历，保持原始顺序
             for (int i = 0; i < eventList.size(); i++) {
                 JSONObject basicEventInfo = eventList.getJSONObject(i);
                 Long eventId = basicEventInfo.getLong("id");
 
-                // 1. 合并基础信息和比分信息
-                JSONObject combinedEventData = basicEventInfo.clone();
-                JSONObject scoreInfo = liveScoreMap.get(eventId);
-                if (scoreInfo != null) {
-                    combinedEventData.putOpt("scoreInfo", scoreInfo);
-                } else {
-                    combinedEventData.putOpt("scoreInfo", JSONUtil.createObj().putOpt("error", "未找到比分数据"));
+                // 从eventFullInfoMap中获取对应的完整信息
+                JSONObject eventData = eventFullInfoMap.get(eventId);
+                if (eventData == null || eventData.containsKey("error")) {
+                    continue; // 跳过有错误或不存在的数据
                 }
 
-                // 2. 添加赔率信息
-                JSONObject oddsInfo = oddsResultMap.get(eventId);
-                if (oddsInfo != null) {
-                    combinedEventData.putOpt("oddsInfo", oddsInfo);
-                } else {
-                    combinedEventData.putOpt("oddsInfo", JSONUtil.createObj().putOpt("error", "赔率获取失败"));
-                }
+                JSONObject oddsInfo = eventData.getJSONObject("oddsInfo");
 
-                // 3. 将整合好的数据加入最终列表
-                matchesWithFullData.add(combinedEventData);
+                if (oddsInfo != null && oddsInfo.containsKey("data")) {
+                    JSONArray eventOddsArray = oddsInfo.getJSONObject("data").getJSONArray("eventOdds");
+
+                    if (eventOddsArray != null && !eventOddsArray.isEmpty()) {
+                        // 获取赛事基础信息
+                        String homeTeam = getTeamName(eventData.getJSONObject("homeTeam"), "ZH_CN");
+                        String awayTeam = getTeamName(eventData.getJSONObject("awayTeam"), "ZH_CN");
+                        String league = getLeagueName(eventData.getJSONObject("tournament"), "ZH_CN");
+
+                        // 先收集该赛事的所有赔率记录，然后排序
+                        List<JSONObject> eventOddsList = new ArrayList<>();
+
+                        for (int j = 0; j < eventOddsArray.size(); j++) {
+                            JSONObject oddsRecord = eventOddsArray.getJSONObject(j);
+
+                            String marketType = oddsRecord.getStr("marketType");
+                            String type = "fullCourt"; // 默认全场
+                            String handicapType = ""; // 盘口类型
+
+                            // 判断是全场还是上半场
+                            if (marketType.startsWith("FH_")) {
+                                type = "firstHalf"; // 上半场
+                                marketType = marketType.substring(3); // 去掉FH_前缀
+                            }
+
+                            // 根据市场类型设置handicapType
+                            switch (marketType) {
+                                case "Handicap":
+                                    handicapType = "letBall"; // 让球盘
+                                    break;
+                                case "OverUnder":
+                                    handicapType = "overSize"; // 大小盘
+                                    break;
+                                default:
+                                    // 其他类型跳过或不处理
+                                    continue;
+                            }
+
+                            // 获取比分和时间信息
+                            String score = "0-0";
+                            int reTime = 0;
+                            JSONObject eventResult = oddsRecord.getJSONObject("eventResult");
+                            if (eventResult != null && !eventResult.isEmpty()) {
+                                int homeScore = eventResult.getInt("liveHomeScore");
+                                int awayScore = eventResult.getInt("liveAwayScore");
+                                score = homeScore + "-" + awayScore;
+
+                                // 获取比赛时间
+                                JSONObject extraInfo = eventResult.getJSONObject("extraInfo");
+                                if (extraInfo != null) {
+                                    int period = extraInfo.getInt("period");
+                                    reTime = period * 45; // 简单计算
+                                }
+                            }
+
+                            JSONObject flattenedRecord = new JSONObject();
+
+                            // 基础信息
+                            flattenedRecord.putOpt("id", oddsRecord.getLong("id")); // 赔率ID
+                            flattenedRecord.putOpt("league", league);
+                            flattenedRecord.putOpt("type", type);
+                            flattenedRecord.putOpt("handicapType", handicapType);
+                            flattenedRecord.putOpt("reTime", reTime);
+                            flattenedRecord.putOpt("eventId", eventId);
+                            flattenedRecord.putOpt("homeTeam", homeTeam);
+                            flattenedRecord.putOpt("awayTeam", awayTeam);
+                            flattenedRecord.putOpt("score", score);
+
+                            // 赔率信息 - 根据不同的市场类型处理
+                            Object point = oddsRecord.get("point");
+
+                            if ("Handicap".equals(marketType)) {
+                                // 让球盘处理
+                                flattenedRecord.putOpt("homeHandicap", point);
+                                if (point instanceof Number) {
+                                    double handicap = ((Number) point).doubleValue();
+                                    flattenedRecord.putOpt("awayHandicap", -handicap);
+                                } else {
+                                    flattenedRecord.putOpt("awayHandicap", 0);
+                                }
+                            } else if ("OverUnder".equals(marketType)) {
+                                // 大小盘处理
+                                flattenedRecord.putOpt("homeHandicap", point);
+                                flattenedRecord.putOpt("awayHandicap", point); // 大小盘两边盘口相同
+                            }
+
+                            // 解析价格信息
+                            JSONArray prices = oddsRecord.getJSONArray("prices");
+                            if (prices != null && prices.size() >= 2) {
+                                for (int k = 0; k < prices.size(); k++) {
+                                    JSONObject price = prices.getJSONObject(k);
+                                    String option = price.getStr("option");
+                                    Object oddsValue = price.get("price");
+
+                                    if ("Handicap".equals(marketType) || "OverUnder".equals(marketType)) {
+                                        // 让球盘和大小盘
+                                        if ("h".equals(option)) {
+                                            flattenedRecord.putOpt("homeOdds", oddsValue.toString());
+                                            flattenedRecord.putOpt("homeWall", getWallType(oddsValue));
+                                        } else if ("a".equals(option)) {
+                                            flattenedRecord.putOpt("awayOdds", oddsValue.toString());
+                                            flattenedRecord.putOpt("awayWall", getWallType(oddsValue));
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 添加排序权重字段
+                            flattenedRecord.putOpt("sortWeight", getSortWeight(type, handicapType, point));
+                            eventOddsList.add(flattenedRecord);
+                        }
+
+                        // 对该赛事的所有赔率进行排序
+                        eventOddsList.sort(Comparator.comparingInt(o -> o.getInt("sortWeight")));
+
+                        // 将排序后的赔率添加到最终结果中
+                        for (JSONObject sortedRecord : eventOddsList) {
+                            sortedRecord.remove("sortWeight"); // 移除临时排序字段
+                            flattenedOddsArray.add(sortedRecord);
+                            totalOddsCount++;
+                        }
+                    }
+                }
             }
+
+            log.info("数据结构平铺完成，共生成 {} 条赔率记录", totalOddsCount);
 
             // --- 构建最终成功的响应 ---
             finalResult.putOpt("success", true);
             finalResult.putOpt("code", 200);
-            finalResult.putOpt("msg", "获取赛事完整数据成功");
-            JSONObject dataObj = step1Response.getJSONObject("data").clone();
-            dataObj.putOpt("events", matchesWithFullData);
-            finalResult.putOpt("data", dataObj);
+            finalResult.putOpt("msg", "获取赛事赔率数据成功");
+            finalResult.putOpt("totalCount", totalOddsCount);
+            finalResult.putOpt("leagues", flattenedOddsArray); // 直接返回平铺后的赔率数组
 
         } catch (BusinessException e) {
             log.error("业务流程异常: {}", e.getMessage(), e);
@@ -303,12 +433,98 @@ public class WebsiteSboEventListHandler implements ApiHandler {
             finalResult.putOpt("msg", "系统内部错误，获取赛事数据失败");
         } finally {
             // 确保关闭线程池
-            assert eventsExecutor != null;
-            PriorityTaskExecutor.shutdownExecutor(eventsExecutor);
+            if (eventsExecutor != null) {
+                PriorityTaskExecutor.shutdownExecutor(eventsExecutor);
+            }
         }
 
-        log.info("赛事列表处理完成，共 {} 场比赛", matchesWithFullData.size());
+        log.info("赛事列表处理完成，共 {} 场比赛", flattenedOddsArray.size());
         return finalResult;
+    }
+
+    /**
+     * 获取赛事名称（支持多语言）
+     */
+    private String getLeagueName(JSONObject tournamentObj, String language) {
+        if (tournamentObj == null) return "";
+        JSONArray tournamentNames = tournamentObj.getJSONArray("tournamentName");
+        for (int i = 0; i < tournamentNames.size(); i++) {
+            JSONObject nameObj = tournamentNames.getJSONObject(i);
+            if (language.equals(nameObj.getStr("language"))) {
+                return nameObj.getStr("value");
+            }
+        }
+        return tournamentNames.getJSONObject(0).getStr("value"); // 默认返回第一个
+    }
+
+    /**
+     * 获取球队名称（支持多语言）
+     */
+    private String getTeamName(JSONObject teamObj, String language) {
+        if (teamObj == null) return "";
+        JSONArray teamNames = teamObj.getJSONArray("teamName");
+        for (int i = 0; i < teamNames.size(); i++) {
+            JSONObject nameObj = teamNames.getJSONObject(i);
+            if (language.equals(nameObj.getStr("language"))) {
+                return nameObj.getStr("value");
+            }
+        }
+        return teamNames.getJSONObject(0).getStr("value"); // 默认返回第一个
+    }
+
+    /**
+     * 根据赔率值判断墙类型
+     */
+    private String getWallType(Object oddsValue) {
+        if (oddsValue instanceof Number) {
+            double odds = ((Number) oddsValue).doubleValue();
+            if (odds > 0) {
+                return "foot"; // 正数为foot
+            } else if (odds < 0) {
+                return "hanging"; // 负数为hanging
+            }
+        }
+        return "foot"; // 默认
+    }
+
+    /**
+     * 获取比赛进行时间（需要根据实际情况实现）
+     */
+    private int getMatchTime(JSONObject eventData) {
+        // 这里需要根据eventData中的时间信息计算比赛进行时间
+        // 例如：从extraInfo.period和extraInfo.injuryTime计算
+        // 暂时返回一个默认值
+        return 45; // 假设上半场45分钟
+    }
+    /**
+     * 计算排序权重
+     * 排序规则：上半场优先，让球盘优先，盘口值从小到大
+     */
+    private int getSortWeight(String type, String handicapType, Object point) {
+        int weight = 0;
+
+        // 第一优先级：比赛类型（上半场优先）
+        if ("firstHalf".equals(type)) {
+            weight += 0; // 上半场排在前面
+        } else {
+            weight += 1000; // 全场排在后面
+        }
+
+        // 第二优先级：盘口类型（让球盘优先）
+        if ("letBall".equals(handicapType)) {
+            weight += 0; // 让球盘排在前面
+        } else if ("overSize".equals(handicapType)) {
+            weight += 100; // 大小盘排在后面
+        }
+
+        // 第三优先级：盘口值（从小到大）
+        if (point instanceof Number) {
+            double pointValue = ((Number) point).doubleValue();
+            // 将盘口值转换为整数权重，确保排序正确
+            weight += (int) (pointValue * 100);
+        }
+
+        return weight;
     }
 
     /**
