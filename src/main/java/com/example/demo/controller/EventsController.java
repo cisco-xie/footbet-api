@@ -55,7 +55,7 @@ public class EventsController extends BaseController {
         return Result.success(result);
     }
 
-    @Operation(summary = "获取网站赛事列表")
+    @Operation(summary = "获取网站赛事列表-用于球队字典绑定")
     @GetMapping("/events/{websiteId}")
     public Result getWebsites(@PathVariable String websiteId) {
         AdminLoginDTO admin = getUser();

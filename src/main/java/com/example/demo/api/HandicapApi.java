@@ -706,6 +706,8 @@ public class HandicapApi {
                 params.putOpt("oddsFormatType", oddsFormatType);
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
+            } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+                params.putOpt("token", account.getToken().getJSONObject("token").getStr("authToken"));
             }
             JSONObject result = apiHandler.execute(account, params);
 

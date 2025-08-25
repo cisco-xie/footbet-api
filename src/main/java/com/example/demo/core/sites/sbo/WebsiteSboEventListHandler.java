@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 /**
  * 盛帆网站 - 赛事列表 API具体实现 用于操作页面查看赛事列表
@@ -206,6 +207,16 @@ public class WebsiteSboEventListHandler implements ApiHandler {
             JSONArray eventList = step1Response.getJSONObject("data").getJSONArray("events");
             log.info("第一步成功，获取到 {} 场赛事", eventList.size());
 
+            // 盛帆的今日赛事列表存在滚球数据，如果是查询今日数据就把滚球数据删掉
+            if (ZhiBoSchedulesType.LIVESCHEDULE.getId() != params.getInt("showType")) {
+                // 直接在 eventList 中删除滚球（isLive = true）
+                for (int i = eventList.size() - 1; i >= 0; i--) {
+                    JSONObject event = eventList.getJSONObject(i);
+                    if (event.getBool("isLive", false)) {
+                        eventList.remove(i);
+                    }
+                }
+            }
             // --- 第二步：获取实时比分 ---
 //            JSONObject step2Response = step2GetLiveScores(userConfig, params, requestHeaders, presetFilter, date);
 //            JSONArray liveScoresList = step2Response.getJSONObject("data").getJSONArray("events");
