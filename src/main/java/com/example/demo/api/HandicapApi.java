@@ -825,6 +825,24 @@ public class HandicapApi {
                 }
                 params.putOpt("oddsFormatType", oddsFormatType);
                 params.putOpt("showType", ZhiBoSchedulesType.LIVESCHEDULE.getId());
+            } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+                params.putOpt("token", account.getToken().getJSONObject("token").getStr("authToken"));
+                params.putOpt("oddsToken", account.getToken().getJSONObject("token").getStr("oddsToken"));
+                params.putOpt("eventId", ecid);
+                // 转换赔率类型
+                String oddsFormatType = "";
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
+                params.putOpt("showType", ZhiBoSchedulesType.LIVESCHEDULE.getId());
             }
             try {
                 JSONObject result = apiHandler.execute(account, params);

@@ -4,10 +4,7 @@ import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.config.OkHttpProxyDispatcher;
-import com.example.demo.core.sites.sbo.WebsiteSboBalanceHandler;
-import com.example.demo.core.sites.sbo.WebsiteSboEventListHandler;
-import com.example.demo.core.sites.sbo.WebsiteSboEventsHandler;
-import com.example.demo.core.sites.sbo.WebsiteSboLoginHandler;
+import com.example.demo.core.sites.sbo.*;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
@@ -72,7 +69,7 @@ public class WebsiteSboFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler getEventsOddsHandler() {
-        return null; // 返回具体的赛事赔率详情处理类
+        return new WebsiteSboEventOddsHandler(dispatcher, websiteService, apiUrlService); // 返回具体的赛事赔率详情处理类
     }
 
     @Override

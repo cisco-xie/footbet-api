@@ -1,6 +1,30 @@
 # falali-api
 
+## 盛帆网站赔率类型规则映射
+Handicap (让球盘)
+point = -0.25
+prices[option=h] → 主队赔率
+prices[option=a] → 客队赔率
 
+OverUnder (大小球)
+point = 2.5
+prices[option=h] → 大球赔率
+prices[option=a] → 小球赔率
+
+LiveScore (独赢盘)
+prices[option=1] → 主胜赔率
+prices[option=x] → 平局赔率
+prices[option=2] → 客胜赔率
+
+TotalGoal (总进球数)
+option=2-3 / 4-6 / 7-OVER → 赔率
+
+CorrectScore (波胆)
+option=0:0 / 2:1 / O → 赔率
+
+OddEven (单双)
+option=h → 单
+option=a → 双
 
 ## Getting started
 nohup java -Duser.timezone=Asia/Shanghai -jar falali-api-0.0.1-SNAPSHOT.jar &

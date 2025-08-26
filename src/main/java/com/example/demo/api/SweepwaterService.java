@@ -706,11 +706,11 @@ public class SweepwaterService {
             TimeInterval getEventsTimer = DateUtil.timer();
             CompletableFuture<JSONArray> futureA = getEventsForEcidAsync(
                     sweepwaterUsername, websiteIdA,
-                    bindLeagueVO.getLeagueIdA(), ecidA, roundId, threadPoolHolder.getTeamOddsExecutor());
+                    bindLeagueVO.getLeagueIdA(), event.getIdA(), roundId, threadPoolHolder.getTeamOddsExecutor());
 
             CompletableFuture<JSONArray> futureB = getEventsForEcidAsync(
                     sweepwaterUsername, websiteIdB,
-                    bindLeagueVO.getLeagueIdB(), ecidB, roundId, threadPoolHolder.getTeamOddsExecutor());
+                    bindLeagueVO.getLeagueIdB(), event.getIdB(), roundId, threadPoolHolder.getTeamOddsExecutor());
 
             CompletableFuture.allOf(futureA, futureB).join();
 
@@ -833,43 +833,55 @@ public class SweepwaterService {
     /**
      * 使用异步缓存保存每个 key 的请求任务，避免重复请求
      * @param username 用户名
-     * @param ecidCache 缓存 Map，value 是 CompletableFuture<JSONArray>
      * @param websiteId 网站ID
      * @param leagueId 联赛ID
-     * @param ecid ecid
+     * @param id        赛事ID
      * @param roundId 轮次id
      * @param teamOddsExecutor 用于请求的线程池
      * @return CompletableFuture<JSONArray>
      */
     public CompletableFuture<JSONArray> getEventsForEcidAsync(
             String username,
-            String websiteId, String leagueId, String ecid, String roundId,
+            String websiteId, String leagueId, String id, String roundId,
             ExecutorService teamOddsExecutor) {
 
-        // String cacheKey = websiteId + ":" + (StringUtils.isNotBlank(ecid) ? ecid : "noEcid");
-        String cacheKey = roundId + "-" + websiteId;
+        WebsiteType website = WebsiteType.getById(websiteId);
+
+        String cacheKey;
+        if (website == WebsiteType.SBO) {
+            // 盛帆：必须区分 ecid 缓存
+            cacheKey = roundId + "-" + websiteId + "-" + id;
+        } else {
+            // 其他网站：整联赛缓存即可
+            cacheKey = roundId + "-" + websiteId;
+        }
 
         if (ecidFetchFutures.containsKey(cacheKey)) {
             log.info("从缓存中获取赔率: 平台用户={}, 网站={}, key={}, 联赛={}, ecid={}",
-                    username, WebsiteType.getById(websiteId).getDescription(), cacheKey, leagueId, ecid);
+                    username, website.getDescription(), cacheKey, leagueId, id);
         }
 
         return ecidFetchFutures.computeIfAbsent(cacheKey, key ->
                 CompletableFuture.supplyAsync(() -> {
                     try {
                         log.info("首次拉取赔率，通过 API 获取: 用户={}, 网站={}, key={}, 联赛={}, ecid={}",
-                                username, WebsiteType.getById(websiteId).getDescription(), key, leagueId, ecid);
+                                username, website.getDescription(), key, leagueId, id);
 
-                        JSONArray events = (JSONArray) handicapApi.eventsOdds(
-                                username,
-                                websiteId,
-                                StringUtils.isNotBlank(ecid) ? leagueId : null,
-                                StringUtils.isNotBlank(ecid) ? ecid : null);
+                        JSONArray events;
+                        if (website == WebsiteType.SBO) {
+                            // 盛帆：单赛事拉取
+                            events = (JSONArray) handicapApi.eventsOdds(
+                                    username, websiteId, null, id);
+                        } else {
+                            // 其他网站平博和新二：一次拉所有联赛赔率
+                            events = (JSONArray) handicapApi.eventsOdds(
+                                    username, websiteId, leagueId, null);
+                        }
 
                         return events != null ? events : new JSONArray();
                     } catch (Exception e) {
                         log.error("拉取eventsOdds异常: key={}, 用户={}, 网站={}, 联赛={}, ecid={}",
-                                key, username, websiteId, leagueId, ecid, e);
+                                key, username, websiteId, leagueId, id, e);
                         return new JSONArray();
                     }
                 }, teamOddsExecutor)

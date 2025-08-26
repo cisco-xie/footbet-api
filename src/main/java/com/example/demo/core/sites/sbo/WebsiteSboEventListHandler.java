@@ -1,5 +1,6 @@
 package com.example.demo.core.sites.sbo;
 
+import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.core.net.URLEncodeUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
@@ -20,6 +21,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -307,6 +310,32 @@ public class WebsiteSboEventListHandler implements ApiHandler {
                         String awayTeam = getTeamName(eventData.getJSONObject("awayTeam"), "ZH_CN");
                         String league = getLeagueName(eventData.getJSONObject("tournament"), "ZH_CN");
 
+                        String session;
+                        long reTime = 0;
+                        if (basicEventInfo.getBool("isLive", false)) {
+                            // 只有滚球才有时长信息
+                            int period = basicEventInfo.getJSONObject("mainMarketEventResult").getJSONObject("extraInfo").getInt("period");
+                            String periodStartTimeStr = basicEventInfo.getJSONObject("mainMarketEventResult").getJSONObject("extraInfo").getStr("periodStartTime");
+                            LocalDateTime periodStartTime = LocalDateTimeUtil.parse(periodStartTimeStr);
+                            Duration between = LocalDateTimeUtil.between(periodStartTime.plusHours(12), LocalDateTime.now());
+                            if (period == 1) {
+                                // 上半场
+                                session = "1H";
+                                reTime = between.toMinutes();
+                            } else if (period == 2) {
+                                // 下半场（全场）
+                                session = "2H";
+                                reTime = between.toMinutes() + 45;
+                            } else if (period == 5) {
+                                // 中场休息
+                                session = "HT";
+                                reTime = 45;
+                            } else {
+                                // 都不是
+                                session = "FT";
+                                reTime = 0;
+                            }
+                        }
                         // 先收集该赛事的所有赔率记录，然后排序
                         List<JSONObject> eventOddsList = new ArrayList<>();
 
@@ -338,19 +367,11 @@ public class WebsiteSboEventListHandler implements ApiHandler {
 
                             // 获取比分和时间信息
                             String score = "0-0";
-                            int reTime = 0;
                             JSONObject eventResult = oddsRecord.getJSONObject("eventResult");
                             if (eventResult != null && !eventResult.isEmpty()) {
                                 int homeScore = eventResult.getInt("liveHomeScore");
                                 int awayScore = eventResult.getInt("liveAwayScore");
                                 score = homeScore + "-" + awayScore;
-
-                                // 获取比赛时间
-                                JSONObject extraInfo = eventResult.getJSONObject("extraInfo");
-                                if (extraInfo != null) {
-                                    int period = extraInfo.getInt("period");
-                                    reTime = period * 45; // 简单计算
-                                }
                             }
 
                             JSONObject flattenedRecord = new JSONObject();
