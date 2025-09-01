@@ -94,28 +94,34 @@ public class WebsiteSboBetUnsettledHandler implements ApiHandler {
         runningBets.forEach(json -> {
             JSONObject resJson = (JSONObject) json;
             JSONObject jsonObject = new JSONObject();
+            String handicapType = "";
             String oddsOptionType = "";
             if (1 == resJson.getInt("oddsOptionType")) {
                 // 让球盘-主队
+                handicapType = "让球盘";
                 oddsOptionType = resJson.getStr("homeTeamName");
             } else if (2 == resJson.getInt("oddsOptionType")) {
                 // 让球盘-客队
+                handicapType = "让球盘";
                 oddsOptionType = resJson.getStr("awayTeamName");
             } else if (3 == resJson.getInt("oddsOptionType")) {
                 // 大小盘-大
+                handicapType = "大小盘";
                 oddsOptionType = "大";
             } else if (4 == resJson.getInt("oddsOptionType")) {
                 // 大小盘-小
+                handicapType = "大小盘";
                 oddsOptionType = "小";
             }
             jsonObject.putOpt("betId", resJson.getStr("id"));    // 注单ID
-            jsonObject.putOpt("product", resJson.getStr("sportName") + " - " + resJson.getStr("marketTypeName"));  // 体育+盘口类型+比分
+            jsonObject.putOpt("product", resJson.getStr("sportName"));  // 体育
             jsonObject.putOpt("league", resJson.getStr("leagueName")); // 联赛名称
             jsonObject.putOpt("team", resJson.getStr("homeTeamName") + " -vs- "+resJson.getStr("awayTeamName"));    // 主队 -vs- 客队
             jsonObject.putOpt("odds", oddsOptionType + " @ " + resJson.getStr("point") + " @ " + resJson.getJSONObject("betLiveScore").getInt("home") + ":" + resJson.getJSONObject("betLiveScore").getInt("away"));  // 投注选项 + 赔率 + 比分
             jsonObject.putOpt("oddsValue", resJson.getStr("odds"));  // 赔率
             jsonObject.putOpt("oddsTypeName", SboOddsFormatType.getById(resJson.getInt("oddsStyle")).getDescription()); // 盘口类型（如：香港盘）
             jsonObject.putOpt("amount", resJson.getStr("stake"));   // 投注金额
+            jsonObject.putOpt("handicapType", handicapType);  // 投注类型，例如：(滚球) 让球盘
             // 解析投注时间,盛帆网站的时间是GMT-4，所以得加8+4小时
             LocalDateTime localDateTime = LocalDateTimeUtil.parse(resJson.getStr("transactionDate").replace("-04:00", ""));
             jsonObject.putOpt("betTime", LocalDateTimeUtil.format(localDateTime.plusHours(12), DatePattern.NORM_DATETIME_PATTERN)); // 投注时间
