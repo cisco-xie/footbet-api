@@ -778,6 +778,22 @@ public class WebsiteSboLoginHandler implements ApiHandler {
                 }
             }
         }
+
+        // 确保 lang=zh-cn 存在
+        if (cookieStore.indexOf("lang=") == -1) {
+            if (cookieStore.length() > 0) {
+                cookieStore.append("; ");
+            }
+            cookieStore.append("lang=zh-cn");
+        }
+
+        // 确保 LanguageType=ZH_CN 存在
+        if (cookieStore.indexOf("LanguageType=") == -1) {
+            if (cookieStore.length() > 0) {
+                cookieStore.append("; ");
+            }
+            cookieStore.append("LanguageType=ZH_CN");
+        }
     }
 
     public static String insertSubdomain(String baseUrl, String subdomain) {
