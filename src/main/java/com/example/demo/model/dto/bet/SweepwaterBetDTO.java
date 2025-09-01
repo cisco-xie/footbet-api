@@ -24,8 +24,12 @@ public class SweepwaterBetDTO {
     private String handicapType;
     private String league;
     private String team;
+    private String teamA;
+    private String teamB;
     private String reTimeA;         // 比赛当前用时
     private String reTimeB;         // 比赛当前用时
+    private Boolean isHomeA;        // 是否是主队
+    private Boolean isHomeB;        // 是否是主队
     private String project;
     private String odds;
     private String oddsA;
@@ -67,6 +71,11 @@ public class SweepwaterBetDTO {
     private String conB;            // 新2网站的投注专属参数
     private String ratioA;          // 新2网站的投注专属参数
     private String ratioB;          // 新2网站的投注专属参数
+
+    private String teamVSHA;         // 盛帆网站的专属参数 主队名称
+    private String teamVSAA;         // 盛帆网站的专属参数 客队名称
+    private String teamVSHB;         // 盛帆网站的专属参数 主队名称
+    private String teamVSAB;         // 盛帆网站的专属参数 客队名称
 
     private String water;           // 水位
     private String createTime;      // 创建时间

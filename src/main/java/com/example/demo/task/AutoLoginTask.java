@@ -1,11 +1,13 @@
 package com.example.demo.task;
 
+import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.api.AdminService;
 import com.example.demo.api.ConfigAccountService;
 import com.example.demo.api.HandicapApi;
 import com.example.demo.common.enmu.WebsiteType;
+import com.example.demo.common.enmu.ZhiBoSchedulesType;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.ConfigAccountVO;
@@ -44,7 +46,7 @@ public class AutoLoginTask {
 
     @Async("loginTaskExecutor") // ✅ 独立线程池执行
     // 上一次任务完成后再延迟 10 分钟后执行
-    @Scheduled(fixedDelay = 10 * 60 * 1000)
+    @Scheduled(fixedDelay = 2 * 60 * 1000)
     public void autoLogin() {
         long startTime = System.currentTimeMillis();
         try {
@@ -81,14 +83,22 @@ public class AutoLoginTask {
                                     if (userConfig.getIsTokenValid() != 1) {
                                         isValid = false;
                                     } else {
-                                        Object resultBalance = handicapApi.balanceByAccount(adminUser.getUsername(), type.getId(), userConfig);
-                                        if (resultBalance != null) {
-                                            JSONObject result = JSONUtil.parseObj(resultBalance);
-                                            if (!result.getBool("success")) {
+                                        if (type == WebsiteType.SBO) {
+                                            // 盛帆网站通过获取赛事列表进行判断当前token是否有效
+                                            Object eventLive = handicapApi.eventList(adminUser.getUsername(), type.getId(), ZhiBoSchedulesType.TODAYSCHEDULE.getId(), userConfig);
+                                            if (eventLive == null) {
                                                 isValid = false;
                                             }
                                         } else {
-                                            isValid = false;
+                                            Object resultBalance = handicapApi.balanceByAccount(adminUser.getUsername(), type.getId(), userConfig);
+                                            if (resultBalance != null) {
+                                                JSONObject result = JSONUtil.parseObj(resultBalance);
+                                                if (!result.getBool("success")) {
+                                                    isValid = false;
+                                                }
+                                            } else {
+                                                isValid = false;
+                                            }
                                         }
                                     }
 

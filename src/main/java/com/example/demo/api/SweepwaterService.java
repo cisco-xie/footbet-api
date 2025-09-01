@@ -1413,9 +1413,18 @@ public class SweepwaterService {
                                                 suffix = "C";
                                             }
                                             oddsIdKeyA = valueAJson.getStr("id").substring(0, lastPipeIndex + 1) + suffix;
-                                        } else {
+                                        } else if (WebsiteType.XINBAO.getId().equals(websiteIdA)) {
                                             // 新二网站
                                             oddsIdKeyA = valueAJson.getStr("id") + valueAJson.getStr("choseTeam");
+                                        } else if (WebsiteType.SBO.getId().equals(websiteIdA)) {
+                                            // 盛帆网站
+                                            String suffix = "";
+                                            if (teamA.getBool("isHome")) {
+                                                suffix = "H";
+                                            } else {
+                                                suffix = "C";
+                                            }
+                                            oddsIdKeyA = valueAJson.getStr("id") + suffix;
                                         }
                                         if (WebsiteType.ZHIBO.getId().equals(websiteIdB)) {
                                             oddsIdKeyB = valueBJson.getStr("id");
@@ -1428,9 +1437,18 @@ public class SweepwaterService {
                                                 suffix = "C";
                                             }
                                             oddsIdKeyB = valueBJson.getStr("id").substring(0, lastPipeIndex + 1) + suffix;
-                                        } else {
+                                        } else if (WebsiteType.XINBAO.getId().equals(websiteIdA)) {
                                             // 新二网站
                                             oddsIdKeyB = valueBJson.getStr("id") + valueBJson.getStr("choseTeam");
+                                        } else if (WebsiteType.SBO.getId().equals(websiteIdA)) {
+                                            // 盛帆网站
+                                            String suffix = "";
+                                            if (teamB.getBool("isHome")) {
+                                                suffix = "H";
+                                            } else {
+                                                suffix = "C";
+                                            }
+                                            oddsIdKeyB = valueBJson.getStr("id") + suffix;
                                         }
                                         /*String oddsKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, sweepwaterUsername, oddsIdKeyA);
                                         String oddsKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, sweepwaterUsername, oddsIdKeyB);
@@ -1506,7 +1524,7 @@ public class SweepwaterService {
      */
     public JSONObject buildBetInfo(String websiteId, JSONArray teams, JSONObject teamsOdds, String leagueName, String key, JSONObject oddsJson, boolean isHome, BetAmountDTO amount) {
         JSONObject betInfo = new JSONObject();
-        log.info("[手动设置投注信息][网站:{}][teams={}][teamsOdds={}][teamsOdds={}][key={}][oddsJson={}][isHome={}]", WebsiteType.getById(websiteId).getDescription(), teams, teamsOdds, leagueName, key, oddsJson, isHome);
+        log.info("[手动设置投注信息][网站:{}][teams={}][teamsOdds={}][leagueName={}][key={}][oddsJson={}][isHome={}]", WebsiteType.getById(websiteId).getDescription(), teams, teamsOdds, leagueName, key, oddsJson, isHome);
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
             // eg.平博赔率的id是1611238334|0|2|1|1|-1.0，截取第一个赛事id=1611238334
             String[] parts = oddsJson.getStr("id").split("\\|");  // 按 | 分割
@@ -1594,8 +1612,12 @@ public class SweepwaterService {
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             JSONObject homeTeam = new JSONObject();
             JSONObject awayTeam = new JSONObject();
+            String eventId = teamsOdds.getStr("id");
             for (Object object : teams) {
                 JSONObject teamJson = JSONUtil.parseObj(object);
+                if (!teamJson.getStr("id").equals(eventId)) {
+                    continue;
+                }
                 if (teamJson.getBool("isHome")) {
                     homeTeam = teamJson;
                 } else if (!teamJson.getBool("isHome")) {
@@ -1626,6 +1648,52 @@ public class SweepwaterService {
             String handicap = oddsJson.containsKey("handicap") ? oddsJson.getStr("handicap") : null;
             betInfo.putOpt("league", leagueName);
             betInfo.putOpt("team", homeTeam.getStr("name") + " -vs- " + awayTeam.getStr("name"));
+            betInfo.putOpt("marketTypeName", "");
+            betInfo.putOpt("marketName", marketName);
+            betInfo.putOpt("odds", marketName + " " + handicap + " @ " + oddsJson.getStr("odds"));
+            betInfo.putOpt("handicap", handicap);
+            betInfo.putOpt("amount", amount.getAmountXinEr());
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            JSONObject homeTeam = new JSONObject();
+            JSONObject awayTeam = new JSONObject();
+            String eventId = teamsOdds.getStr("id");
+            for (Object object : teams) {
+                JSONObject teamJson = JSONUtil.parseObj(object);
+                if (!teamJson.getStr("id").equals(eventId)) {
+                    continue;
+                }
+                if (teamJson.getBool("isHome")) {
+                    homeTeam = teamJson;
+                } else if (!teamJson.getBool("isHome")) {
+                    awayTeam = teamJson;
+                }
+            }
+            String marketName = "";
+            if ("letBall".equals(key)) {
+                // 让球盘
+                String wall = oddsJson.containsKey("wall") ? oddsJson.getStr("wall") : null;
+                if (StringUtils.isNotBlank(wall)) {
+                    if ("hanging".equals(wall)) {
+                        // 让球盘
+                        marketName = homeTeam.getStr("name");
+                    } else if ("foot".equals(wall)) {
+                        // 让球盘
+                        marketName = awayTeam.getStr("name");
+                    }
+                }
+            } else if ("overSize".equals(key)) {
+                // 大小盘
+                if (isHome) {
+                    marketName = "大盘";
+                } else {
+                    marketName = "小盘";
+                }
+            }
+            String handicap = oddsJson.containsKey("handicap") ? oddsJson.getStr("handicap") : null;
+            betInfo.putOpt("league", leagueName);
+            betInfo.putOpt("team", homeTeam.getStr("name") + " -vs- " + awayTeam.getStr("name"));
+            betInfo.putOpt("teamVSH", homeTeam.getStr("name"));
+            betInfo.putOpt("teamVSA", awayTeam.getStr("name"));
             betInfo.putOpt("marketTypeName", "");
             betInfo.putOpt("marketName", marketName);
             betInfo.putOpt("odds", marketName + " " + handicap + " @ " + oddsJson.getStr("odds"));
@@ -1798,6 +1866,11 @@ public class SweepwaterService {
         sweepwaterDTO.setConB(conB);
         sweepwaterDTO.setRatioA(ratioA);
         sweepwaterDTO.setRatioB(ratioB);
+
+        sweepwaterDTO.setTeamVSHA(betInfoA != null ? betInfoA.getStr("teamVSH") : null);
+        sweepwaterDTO.setTeamVSAA(betInfoA != null ? betInfoA.getStr("teamVSA") : null);
+        sweepwaterDTO.setTeamVSHB(betInfoB != null ? betInfoB.getStr("teamVSH") : null);
+        sweepwaterDTO.setTeamVSAB(betInfoB != null ? betInfoB.getStr("teamVSA") : null);
 
         sweepwaterDTO.setCreateTime(LocalDateTimeUtil.format(now, DatePattern.NORM_DATETIME_PATTERN));
 

@@ -1,7 +1,9 @@
 package com.example.demo.api;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.core.date.TimeInterval;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.json.JSONArray;
@@ -24,6 +26,7 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -569,13 +572,17 @@ public class HandicapApi {
      * @param showType
      * @return
      */
-    public Object eventList(String username, String websiteId, int showType) {
+    public Object eventList(String username, String websiteId, int showType, ConfigAccountVO accountVo) {
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
             if (account.getIsTokenValid() == 0) {
                 // 未登录直接跳过
+                continue;
+            }
+            if (accountVo != null && !account.getId().equals(accountVo.getId())) {
+                // 如果指定了请求用户,则必须通过指定的请求用户请求赛事列表
                 continue;
             }
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
@@ -937,6 +944,8 @@ public class HandicapApi {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putAll(account.getToken().getJSONObject("serverresponse"));
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            params.putOpt("cookie", account.getToken().getJSONObject("token").getStr("cookie"));
         }
         JSONObject result = apiHandler.execute(account, params);
 
@@ -974,6 +983,8 @@ public class HandicapApi {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putAll(account.getToken().getJSONObject("serverresponse"));
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            params.putOpt("cookie", account.getToken().getJSONObject("token").getStr("cookie"));
         }
         JSONObject result = apiHandler.execute(account, params);
 
@@ -1142,6 +1153,28 @@ public class HandicapApi {
                 params.putOpt("gtype", odds.getStr("gtype"));
                 params.putOpt("wtype", odds.getStr("wtype"));
                 params.putOpt("choseTeam", odds.getStr("choseTeam"));
+
+                // 转换赔率类型
+                String oddsFormatType;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
+            } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+
+                params.putOpt("cookie", account.getToken().getJSONObject("token").getStr("cookie"));
+                params.putOpt("eventId", odds.getStr("eventId"));
+                params.putOpt("isLive", odds.getStr("isLive"));
+                params.putOpt("marketType", odds.getStr("marketType"));
+                params.putOpt("oddsId", odds.getStr("oddsId"));
+                params.putOpt("option", odds.getStr("option"));
 
                 // 转换赔率类型
                 String oddsFormatType;
@@ -1360,7 +1393,45 @@ public class HandicapApi {
                         oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
                     }
                     params.putOpt("oddsFormatType", oddsFormatType);
+                } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+
+                // 通过当前盘口账户的倍数计算实际投注金额
+                BigDecimal stake = odds.getBigDecimal("stake");
+
+                BigDecimal result = stake
+                        .multiply(BigDecimal.valueOf(multiple))         // 相乘
+                        .setScale(2, RoundingMode.HALF_UP);    // 保留两位小数，四舍五入
+
+                JSONObject oddsInfo = betPreviewJson.getJSONObject("data").getJSONObject("oddsInfo");
+                String firstKey = oddsInfo.keySet().iterator().next();  // 拿第一个 key
+                JSONObject oddInfo = oddsInfo.getJSONObject(firstKey);
+
+                params.putOpt("cookie", account.getToken().getJSONObject("token").getStr("cookie"));
+                params.putOpt("eventId", odds.getStr("eventId"));
+                params.putOpt("isLive", odds.getStr("isLive"));
+                params.putOpt("liveHomeScore", oddInfo.getStr("liveHomeScore"));
+                params.putOpt("liveAwayScore", oddInfo.getStr("liveAwayScore"));
+                params.putOpt("marketType", odds.getStr("marketType"));
+                params.putOpt("oddsId", oddInfo.getStr("oddsId"));
+                params.putOpt("option", odds.getStr("option"));
+                params.putOpt("point", oddInfo.getStr("point"));
+                params.putOpt("stake", result);
+                params.putOpt("uid", oddInfo.getStr("uid"));
+
+                // 转换赔率类型
+                String oddsFormatType;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
                 }
+                params.putOpt("oddsFormatType", oddsFormatType);
+            }
             // }
             JSONObject result = apiHandler.execute(account, params);
             if (result == null) {
@@ -1378,6 +1449,11 @@ public class HandicapApi {
             return result;
         }
         return null;
+    }
+
+    public static void main(String[] args) {
+        LocalDateTime localDateTime = LocalDateTimeUtil.parse("2025-09-01T05:34:17.43-04:00".replace("-04:00", ""));
+        System.out.println(LocalDateTimeUtil.format(localDateTime.plusHours(12), DatePattern.NORM_DATETIME_PATTERN));
     }
 
 }

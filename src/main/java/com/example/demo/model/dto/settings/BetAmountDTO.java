@@ -15,4 +15,6 @@ public class BetAmountDTO {
     private BigDecimal amountPingBo;
     @Schema(description = "新二金额")
     private BigDecimal amountXinEr;
+    @Schema(description = "盛帆金额")
+    private BigDecimal amountSbo;
 }

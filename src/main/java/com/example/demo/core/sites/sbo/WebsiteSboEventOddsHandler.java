@@ -320,7 +320,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                     boolean homeSide = "h".equals(price.getStr("option"));
                     if (homeSide == isHome) {
                         JSONObject node = new JSONObject();
-                        node.putOpt("id", o.getLong("id") + "|" + normalizedType);
+                        node.putOpt("id", o.getLong("id"));
                         node.putOpt("handicap", point);
                         node.putOpt("odds", price.getBigDecimal("price").toString());
                         node.putOpt("wall", isHome ? "foot" : "hanging");
@@ -336,14 +336,14 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                 for (int j = 0; j < o.getJSONArray("prices").size(); j++) {
                     JSONObject price = o.getJSONArray("prices").getJSONObject(j);
                     JSONObject node = new JSONObject();
-                    node.putOpt("id", o.getLong("id") + "|" + normalizedType);
-                    node.putOpt("handicap", point);
+                    node.putOpt("id", o.getLong("id"));
+                    node.putOpt("handicap", getHandicapRange(point));
                     node.putOpt("odds", price.getBigDecimal("price").toString());
 
                     if (isFirstHalf) {
-                        halfOverSize.putOpt(String.valueOf(point), node);
+                        halfOverSize.putOpt(getHandicapRange(point), node);
                     } else {
-                        fullOverSize.putOpt(String.valueOf(point), node);
+                        fullOverSize.putOpt(getHandicapRange(point), node);
                     }
                 }
             }
@@ -373,12 +373,15 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
         // 判断 handicap 是否是 0.5 的倍数
         if (handicap % 0.5 == 0) {
             // 如果是 0.5 的倍数，直接返回原值
-            return String.valueOf(handicap);
+
+            return 0.0 == handicap ? "0" : String.valueOf(handicap);
         } else {
             // 如果不是 0.5 的倍数，返回一个范围
             double lowerBound = handicap - 0.25;
             double upperBound = handicap + 0.25;
-            return lowerBound + "-" + upperBound;
+            String lowerBoundStr = 0.0 == lowerBound ? "0" : String.valueOf(handicap);
+            String upperBoundStr = 0.0 == upperBound ? "0" : String.valueOf(upperBound);
+            return lowerBoundStr + "-" + upperBoundStr;
         }
     }
 

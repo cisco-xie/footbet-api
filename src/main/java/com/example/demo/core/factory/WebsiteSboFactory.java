@@ -74,12 +74,12 @@ public class WebsiteSboFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler getStatementsHandler() {
-        return null; // 返回具体的账目列表处理类
+        return new WebsiteSboStatementHandler(dispatcher, websiteService, apiUrlService); // 返回具体的账目列表处理类
     }
 
     @Override
     public ApiHandler getBetUnsettledHandler() {
-        return null; // 返回具体的未结算投注列表处理类
+        return new WebsiteSboBetUnsettledHandler(dispatcher, websiteService, apiUrlService); // 返回具体的未结算投注列表处理类
     }
 
     @Override
@@ -89,11 +89,11 @@ public class WebsiteSboFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler bet() {
-        return null; // 返回具体的投注处理类
+        return new WebsiteSboBetHandler(dispatcher, websiteService, apiUrlService); // 返回具体的投注处理类
     }
 
     @Override
     public ApiHandler betPreview() {
-        return null; // 返回具体的投注预览处理类
+        return new WebsiteSboBetPreviewHandler(dispatcher, websiteService, apiUrlService); // 返回具体的投注预览处理类
     }
 }

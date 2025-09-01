@@ -50,7 +50,7 @@ public class EventsController extends BaseController {
     public Result getWebsites(@RequestParam String websiteId, @RequestParam Integer type) {
         AdminLoginDTO admin = getUser();
         // 获取赛事数据
-        Object eventLive = handicapApi.eventList(admin.getUsername(), websiteId, type);
+        Object eventLive = handicapApi.eventList(admin.getUsername(), websiteId, type, null);
         JSONArray result = JSONUtil.parseArray(eventLive);
         return Result.success(result);
     }

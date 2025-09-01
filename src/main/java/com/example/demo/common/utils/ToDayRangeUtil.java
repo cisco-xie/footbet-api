@@ -1,8 +1,10 @@
 package com.example.demo.common.utils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class ToDayRangeUtil {
@@ -74,6 +76,16 @@ public class ToDayRangeUtil {
         }
 
         return keys;
+    }
+
+    /**
+     * 获取最近10天的开始和结束日期
+     * @return List，索引0是开始日期，索引1是结束日期
+     */
+    public static List<LocalDate> getLast10Days() {
+        LocalDate today = LocalDate.now();
+        LocalDate startDay = today.minusDays(10);
+        return Arrays.asList(startDay, today);
     }
 
     public static void main(String[] args) {

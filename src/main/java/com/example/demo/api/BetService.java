@@ -440,7 +440,7 @@ public class BetService {
         int attempt = 0;
         boolean success = false;
 
-        if (1 == limitDTO.getRetry()) {
+        if (null != limitDTO.getRetry() && 1 == limitDTO.getRetry()) {
             // 获取重试次数
             maxRetry = limitDTO.getRetryCount();
         }
@@ -507,7 +507,7 @@ public class BetService {
                     return result;
                 }
                 // 投注预览
-                JSONObject betPreview = buildBetInfo(username, websiteId, params);
+                JSONObject betPreview = buildBetInfo(username, websiteId, params, dto);
                 if (betPreview == null) {
                     log.info("用户 {}, 网站:{} 投注预览失败，eventId={}", username, WebsiteType.getById(websiteId).getDescription(), eventId);
                     result.putOpt("isBet", false);
@@ -613,7 +613,7 @@ public class BetService {
      * @param params
      * @return
      */
-    public JSONObject buildBetInfo(String username, String websiteId, JSONObject params) {
+    public JSONObject buildBetInfo(String username, String websiteId, JSONObject params, SweepwaterBetDTO sweepwaterBetDTO) {
         JSONObject betPreviewResult = new JSONObject();
         JSONObject betInfo = new JSONObject();
 
@@ -709,6 +709,40 @@ public class BetService {
             betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread") + " @ " + serverresponse.getStr("ioratio"));
             betInfo.putOpt("handicap", serverresponse.getStr("spread"));
             betInfo.putOpt("amount", params.getStr("golds"));
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            JSONObject oddsInfo = betPreviewJson.getJSONObject("data").getJSONObject("oddsInfo");
+            String firstKey = oddsInfo.keySet().iterator().next();  // 拿第一个 key
+            JSONObject odd = oddsInfo.getJSONObject(firstKey);
+            String marketName = "";
+            String marketTypeName = "";
+            if ("letBall".equals(sweepwaterBetDTO.getHandicapType())) {
+                marketTypeName = "让球盘";
+                if ("H".equals(sweepwaterBetDTO.getChoseTeamA())) {
+                    // 主队
+                    marketName = null != sweepwaterBetDTO.getTeamVSHA() ? sweepwaterBetDTO.getTeamVSHA() : sweepwaterBetDTO.getTeamVSHB();
+                } else {
+                    // 客队
+                    marketName = null != sweepwaterBetDTO.getTeamVSAB() ? sweepwaterBetDTO.getTeamVSAB() : sweepwaterBetDTO.getTeamVSAA();
+                }
+
+            } else if ("overSize".equals(sweepwaterBetDTO.getHandicapType())) {
+                marketTypeName = "大小盘";
+                if ("H".equals(sweepwaterBetDTO.getChoseTeamA())) {
+                    // 主队
+                    marketName = "大盘";
+                } else {
+                    // 客队
+                    marketName = "小盘";
+                }
+            }
+            betInfo.putOpt("league", params.getStr("league"));
+            betInfo.putOpt("team", params.getStr("teamVS"));
+            betInfo.putOpt("marketTypeName", marketTypeName);
+            betInfo.putOpt("marketName", marketName);
+            betInfo.putOpt("odds", marketName + " " + odd.getStr("point") + " @ " + odd.getStr("price"));
+            betInfo.putOpt("handicap", odd.getStr("point"));
+            betInfo.putOpt("amount", params.getStr("stake"));
+            betInfo.putOpt("uid", odd.getStr("uid"));
         }
 
         betPreviewResult.putOpt("betInfo", betInfo);
@@ -848,7 +882,7 @@ public class BetService {
             params.putOpt("odds", isA ? sweepwaterDTO.getOddsA() : sweepwaterDTO.getOddsB());
             params.putOpt("oddsId", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
             params.putOpt("selectionId", isA ? sweepwaterDTO.getSelectionIdA() : sweepwaterDTO.getSelectionIdB());
-        } else {
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putOpt("gid", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
             params.putOpt("golds", amount.getAmountXinEr());
             params.putOpt("oddFType", isA ? sweepwaterDTO.getStrongA() : sweepwaterDTO.getStrongB());
@@ -860,6 +894,14 @@ public class BetService {
             params.putOpt("con", isA ? sweepwaterDTO.getConA() : sweepwaterDTO.getConB());
             params.putOpt("ratio", isA ? sweepwaterDTO.getRatioA() : sweepwaterDTO.getRatioB());
             params.putOpt("autoOdd", "Y");
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            params.putOpt("stake", amount.getAmountSbo());
+            params.putOpt("league", isA ? sweepwaterDTO.getLeagueNameA() : sweepwaterDTO.getLeagueNameB());
+            params.putOpt("team", isA ? sweepwaterDTO.getTeamA() : sweepwaterDTO.getTeamB());
+            params.putOpt("eventId", isA ? sweepwaterDTO.getEventIdA() : sweepwaterDTO.getEventIdB());
+            params.putOpt("marketType", "letBall".equals(sweepwaterDTO.getHandicapType()) ? 1 : 3);     // 让球盘是1，大小盘是3
+            params.putOpt("oddsId", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
+            params.putOpt("option", isA ? (sweepwaterDTO.getIsHomeA() ? "h" : "a") : (sweepwaterDTO.getIsHomeB() ? "h" : "a"));
         }
         return params;
     }

@@ -63,6 +63,11 @@ public class SweepwaterDTO {
     private String ratioA;          // 新2网站的投注专属参数
     private String ratioB;          // 新2网站的投注专属参数
 
+    private String teamVSHA;         // 盛帆网站的专属参数 主队名称
+    private String teamVSAA;         // 盛帆网站的专属参数 客队名称
+    private String teamVSHB;         // 盛帆网站的专属参数 主队名称
+    private String teamVSAB;         // 盛帆网站的专属参数 客队名称
+
     private String water;           // 水位
     private String createTime;      // 创建时间
 }
