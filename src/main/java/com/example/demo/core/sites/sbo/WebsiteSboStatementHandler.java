@@ -102,7 +102,7 @@ public class WebsiteSboStatementHandler implements ApiHandler {
             } else {
                 remark = resJson.getStr("remark");
             }
-            jsonObject.putOpt("statementDate", resJson.getStr("statementDate"));    // 账目日期
+            jsonObject.putOpt("statementDate", resJson.getStr("statementDate").replaceAll("T00:00:00", ""));    // 账目日期
             jsonObject.putOpt("remark", remark);
             jsonObject.putOpt("winlost", resJson.getDouble("winlost"));             // 总输赢
             jsonObject.putOpt("commission", resJson.getDouble("commission"));       // 佣金
