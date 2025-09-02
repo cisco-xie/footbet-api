@@ -311,6 +311,22 @@ public class WebsiteSboLoginHandler implements ApiHandler {
                 return new JSONObject().set("success", false).set("msg", "获取token失败");
             }
             JSONObject responseJson = new JSONObject();
+
+            JSONObject step12Result = executeStep12(userConfig, apiHomeUrl, params, cookieStore);
+            if (!step12Result.getBool("hasReadTermAndCondition")) {
+                // 需要同意协议
+                responseJson.putOpt("code", 110);
+                responseJson.putOpt("success", false);
+                responseJson.putOpt("msg", "需接受账户协议");
+                return responseJson;
+            }
+            if (!step12Result.getBool("hasPasswordExpired")) {
+                // 需要修改密码
+                responseJson.putOpt("code", 106);
+                responseJson.putOpt("success", false);
+                responseJson.putOpt("msg", "需要修改账户密码");
+                return responseJson;
+            }
             responseJson.putOpt("success", true);
             responseJson.putOpt("token", new JSONObject(JSONUtil.parseObj(step11Result.getStr("body"))).putOpt("cookie", cookieStore));
             responseJson.putOpt("msg", "账户登录成功");
@@ -682,6 +698,39 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         } catch (Exception e) {
             log.error("第十一步请求异常", e);
             return new JSONObject().set("success", false).set("msg", "第十一步getTokens请求失败");
+        }
+    }
+
+    /**
+     * 第十二步：调用查询用户信息接口-用于检查用户是否需要同意协议和修改密码
+     */
+    private JSONObject executeStep12(ConfigAccountVO userConfig, String apiHomeUrl,
+                                     JSONObject params, StringBuilder cookieStore) {
+        String step8Url = apiHomeUrl + "/api/user/Get";
+
+        // 更新cookie
+        params.set("cookie", cookieStore.toString());
+
+        // 记录调试信息
+        log.info("第十二步getTokens URL: {}", step8Url);
+        log.info("第十二步Cookie: {}", cookieStore.toString());
+
+        OkHttpProxyDispatcher.HttpResult response;
+        try {
+            response = dispatcher.execute("GET", step8Url, null, buildHeaders(params), userConfig, false);
+
+            // 记录响应信息
+            log.info("第十二步响应状态码: {}", response.getStatus());
+            log.info("第十二步响应头: {}", response.getHeaders());
+            log.info("第十二步响应体: {}", response.getBody());
+
+            JSONObject result = parseResponse(params, response);
+            result.set("success", true);        // 请求成功
+            result.set("response", response);
+            return result;
+        } catch (Exception e) {
+            log.error("第十二步请求异常", e);
+            return new JSONObject().set("success", false).set("msg", "第十二步getTokens请求失败");
         }
     }
 

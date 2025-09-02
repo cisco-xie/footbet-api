@@ -266,7 +266,7 @@ public class HandicapApi {
                 // 执行检测修改账户名
                 checkUsername(username, account, websiteId, uid, accountName, retryMap);
             } else if (code != null && code == 110) {
-                // 修改账户名
+                // 执行同意协议
                 retryCount++;
                 retryMap.put(key, retryCount);
 
@@ -420,10 +420,10 @@ public class HandicapApi {
         }
     }
 
-    // 运行修改密码工厂
+    // 运行同意协议工厂
     public void accept(String username, ConfigAccountVO account, String websiteId, Map<String, Integer> retryMap) {
         TimeInterval timer = DateUtil.timer();
-        // 修改密码
+        // 同意协议
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
         ApiHandler apiHandler = factory.accept();
         if (apiHandler == null) {
@@ -439,6 +439,8 @@ public class HandicapApi {
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             log.warn("暂不支持新二网站自动同意协议：{}", websiteId);
             return;
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            params.putOpt("cookie", account.getToken().getJSONObject("token").getStr("cookie"));
         }
         JSONObject result = apiHandler.execute(account, params);
         if (result.getBool("success")) {

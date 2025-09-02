@@ -44,7 +44,7 @@ public class WebsiteSboFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler accept() {
-        return null;
+        return new WebsiteSboAcceptHandler(dispatcher, websiteService, apiUrlService);
     }
 
     @Override
