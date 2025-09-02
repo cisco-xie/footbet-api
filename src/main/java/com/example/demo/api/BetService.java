@@ -925,8 +925,10 @@ public class BetService {
             betId = betResultJson.getJSONObject("data").getJSONObject("betInfo").getStr("betId");
         } else if (WebsiteType.PINGBO.getId().equals(websiteId)) {
             betId = betResultJson.getJSONArray("response").getJSONObject(0).getStr("wagerId");
-        } else {
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             betId = betResultJson.getJSONObject("data").getJSONObject("serverresponse").getStr("ticket_id");
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            betId = betResultJson.getJSONObject("data").getStr("transId");
         }
 
         if (StringUtils.isNotBlank(betId)) {
