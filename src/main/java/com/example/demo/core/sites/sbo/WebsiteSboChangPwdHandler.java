@@ -17,18 +17,18 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 盛帆网站 - 同意协议 API具体实现
+ * 盛帆网站 - 修改密码 API具体实现
  */
 @Slf4j
 @Component
-public class WebsiteSboAcceptHandler implements ApiHandler {
+public class WebsiteSboChangPwdHandler implements ApiHandler {
 
     private final OkHttpProxyDispatcher dispatcher;
     private final WebsiteService websiteService;
     private final ApiUrlService apiUrlService;
 
     @Autowired
-    public WebsiteSboAcceptHandler(OkHttpProxyDispatcher dispatcher, WebsiteService websiteService, ApiUrlService apiUrlService) {
+    public WebsiteSboChangPwdHandler(OkHttpProxyDispatcher dispatcher, WebsiteService websiteService, ApiUrlService apiUrlService) {
         this.dispatcher = dispatcher;
         this.websiteService = websiteService;
         this.apiUrlService = apiUrlService;
@@ -46,6 +46,7 @@ public class WebsiteSboAcceptHandler implements ApiHandler {
         // 构造请求头
         headers.put("accept", "application/json, text/plain, */*");
         headers.put("accept-language", "zh-CN,zh;q=0.9");
+        headers.put("content-type", "application/json");
         headers.put("cookie", params.getStr("cookie"));
 
         return headers;
@@ -59,7 +60,12 @@ public class WebsiteSboAcceptHandler implements ApiHandler {
     @Override
     public String buildRequest(JSONObject params) {
         // 构造请求体
-        return "";
+        JSONObject requestBody = new JSONObject();
+        requestBody.putOpt("currentPassword", params.getStr("oldPassword"));
+        requestBody.putOpt("newPassword", params.getStr("newPassword"));
+        requestBody.putOpt("confirmNewPassword", params.getStr("chgPassword"));
+
+        return requestBody.toString();
     }
 
     /**
@@ -83,6 +89,13 @@ public class WebsiteSboAcceptHandler implements ApiHandler {
         }
         // 解析响应
         JSONObject result = new JSONObject();
+        JSONObject responseJson = new JSONObject(response.getBody());
+        if (!"Success".equals(responseJson.getStr("status"))) {
+            responseJson.putOpt("code", response.getStatus());
+            responseJson.putOpt("success", false);
+            responseJson.putOpt("msg", "账户修改密码失败");
+            return responseJson;
+        }
         result.putOpt("success", true);
         result.putOpt("msg", "同意协议成功");
         return result;
@@ -99,9 +112,10 @@ public class WebsiteSboAcceptHandler implements ApiHandler {
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
-        String apiUrl = apiUrlService.getApiUrl(siteId, "accept");
+        String apiUrl = apiUrlService.getApiUrl(siteId, "changePwd");
         // 构建请求
         Map<String, String> requestHeaders = buildHeaders(params);
+        String requestBody = buildRequest(params);
 
         String apiHomeUrl = insertSubdomain(baseUrl, "api-home");
         // 拼接完整的 URL
@@ -110,7 +124,7 @@ public class WebsiteSboAcceptHandler implements ApiHandler {
         // 使用代理发起 请求
         OkHttpProxyDispatcher.HttpResult resultHttp;
         try {
-            resultHttp = dispatcher.execute("POST", fullUrl, null, requestHeaders, userConfig, false);
+            resultHttp = dispatcher.execute("POST", fullUrl, requestBody, requestHeaders, userConfig, false);
         } catch (Exception e) {
             log.error("请求异常，用户:{}, 账号:{}, 参数:{}, 错误:{}", username, userConfig.getAccount(), null, e.getMessage(), e);
             throw new BusinessException(SystemError.SYS_400);

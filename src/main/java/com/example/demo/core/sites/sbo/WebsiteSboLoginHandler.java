@@ -313,17 +313,19 @@ public class WebsiteSboLoginHandler implements ApiHandler {
             JSONObject responseJson = new JSONObject();
 
             JSONObject step12Result = executeStep12(userConfig, apiHomeUrl, params, cookieStore);
-            if (!step12Result.getBool("hasReadTermAndCondition")) {
+            if (!step12Result.getJSONObject("body").getBool("hasReadTermAndCondition")) {
                 // 需要同意协议
                 responseJson.putOpt("code", 110);
                 responseJson.putOpt("success", false);
+                responseJson.putOpt("token", new JSONObject(JSONUtil.parseObj(step11Result.getStr("body"))).putOpt("cookie", cookieStore));
                 responseJson.putOpt("msg", "需接受账户协议");
                 return responseJson;
             }
-            if (!step12Result.getBool("hasPasswordExpired")) {
+            if (step12Result.getJSONObject("body").getBool("hasPasswordExpired")) {
                 // 需要修改密码
                 responseJson.putOpt("code", 106);
                 responseJson.putOpt("success", false);
+                responseJson.putOpt("token", new JSONObject(JSONUtil.parseObj(step11Result.getStr("body"))).putOpt("cookie", cookieStore));
                 responseJson.putOpt("msg", "需要修改账户密码");
                 return responseJson;
             }

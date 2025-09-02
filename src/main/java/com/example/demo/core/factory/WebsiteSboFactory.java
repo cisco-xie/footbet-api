@@ -39,7 +39,7 @@ public class WebsiteSboFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler changePwd() {
-        return null;    // 返回具体的修改密码处理类
+        return new WebsiteSboChangPwdHandler(dispatcher, websiteService, apiUrlService);    // 返回具体的修改密码处理类
     }
 
     @Override

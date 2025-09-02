@@ -242,7 +242,7 @@ public class HandicapApi {
                     accountName = result.getJSONObject("serverresponse").getStr("username");
                 }
                 // 执行修改密码
-                changePwd(username, account, websiteId, uid, accountName, retryMap);
+                changePwd(username, account, websiteId, uid, accountName, retryMap, result);
             } else if (code != null && code == 109) {
                 // 修改账户名
                 retryCount++;
@@ -278,7 +278,7 @@ public class HandicapApi {
                 }
 
                 // 执行同意协议
-                accept(username, account, websiteId, retryMap);
+                accept(username, account, websiteId, retryMap, result);
             } else if (code != null && code == 111) {
                 // 修改偏好设置
                 retryCount++;
@@ -298,7 +298,7 @@ public class HandicapApi {
     }
 
     // 运行修改密码工厂
-    public void changePwd(String username, ConfigAccountVO accountVO, String websiteId, String uid, String account, Map<String, Integer> retryMap) {
+    public void changePwd(String username, ConfigAccountVO accountVO, String websiteId, String uid, String account, Map<String, Integer> retryMap, JSONObject resultLogin) {
         TimeInterval timer = DateUtil.timer();
         // 修改密码
         String password = RandomUtil.randomString(6) + RandomUtil.randomNumbers(2);
@@ -325,6 +325,13 @@ public class HandicapApi {
             params.putOpt("username", account);
             params.putOpt("newPassword", password);
             params.putOpt("chgPassword", password);
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            params.putOpt("uid", uid);
+            params.putOpt("username", account);
+            params.putOpt("oldPassword", accountVO.getPassword());
+            params.putOpt("newPassword", password);
+            params.putOpt("chgPassword", password);
+            params.putOpt("cookie", resultLogin.getJSONObject("token").getStr("cookie"));
         }
         JSONObject result = apiHandler.execute(accountVO, params);
         if (result != null && result.getBool("success")) {
@@ -421,7 +428,7 @@ public class HandicapApi {
     }
 
     // 运行同意协议工厂
-    public void accept(String username, ConfigAccountVO account, String websiteId, Map<String, Integer> retryMap) {
+    public void accept(String username, ConfigAccountVO account, String websiteId, Map<String, Integer> retryMap, JSONObject resultLogin) {
         TimeInterval timer = DateUtil.timer();
         // 同意协议
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
@@ -440,7 +447,7 @@ public class HandicapApi {
             log.warn("暂不支持新二网站自动同意协议：{}", websiteId);
             return;
         } else if (WebsiteType.SBO.getId().equals(websiteId)) {
-            params.putOpt("cookie", account.getToken().getJSONObject("token").getStr("cookie"));
+            params.putOpt("cookie", resultLogin.getJSONObject("token").getStr("cookie"));
         }
         JSONObject result = apiHandler.execute(account, params);
         if (result.getBool("success")) {
