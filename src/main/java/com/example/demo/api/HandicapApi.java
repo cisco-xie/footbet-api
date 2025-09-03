@@ -1221,7 +1221,7 @@ public class HandicapApi {
      * @param websiteId
      * @return
      */
-    public Object bet(String username, String websiteId, JSONObject odds, JSONObject betPreviewJson) {
+    public Object bet(String username, String websiteId, JSONObject odds, JSONObject betPreviewInfo, JSONObject betPreviewJson) {
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
@@ -1426,6 +1426,8 @@ public class HandicapApi {
                 params.putOpt("point", oddInfo.getStr("point"));
                 params.putOpt("stake", result);
                 params.putOpt("uid", oddInfo.getStr("uid"));
+
+                params.putOpt("betInfo", betPreviewInfo);
 
                 // 转换赔率类型
                 String oddsFormatType;

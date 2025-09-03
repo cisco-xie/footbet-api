@@ -87,6 +87,7 @@ public class WebsiteSboBetHandler implements ApiHandler {
         if (response.getStatus() != 200) {
             JSONObject res = new JSONObject();
             res.putOpt("success", false);
+            res.putOpt("betInfo", params.getJSONObject("betInfo"));
             res.putOpt("msg", "投注失败");
             return res;
         }
@@ -98,11 +99,13 @@ public class WebsiteSboBetHandler implements ApiHandler {
         if (!responseJson.getBool("isPlaceBetSuccess")) {
             log.info("[盛帆][投注失败][params={}][body={}]", params, responseJson);
             result.putOpt("success", false);
+            result.putOpt("betInfo", params.getJSONObject("betInfo"));
             result.putOpt("msg", "投注失败:"+responseJson.getStr("message"));
             return result;
         }
         result.putOpt("success", true);
         result.putOpt("data", responseJson);
+        result.putOpt("betInfo", params.getJSONObject("betInfo"));
         result.putOpt("msg", "投注成功");
         return result;
     }

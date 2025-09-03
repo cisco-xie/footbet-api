@@ -337,8 +337,6 @@ public class BetService {
 
             dto.setBetSuccessA(successA.getBool("success"));
             dto.setBetSuccessB(successB.getBool("success"));
-//            dto.setBetInfoA(successA.getJSONObject("betInfo"));
-//            dto.setBetInfoB(successB.getJSONObject("betInfo"));
             
             // 有一个执行了投注则缓存
             if (successA.getBool("isBet") || successB.getBool("isBet")) {
@@ -523,7 +521,7 @@ public class BetService {
                 }
 
                 // 投注
-                Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betPreview"));
+                Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betInfo"), betPreview.getJSONObject("betPreview"));
 
                 if (isA) {
                     dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
@@ -717,7 +715,7 @@ public class BetService {
             String marketTypeName = "";
             if ("letBall".equals(sweepwaterBetDTO.getHandicapType())) {
                 marketTypeName = "让球盘";
-                if ("H".equals(sweepwaterBetDTO.getChoseTeamA())) {
+                if ("H".equals(params.getStr("option"))) {
                     // 主队
                     marketName = null != sweepwaterBetDTO.getTeamVSHA() ? sweepwaterBetDTO.getTeamVSHA() : sweepwaterBetDTO.getTeamVSHB();
                 } else {
@@ -727,7 +725,7 @@ public class BetService {
 
             } else if ("overSize".equals(sweepwaterBetDTO.getHandicapType())) {
                 marketTypeName = "大小盘";
-                if ("H".equals(sweepwaterBetDTO.getChoseTeamA())) {
+                if ("h".equals(params.getStr("option"))) {
                     // 主队
                     marketName = "大盘";
                 } else {
