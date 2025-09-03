@@ -46,6 +46,8 @@ public class WebsiteSboBetHandler implements ApiHandler {
         headers.put("accept", "application/json, text/plain, */*");
         headers.put("accept-language", "zh-CN,zh;q=0.9");
         headers.put("content-type", "application/json");
+        headers.put("origin", params.getStr("referer"));
+        headers.put("referer", params.getStr("referer"));
         headers.put("cookie", params.getStr("cookie"));
 
         return headers;
@@ -61,11 +63,11 @@ public class WebsiteSboBetHandler implements ApiHandler {
         JSONObject requestBody = new JSONObject();
         requestBody.putOpt("betPage", 1);
         requestBody.putOpt("eventId", params.getInt("eventId"));
-        requestBody.putOpt("liveScore", new JSONObject().putOpt("home", params.getInt("liveHomeScore")).putOpt("away", params.getInt("liveAwayScore")));  // todo 当前比分
+        requestBody.putOpt("liveScore", new JSONObject().putOpt("home", params.getInt("liveHomeScore")).putOpt("away", params.getInt("liveAwayScore")));  // 当前比分
         requestBody.putOpt("marketType", params.getInt("marketType"));
         requestBody.putOpt("oddsId", params.getInt("oddsId"));
         requestBody.putOpt("option", params.getStr("option"));  // 选择的队伍 h:主队 a:客队
-        requestBody.putOpt("point", params.getStr("point"));    // 盘口让点
+        requestBody.putOpt("point", params.getBigDecimal("point"));    // 盘口让点
         requestBody.putOpt("sportType", 1);
         requestBody.putOpt("stake", params.getInt("stake"));    // 下注金额
         requestBody.putOpt("uid", params.getStr("uid"));        // 下注用户uid
@@ -118,9 +120,10 @@ public class WebsiteSboBetHandler implements ApiHandler {
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
         String apiUrl = apiUrlService.getApiUrl(siteId, "bet");
         // 构建请求
+        String sportsBookUrl = insertSubdomain(baseUrl, "sportsbook");
+        params.putOpt("referer", sportsBookUrl);
         Map<String, String> requestHeaders = buildHeaders(params);
         String requestBody = buildRequest(params);
-        String sportsBookUrl = insertSubdomain(baseUrl, "sportsbook");
 
         // 拼接完整的 URL
         String fullUrl = String.format("%s%s", sportsBookUrl, apiUrl);
