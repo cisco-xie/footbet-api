@@ -13,6 +13,7 @@ import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.config.PriorityTaskExecutor;
+import com.example.demo.core.result.PageResult;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.dto.bet.SweepwaterBetDTO;
 import com.example.demo.model.dto.settings.BetAmountDTO;
@@ -71,127 +72,133 @@ public class BetService {
      * @param username
      * @return
      */
-    public List<SweepwaterBetDTO> getRealTimeBets(String username, String teamName) {
-        // 构造 pattern，例如: bet:xxx:realtime:2025-07-29:*
+    public PageResult<SweepwaterBetDTO> getRealTimeBets(String username, String teamName, Integer pageNum, Integer pageSize) {
+        // 当前日期
         String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
-        String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, "realtime", date, "*");
 
-        // 获取所有匹配的 key（注意这个方法内部使用 scan，不是 keys，不会阻塞）
-        Iterable<String> keys = businessPlatformRedissonClient.getKeys().getKeysByPattern(pattern);
-
-        // 收集 key 到列表中
-        List<String> keyList = new ArrayList<>();
-        for (String key : keys) {
-            keyList.add(key);
+        // 设置默认分页参数
+        if (pageNum == null || pageNum < 1) {
+            pageNum = 1;
+        }
+        if (pageSize == null || pageSize < 1) {
+            pageSize = 10; // 默认每页10条
         }
 
-        // 提前判断
-        if (keyList.isEmpty()) {
-            return Collections.emptyList();
+        // 实时索引 key
+        String indexKey = KeyUtil.genKey("INDEX", username, "realtime", date);
+        RList<String> index = businessPlatformRedissonClient.getList(indexKey);
+
+        int total = index.size();
+        if (total == 0) {
+            return new PageResult<>(Collections.emptyList(), 0L, pageNum, pageSize);
         }
 
-        int batchSize = 100; // 每批最多并发读取100条，避免过大导致内存抖动
-        List<CompletableFuture<Void>> batchFutures = new ArrayList<>();
-        List<SweepwaterBetDTO> resultList = Collections.synchronizedList(new ArrayList<>());
+        // 计算分页范围
+        int startIndex = (pageNum - 1) * pageSize;
+        if (startIndex >= total) {
+            return new PageResult<>(Collections.emptyList(), (long) total, pageNum, pageSize);
+        }
+        int endIndex = Math.min(startIndex + pageSize - 1, total - 1);
 
-        // 分批处理 keys
-        for (int i = 0; i < keyList.size(); i += batchSize) {
-            int end = Math.min(i + batchSize, keyList.size());
-            List<String> subKeys = keyList.subList(i, end);
+        // 获取分页 key 列表
+        List<String> pageKeys = index.range(startIndex, endIndex);
 
-            // 每批作为一个并发任务执行
-            CompletableFuture<Void> batchFuture = CompletableFuture.runAsync(() -> {
-                try {
-                    RBatch batch = businessPlatformRedissonClient.createBatch();
-                    List<RFuture<Object>> futures = new ArrayList<>();
-                    for (String k : subKeys) {
-                        futures.add(batch.getBucket(k).getAsync());
+        // 批量读取 Redis bucket
+        RBatch batch = businessPlatformRedissonClient.createBatch();
+        List<RFuture<Object>> futures = new ArrayList<>();
+        for (String key : pageKeys) {
+            futures.add(batch.getBucket(key).getAsync());
+        }
+        batch.execute();
+
+        List<SweepwaterBetDTO> pageData = new ArrayList<>();
+        for (RFuture<Object> future : futures) {
+            try {
+                Object json = future.toCompletableFuture().join();
+                if (json != null) {
+                    SweepwaterBetDTO dto = JSONUtil.toBean((String) json, SweepwaterBetDTO.class);
+                    if (StringUtils.isBlank(teamName) || (dto.getTeam() != null && dto.getTeam().contains(teamName))) {
+                        pageData.add(dto);
                     }
-
-                    // 提交批次执行
-                    batch.execute();
-
-                    // 收集结果
-                    for (RFuture<Object> future : futures) {
-                        try {
-                            Object json = future.toCompletableFuture().join();
-                            if (json != null) {
-                                SweepwaterBetDTO dto = JSONUtil.toBean((String) json, SweepwaterBetDTO.class);
-                                resultList.add(dto);
-                            }
-                        } catch (Exception ex) {
-                            log.warn("解析投注单失败", ex);
-                        }
-                    }
-                } catch (Exception e) {
-                    log.error("批量获取投注单异常", e);
                 }
-            });
-
-            batchFutures.add(batchFuture);
+            } catch (Exception e) {
+                log.warn("读取实时投注单缓存失败", e);
+            }
         }
 
-        // 等待所有批次完成
-        CompletableFuture.allOf(batchFutures.toArray(new CompletableFuture[0])).join();
+        // 按 id 倒序
+        pageData.sort(Comparator.comparing(SweepwaterBetDTO::getId).reversed());
 
-        // 最终过滤 & 排序
-        return resultList.stream()
-                .filter(dto -> StringUtils.isBlank(teamName) || (dto.getTeam() != null && dto.getTeam().contains(teamName)))
-                .sorted(Comparator.comparing(SweepwaterBetDTO::getId).reversed())
-                .collect(Collectors.toList());
+        return new PageResult<>(pageData, (long) total, pageNum, pageSize);
     }
 
 
     /**
-     * 获取投注记录
+     * 获取历史投注记录
      * @param username
      * @param date
      * @return
      */
-    public List<SweepwaterBetDTO> getBets(String username, String teamName, String date) {
+    public PageResult<SweepwaterBetDTO> getBets(String username, String teamName, String date, Integer pageNum, Integer pageSize) {
         if (StringUtils.isBlank(date)) {
             date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
         }
-        String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, date, "*");
 
-        Iterable<String> keys = businessPlatformRedissonClient.getKeys().getKeysByPattern(pattern);
-        if (!keys.iterator().hasNext()) {
-            return Collections.emptyList();
+        // 设置默认分页参数
+        if (pageNum == null || pageNum < 1) {
+            pageNum = 1;
+        }
+        if (pageSize == null || pageSize < 1) {
+            pageSize = 10; // 默认每页10条
         }
 
+        // 索引 key
+        String indexKey = KeyUtil.genKey("INDEX", username, date);
+        RList<String> index = businessPlatformRedissonClient.getList(indexKey);
+
+        int total = index.size();
+        if (total == 0) {
+            return new PageResult<>(Collections.emptyList(), 0L, pageNum, pageSize);
+        }
+
+        // 计算分页范围
+        int startIndex = (pageNum - 1) * pageSize;
+        if (startIndex >= total) {
+            return new PageResult<>(Collections.emptyList(), (long) total, pageNum, pageSize);
+        }
+        int endIndex = Math.min(startIndex + pageSize - 1, total - 1);
+
+        // 直接分页读取 key 列表
+        List<String> pageKeys = index.range(startIndex, endIndex);
+
+        // 批量读取 Redis bucket
         RBatch batch = businessPlatformRedissonClient.createBatch();
-        List<RFuture<String>> futures = new ArrayList<>();
-        for (String key : keys) {
-            RBucketAsync<String> bucket = batch.getBucket(key);
-            futures.add(bucket.getAsync());
+        List<RFuture<Object>> futures = new ArrayList<>();
+        for (String key : pageKeys) {
+            futures.add(batch.getBucket(key).getAsync());
         }
-
         batch.execute();
 
-        List<SweepwaterBetDTO> result = new ArrayList<>();
-        for (RFuture<String> future : futures) {
+        List<SweepwaterBetDTO> pageData = new ArrayList<>();
+        for (RFuture<Object> future : futures) {
             try {
-                String json = future.toCompletableFuture().join();
+                Object json = future.toCompletableFuture().join();
                 if (json != null) {
-                    result.add(JSONUtil.toBean(json, SweepwaterBetDTO.class));
+                    SweepwaterBetDTO dto = JSONUtil.toBean((String) json, SweepwaterBetDTO.class);
+                    if (StringUtils.isBlank(teamName) ||
+                            (dto.getTeam() != null && dto.getTeam().contains(teamName))) {
+                        pageData.add(dto);
+                    }
                 }
             } catch (Exception e) {
                 log.warn("读取投注单缓存失败", e);
             }
         }
 
-        // ✅ 筛选 队伍 数据
-        return result.stream()
-                .filter(dto -> {
-                    if (StringUtils.isBlank(teamName)) {
-                        return true; // teamName 为空，直接不过滤
-                    }
-                    String team = dto.getTeam();
-                    return (team != null && team.contains(teamName));
-                })
-                // 排序:id倒叙
-                .sorted(Comparator.comparing(SweepwaterBetDTO::getId).reversed())
-                .collect(Collectors.toList());
+        // 保持和原来一致，按 id 倒序
+        pageData.sort(Comparator.comparing(SweepwaterBetDTO::getId).reversed());
+
+        return new PageResult<>(pageData, (long) total, pageNum, pageSize);
     }
 
     /**
@@ -340,24 +347,35 @@ public class BetService {
             
             // 有一个执行了投注则缓存
             if (successA.getBool("isBet") || successB.getBool("isBet")) {
+                String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
                 // 保存投注信息作为历史记录
                 String key = KeyUtil.genKey(
                         RedisConstants.PLATFORM_BET_PREFIX,
                         username,
-                        LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
+                        date,
                         dto.getId()
                 );
                 businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(dto));
 
+                // 维护索引
+                String indexKey = KeyUtil.genKey("INDEX", username,
+                        date
+                        );
+                businessPlatformRedissonClient.getList(indexKey).add(key);
                 // 保存投注信息作为实时记录
                 String realTimeKey = KeyUtil.genKey(
                         RedisConstants.PLATFORM_BET_PREFIX,
                         username,
                         "realtime",
-                        LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
+                        date,
                         dto.getId()
                 );
                 businessPlatformRedissonClient.getBucket(realTimeKey).set(JSONUtil.toJsonStr(dto));
+
+                // 实时索引
+                String realTimeIndexKey = KeyUtil.genKey("INDEX", username, "realtime",
+                        date);
+                businessPlatformRedissonClient.getList(realTimeIndexKey).add(realTimeKey);
             }
         }
 
@@ -953,7 +971,7 @@ public class BetService {
         TimeInterval timerTotal = DateUtil.timer();
 
         // 1. 获取当天所有投注记录
-        List<SweepwaterBetDTO> bets = isRealTime ? getRealTimeBets(username, null) : getBets(username, null, null);
+        List<SweepwaterBetDTO> bets = isRealTime ? getRealTimeBets(username, null, 1, 99999).getRecords() : getBets(username, null, null, 1, 99999).getRecords();
         if (CollUtil.isEmpty(bets)) {
             log.info("没有投注记录，直接返回");
             return;

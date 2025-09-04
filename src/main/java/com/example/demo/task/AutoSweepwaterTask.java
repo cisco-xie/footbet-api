@@ -186,7 +186,7 @@ public class AutoSweepwaterTask {
     }
 
     @Async("unsettledBetTaskExecutor")
-    @Scheduled(fixedRate = 3000) // 每 3 秒处理一次所有账户的注单
+    //@Scheduled(fixedRate = 3000) // 每 3 秒处理一次所有账户的注单
     public void processUnsettledBets() {
         List<AdminLoginDTO> adminUsers = adminService.getUsers(null);
         adminUsers.removeIf(adminUser -> adminUser.getStatus() == 0);

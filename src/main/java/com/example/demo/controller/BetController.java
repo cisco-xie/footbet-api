@@ -18,6 +18,7 @@ package com.example.demo.controller;
 
 import com.example.demo.api.BetService;
 import com.example.demo.api.SweepwaterService;
+import com.example.demo.core.result.PageResult;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
@@ -43,16 +44,21 @@ public class BetController extends BaseController {
 
     @Operation(summary = "获取实时进单列表")
     @GetMapping("/bets/realtime")
-    public Result<List<SweepwaterBetDTO>> getBetsReal(@RequestParam(value = "teamName", required = false)  String teamName) {
+    public Result<PageResult<SweepwaterBetDTO>> getBetsReal(@RequestParam(value = "teamName", required = false)  String teamName,
+                                                      @RequestParam(defaultValue = "1") Integer pageNum,
+                                                      @RequestParam(defaultValue = "500") Integer pageSize) {
         AdminLoginDTO admin = getUser();
-        return Result.success(betService.getRealTimeBets(admin.getUsername(), teamName));
+        return Result.success(betService.getRealTimeBets(admin.getUsername(), teamName, pageNum, pageSize));
     }
 
     @Operation(summary = "获取历史进单列表")
     @GetMapping("/bets/history")
-    public Result<List<SweepwaterBetDTO>> getBetsHistory(@RequestParam(value = "teamName", required = false)  String teamName, @RequestParam(value = "startDate", required = false)  String startDate) {
+    public Result<PageResult<SweepwaterBetDTO>> getBetsHistory(@RequestParam(value = "teamName", required = false)  String teamName,
+                                                               @RequestParam(value = "startDate", required = false)  String startDate,
+                                                               @RequestParam(defaultValue = "1") Integer pageNum,
+                                                               @RequestParam(defaultValue = "500") Integer pageSize) {
         AdminLoginDTO admin = getUser();
-        return Result.success(betService.getBets(admin.getUsername(), teamName, startDate));
+        return Result.success(betService.getBets(admin.getUsername(), teamName, startDate, pageNum, pageSize));
     }
 
     @Operation(summary = "清空实时进单列表")
