@@ -798,8 +798,10 @@ public class BetService {
                     marketName = "小盘";
                 }
             }
+            String teamH = null != sweepwaterBetDTO.getTeamVSHA() ? sweepwaterBetDTO.getTeamVSHA() : sweepwaterBetDTO.getTeamVSHB();
+            String teamA = null != sweepwaterBetDTO.getTeamVSAB() ? sweepwaterBetDTO.getTeamVSAB() : sweepwaterBetDTO.getTeamVSAA();
             betInfo.putOpt("league", params.getStr("league"));
-            betInfo.putOpt("team", params.getStr("teamVS"));
+            betInfo.putOpt("team", teamH + " -vs- " + teamA);
             betInfo.putOpt("marketTypeName", marketTypeName);
             betInfo.putOpt("marketName", marketName);
             betInfo.putOpt("odds", marketName + " " + odd.getStr("point") + " @ " + odd.getStr("price"));
