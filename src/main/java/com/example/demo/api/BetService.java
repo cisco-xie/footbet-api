@@ -72,17 +72,14 @@ public class BetService {
      * @param username
      * @return
      */
-    public PageResult<SweepwaterBetDTO> getRealTimeBets(String username, String teamName, Integer pageNum, Integer pageSize) {
+    public PageResult<SweepwaterBetDTO> getRealTimeBets(
+            String username, String teamName, Integer pageNum, Integer pageSize) {
+
         // 当前日期
         String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
 
-        // 设置默认分页参数
-        if (pageNum == null || pageNum < 1) {
-            pageNum = 1;
-        }
-        if (pageSize == null || pageSize < 1) {
-            pageSize = 10; // 默认每页10条
-        }
+        if (pageNum == null || pageNum < 1) pageNum = 1;
+        if (pageSize == null || pageSize < 1) pageSize = 10;
 
         // 实时索引 key
         String indexKey = KeyUtil.genKey("INDEX", username, "realtime", date);
@@ -93,17 +90,21 @@ public class BetService {
             return new PageResult<>(Collections.emptyList(), 0L, pageNum, pageSize);
         }
 
-        // 计算分页范围
-        int startIndex = (pageNum - 1) * pageSize;
-        if (startIndex >= total) {
+        // 倒序分页：最新数据在后，所以从 total - 1 开始往前切
+        int start = total - pageNum * pageSize;
+        if (start < 0) start = 0;
+        int end = total - (pageNum - 1) * pageSize - 1;
+        if (end < 0) {
             return new PageResult<>(Collections.emptyList(), (long) total, pageNum, pageSize);
         }
-        int endIndex = Math.min(startIndex + pageSize - 1, total - 1);
 
-        // 获取分页 key 列表
-        List<String> pageKeys = index.range(startIndex, endIndex);
+        // 一次性取出切片
+        List<String> pageKeys = index.range(start, end);
 
-        // 批量读取 Redis bucket
+        // 倒序，保证最新的数据在前
+        Collections.reverse(pageKeys);
+
+        // 批量读取
         RBatch batch = businessPlatformRedissonClient.createBatch();
         List<RFuture<Object>> futures = new ArrayList<>();
         for (String key : pageKeys) {
@@ -117,7 +118,8 @@ public class BetService {
                 Object json = future.toCompletableFuture().join();
                 if (json != null) {
                     SweepwaterBetDTO dto = JSONUtil.toBean((String) json, SweepwaterBetDTO.class);
-                    if (StringUtils.isBlank(teamName) || (dto.getTeam() != null && dto.getTeam().contains(teamName))) {
+                    if (StringUtils.isBlank(teamName) ||
+                            (dto.getTeam() != null && dto.getTeam().contains(teamName))) {
                         pageData.add(dto);
                     }
                 }
@@ -125,9 +127,6 @@ public class BetService {
                 log.warn("读取实时投注单缓存失败", e);
             }
         }
-
-        // 按 id 倒序
-        pageData.sort(Comparator.comparing(SweepwaterBetDTO::getId).reversed());
 
         return new PageResult<>(pageData, (long) total, pageNum, pageSize);
     }
@@ -139,7 +138,8 @@ public class BetService {
      * @param date
      * @return
      */
-    public PageResult<SweepwaterBetDTO> getBets(String username, String teamName, String date, Integer pageNum, Integer pageSize) {
+    public PageResult<SweepwaterBetDTO> getBets(
+            String username, String teamName, String date, Integer pageNum, Integer pageSize) {
         if (StringUtils.isBlank(date)) {
             date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
         }
@@ -161,15 +161,19 @@ public class BetService {
             return new PageResult<>(Collections.emptyList(), 0L, pageNum, pageSize);
         }
 
-        // 计算分页范围
-        int startIndex = (pageNum - 1) * pageSize;
-        if (startIndex >= total) {
+        // 倒序分页：最新的数据优先
+        int startIndex = total - (pageNum * pageSize);
+        int endIndex = total - ((pageNum - 1) * pageSize) - 1;
+        if (startIndex < 0) {
+            startIndex = 0;
+        }
+        if (endIndex < 0) {
             return new PageResult<>(Collections.emptyList(), (long) total, pageNum, pageSize);
         }
-        int endIndex = Math.min(startIndex + pageSize - 1, total - 1);
 
-        // 直接分页读取 key 列表
+        // Redis 的 range 是正序取，需要反转
         List<String> pageKeys = index.range(startIndex, endIndex);
+        Collections.reverse(pageKeys);
 
         // 批量读取 Redis bucket
         RBatch batch = businessPlatformRedissonClient.createBatch();
@@ -194,9 +198,6 @@ public class BetService {
                 log.warn("读取投注单缓存失败", e);
             }
         }
-
-        // 保持和原来一致，按 id 倒序
-        pageData.sort(Comparator.comparing(SweepwaterBetDTO::getId).reversed());
 
         return new PageResult<>(pageData, (long) total, pageNum, pageSize);
     }
