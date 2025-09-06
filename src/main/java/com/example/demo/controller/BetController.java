@@ -44,7 +44,7 @@ public class BetController extends BaseController {
 
     @Operation(summary = "获取实时进单列表")
     @GetMapping("/bets/realtime")
-    public Result<PageResult<SweepwaterBetDTO>> getBetsReal(@RequestParam(value = "teamName", required = false)  String teamName,
+    public Result<PageResult<SweepwaterBetDTO>> getBetsReal(@RequestParam(value = "teamName", required = false) String teamName,
                                                       @RequestParam(defaultValue = "1") Integer pageNum,
                                                       @RequestParam(defaultValue = "500") Integer pageSize) {
         AdminLoginDTO admin = getUser();
@@ -53,12 +53,13 @@ public class BetController extends BaseController {
 
     @Operation(summary = "获取历史进单列表")
     @GetMapping("/bets/history")
-    public Result<PageResult<SweepwaterBetDTO>> getBetsHistory(@RequestParam(value = "teamName", required = false)  String teamName,
-                                                               @RequestParam(value = "startDate", required = false)  String startDate,
+    public Result<PageResult<SweepwaterBetDTO>> getBetsHistory(@RequestParam(value = "teamName", required = false) String teamName,
+                                                               @RequestParam(value = "startDate", required = false) String startDate,
+                                                               @RequestParam(value = "success", required = false) String success,
                                                                @RequestParam(defaultValue = "1") Integer pageNum,
                                                                @RequestParam(defaultValue = "500") Integer pageSize) {
         AdminLoginDTO admin = getUser();
-        return Result.success(betService.getBets(admin.getUsername(), teamName, startDate, pageNum, pageSize));
+        return Result.success(betService.getBets(admin.getUsername(), teamName, startDate, success, pageNum, pageSize));
     }
 
     @Operation(summary = "清空实时进单列表")
