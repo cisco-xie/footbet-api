@@ -323,7 +323,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                         node.putOpt("id", o.getLong("id"));
                         node.putOpt("handicap", point);
                         node.putOpt("odds", price.getBigDecimal("price").toString());
-                        node.putOpt("wall", isHome ? "foot" : "hanging");
+                        node.putOpt("wall", isHome ? "hanging" : "foot");
 
                         if (isFirstHalf) {
                             halfLetBall.putOpt(getHandicapRange(point), node);

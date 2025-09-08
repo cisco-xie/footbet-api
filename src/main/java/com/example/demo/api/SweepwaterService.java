@@ -1565,16 +1565,17 @@ public class SweepwaterService {
             String marketName = "";
             if ("letBall".equals(key)) {
                 // 让球盘
-                String wall = oddsJson.containsKey("wall") ? oddsJson.getStr("wall") : null;
-                if (StringUtils.isNotBlank(wall)) {
-                    if ("hanging".equals(wall)) {
-                        // 让球盘
-                        marketName = homeTeam.getStr("name");
-                    } else if ("foot".equals(wall)) {
-                        // 让球盘
-                        marketName = awayTeam.getStr("name");
-                    }
-                }
+//                String wall = oddsJson.containsKey("wall") ? oddsJson.getStr("wall") : null;
+//                if (StringUtils.isNotBlank(wall)) {
+//                    if ("hanging".equals(wall)) {
+//                        // 让球盘
+//                        marketName = homeTeam.getStr("name");
+//                    } else if ("foot".equals(wall)) {
+//                        // 让球盘
+//                        marketName = awayTeam.getStr("name");
+//                    }
+//                }
+                marketName = teamsOdds.getStr("name");
             } else if ("overSize".equals(key)) {
                 // 大小盘
                 if (isHome) {
@@ -1649,16 +1650,17 @@ public class SweepwaterService {
             String marketName = "";
             if ("letBall".equals(key)) {
                 // 让球盘
-                String wall = oddsJson.containsKey("wall") ? oddsJson.getStr("wall") : null;
-                if (StringUtils.isNotBlank(wall)) {
-                    if ("hanging".equals(wall)) {
-                        // 让球盘
-                        marketName = homeTeam.getStr("name");
-                    } else if ("foot".equals(wall)) {
-                        // 让球盘
-                        marketName = awayTeam.getStr("name");
-                    }
-                }
+//                String wall = oddsJson.containsKey("wall") ? oddsJson.getStr("wall") : null;
+//                if (StringUtils.isNotBlank(wall)) {
+//                    if ("hanging".equals(wall)) {
+//                        // 让球盘
+//                        marketName = homeTeam.getStr("name");
+//                    } else if ("foot".equals(wall)) {
+//                        // 让球盘
+//                        marketName = awayTeam.getStr("name");
+//                    }
+//                }
+                marketName = teamsOdds.getStr("name");
             } else if ("overSize".equals(key)) {
                 // 大小盘
                 if (isHome) {
@@ -1693,16 +1695,17 @@ public class SweepwaterService {
             String marketName = "";
             if ("letBall".equals(key)) {
                 // 让球盘
-                String wall = oddsJson.containsKey("wall") ? oddsJson.getStr("wall") : null;
-                if (StringUtils.isNotBlank(wall)) {
-                    if ("hanging".equals(wall)) {
-                        // 让球盘
-                        marketName = homeTeam.getStr("name");
-                    } else if ("foot".equals(wall)) {
-                        // 让球盘
-                        marketName = awayTeam.getStr("name");
-                    }
-                }
+//                String wall = oddsJson.containsKey("wall") ? oddsJson.getStr("wall") : null;
+//                if (StringUtils.isNotBlank(wall)) {
+//                    if ("hanging".equals(wall)) {
+//                        // 让球盘
+//                        marketName = homeTeam.getStr("name");
+//                    } else if ("foot".equals(wall)) {
+//                        // 让球盘
+//                        marketName = awayTeam.getStr("name");
+//                    }
+//                }
+                marketName = teamsOdds.getStr("name");
             } else if ("overSize".equals(key)) {
                 // 大小盘
                 if (isHome) {
