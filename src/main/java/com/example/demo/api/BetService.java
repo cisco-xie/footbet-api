@@ -780,14 +780,13 @@ public class BetService {
             String marketTypeName = "";
             if ("letBall".equals(sweepwaterBetDTO.getHandicapType())) {
                 marketTypeName = "让球盘";
-                if ("H".equals(params.getStr("option"))) {
+                if ("h".equals(params.getStr("option"))) {
                     // 主队
                     marketName = null != sweepwaterBetDTO.getTeamVSHA() ? sweepwaterBetDTO.getTeamVSHA() : sweepwaterBetDTO.getTeamVSHB();
                 } else {
                     // 客队
                     marketName = null != sweepwaterBetDTO.getTeamVSAB() ? sweepwaterBetDTO.getTeamVSAB() : sweepwaterBetDTO.getTeamVSAA();
                 }
-
             } else if ("overSize".equals(sweepwaterBetDTO.getHandicapType())) {
                 marketTypeName = "大小盘";
                 if ("h".equals(params.getStr("option"))) {

@@ -743,8 +743,15 @@ public class SweepwaterService {
                 );
                 return;
             }
+
+            // 提取赛事id
+            List<String> idAs = bindLeagueVO.getEvents().stream()
+                    .map(BindTeamVO::getIdA)   // 提取 idA
+                    .filter(Objects::nonNull) // 可选：过滤掉 null
+                    .distinct()               // 去重
+                    .toList();
             // 平台绑定球队赛事对应获取盘口赛事列表
-            JSONObject eventAJson = findEventByLeagueId(eventsA, bindLeagueVO.getLeagueIdA());
+            JSONObject eventAJson = findEventByLeagueId(eventsA, bindLeagueVO.getLeagueIdA(), idAs);
             if (eventAJson == null) {
                 log.info("扫水, 平台用户: {}, 网站A: {}, 在盘口赛事中未找到对应联绑定的赛事id:{},名称:{},球队id:{},名称:{}, 退出",
                         username,
@@ -757,7 +764,13 @@ public class SweepwaterService {
                 return;
             }
 
-            JSONObject eventBJson = findEventByLeagueId(eventsB, bindLeagueVO.getLeagueIdB());
+            // 提取赛事id
+            List<String> idBs = bindLeagueVO.getEvents().stream()
+                    .map(BindTeamVO::getIdB)   // 提取 idB
+                    .filter(Objects::nonNull) // 可选：过滤掉 null
+                    .distinct()               // 去重
+                    .toList();
+            JSONObject eventBJson = findEventByLeagueId(eventsB, bindLeagueVO.getLeagueIdB(), idBs);
             if (eventBJson == null) {
                 log.info("扫水, 平台用户: {}, 网站B: {}, 在盘口赛事中未找到对应联绑定的赛事id:{},名称:{},球队id:{},名称:{}, 退出",
                         username,
@@ -905,11 +918,20 @@ public class SweepwaterService {
         log.info("sweepwater扫水-进行清理缓存操作,轮次id:{},已清理,本轮次网站赔率剩余缓存数:{}", roundId, ecidFetchFutures.size());
     }
 
-    private JSONObject findEventByLeagueId(JSONArray events, String leagueId) {
+    private JSONObject findEventByLeagueId(JSONArray events, String leagueId, List<String> ids) {
         log.info("查找联赛: 联赛={}, leagueId={}", events, leagueId);
         for (Object eventObj : events) {
             JSONObject eventJson = (JSONObject) eventObj;
             if (leagueId.equals(eventJson.getStr("id"))) {
+                JSONArray eventArray = eventJson.getJSONArray("events");
+                if (eventArray != null) {
+                    // 移除 id 不在 ids 列表里的赛事
+                    eventArray.removeIf(event -> {
+                        JSONObject eventItem = (JSONObject) event;
+                        return !ids.contains(eventItem.getStr("id"));
+                    });
+                }
+
                 return eventJson;
             }
         }
