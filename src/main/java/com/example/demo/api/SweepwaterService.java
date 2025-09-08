@@ -1228,7 +1228,7 @@ public class SweepwaterService {
             String bindNameA, String bindNameB) {
 
         return (teamNameA.equals(bindNameA) && !teamNameB.equals(bindNameB)) ||
-                (teamNameA.equals(bindNameB) && !teamNameB.equals(bindNameA));
+                (!teamNameA.equals(bindNameA) && teamNameB.equals(bindNameB));
     }
 
     public static void main(String[] args) {
