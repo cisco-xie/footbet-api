@@ -305,12 +305,17 @@ public class WebsiteSboLoginHandler implements ApiHandler {
                 return step9Result;
             }
 
+            JSONObject responseJson = new JSONObject();
             // 第十步：调用getTokens接口
             JSONObject step11Result = executeStep11(userConfig, sportsBookUrl, params, cookieStore);
             if (!step11Result.getBool("success", false) && 200 != step11Result.getInt("status")) {
                 return new JSONObject().set("success", false).set("msg", "获取token失败");
             }
-            JSONObject responseJson = new JSONObject();
+            if (!JSONUtil.isTypeJSONObject(step11Result.getStr("body"))) {
+                responseJson.putOpt("success", false);
+                responseJson.putOpt("msg", "登录失败");
+                return responseJson;
+            }
 
             JSONObject step12Result = executeStep12(userConfig, apiHomeUrl, params, cookieStore);
             if (!step12Result.getJSONObject("body").getBool("hasReadTermAndCondition")) {
