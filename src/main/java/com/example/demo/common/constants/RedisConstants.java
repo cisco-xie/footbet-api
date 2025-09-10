@@ -84,6 +84,10 @@ public class RedisConstants {
     public static final String PLATFORM_BET_PREFIX = "platform:bet";
 
     /**
+     * 投注成功记录 前缀  用于后续查询
+     */
+    public static final String PLATFORM_BET_SUCCESS_PREFIX = "platform:bet:success";
+    /**
      * 投注次数限制 前缀
      */
     public static final String PLATFORM_BET_LIMIT_PREFIX = "platform:bet:limit";

@@ -1298,6 +1298,7 @@ public class HandicapApi {
                             betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap") + " @ " + objJson.getStr("odds"));
                             betInfo.putOpt("handicap", objJson.getStr("handicap"));
                             betInfo.putOpt("amount", odds.getStr("stake"));
+                            betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));
                             selection.putOpt("betInfo", betInfo);
                             selections.add(selection);
                         }
@@ -1387,6 +1388,7 @@ public class HandicapApi {
                     betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread") + " @ " + serverresponse.getStr("ioratio"));
                     betInfo.putOpt("handicap", serverresponse.getStr("spread"));
                     betInfo.putOpt("amount", result);
+                    betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));
                     params.putOpt("betInfo", betInfo);
 
                     // 转换赔率类型
@@ -1426,7 +1428,6 @@ public class HandicapApi {
                 params.putOpt("point", oddInfo.getStr("point"));
                 params.putOpt("stake", result);
                 params.putOpt("uid", oddInfo.getStr("uid"));
-
                 params.putOpt("betInfo", betPreviewInfo);
 
                 // 转换赔率类型

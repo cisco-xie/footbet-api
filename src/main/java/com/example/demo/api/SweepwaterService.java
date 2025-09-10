@@ -1410,7 +1410,7 @@ public class SweepwaterService {
                                     BigDecimal result = BigDecimal.valueOf(value).setScale(3, RoundingMode.HALF_UP);
                                     double finalValue = result.doubleValue();
                                     String decimalOddsB = valueBJson.containsKey("decimalOdds") ? valueBJson.getStr("decimalOdds") : null;
-                                    // 判断赔率是否在指定区间内
+                                    // 判断赔率水位是否在指定区间内
                                     if (oddsScan.getWaterLevelFrom() <= finalValue && finalValue <= oddsScan.getWaterLevelTo()) {
                                         LocalDateTime now = LocalDateTime.now();
                                         JSONObject betInfoA = null;
@@ -1420,57 +1420,6 @@ public class SweepwaterService {
                                             betInfoB = buildBetInfo(websiteIdB, eventBJson.getJSONArray("events"), teamB, eventBJson.getStr("league"), key, valueBJson, teamB.getBool("isHome"), amountDTO);
                                         } catch (Exception e) {
                                             log.info("通过赔率手动解析betInfo失败: ", e);
-                                        }
-                                        // 查询缓存看谁的赔率是最新变动的
-                                        String oddsIdKeyA = "";
-                                        String oddsIdKeyB = "";
-                                        if (WebsiteType.ZHIBO.getId().equals(websiteIdA)) {
-                                            oddsIdKeyA = valueAJson.getStr("id");
-                                        } else if (WebsiteType.PINGBO.getId().equals(websiteIdA)) {
-                                            int lastPipeIndex = valueAJson.getStr("id").lastIndexOf("|");
-                                            String suffix = "";
-                                            if (teamA.getBool("isHome")) {
-                                                suffix = "H";
-                                            } else {
-                                                suffix = "C";
-                                            }
-                                            oddsIdKeyA = valueAJson.getStr("id").substring(0, lastPipeIndex + 1) + suffix;
-                                        } else if (WebsiteType.XINBAO.getId().equals(websiteIdA)) {
-                                            // 新二网站
-                                            oddsIdKeyA = valueAJson.getStr("id") + valueAJson.getStr("choseTeam");
-                                        } else if (WebsiteType.SBO.getId().equals(websiteIdA)) {
-                                            // 盛帆网站
-                                            String suffix = "";
-                                            if (teamA.getBool("isHome")) {
-                                                suffix = "H";
-                                            } else {
-                                                suffix = "C";
-                                            }
-                                            oddsIdKeyA = valueAJson.getStr("id") + suffix;
-                                        }
-                                        if (WebsiteType.ZHIBO.getId().equals(websiteIdB)) {
-                                            oddsIdKeyB = valueBJson.getStr("id");
-                                        } else if (WebsiteType.PINGBO.getId().equals(websiteIdB)) {
-                                            int lastPipeIndex = valueBJson.getStr("id").lastIndexOf("|");
-                                            String suffix = "";
-                                            if (teamB.getBool("isHome")) {
-                                                suffix = "H";
-                                            } else {
-                                                suffix = "C";
-                                            }
-                                            oddsIdKeyB = valueBJson.getStr("id").substring(0, lastPipeIndex + 1) + suffix;
-                                        } else if (WebsiteType.XINBAO.getId().equals(websiteIdA)) {
-                                            // 新二网站
-                                            oddsIdKeyB = valueBJson.getStr("id") + valueBJson.getStr("choseTeam");
-                                        } else if (WebsiteType.SBO.getId().equals(websiteIdA)) {
-                                            // 盛帆网站
-                                            String suffix = "";
-                                            if (teamB.getBool("isHome")) {
-                                                suffix = "H";
-                                            } else {
-                                                suffix = "C";
-                                            }
-                                            oddsIdKeyB = valueBJson.getStr("id") + suffix;
                                         }
                                         /*String oddsKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, sweepwaterUsername, oddsIdKeyA);
                                         String oddsKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_ODDS_PREFIX, sweepwaterUsername, oddsIdKeyB);
@@ -1562,6 +1511,7 @@ public class SweepwaterService {
                     awayTeam = teamJson;
                 }
             }
+            String betTeamName = teamsOdds.getStr("name");
             String marketName = "";
             if ("letBall".equals(key)) {
                 // 让球盘
@@ -1591,6 +1541,7 @@ public class SweepwaterService {
             betInfo.putOpt("odds", marketName + " " + handicap + " @ " + oddsJson.getStr("odds"));
             betInfo.putOpt("handicap", handicap);
             betInfo.putOpt("amount", amount.getAmountPingBo());
+            betInfo.putOpt("betTeamName", betTeamName);
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             String id = teamsOdds.getStr("id");
             JSONObject homeTeam = new JSONObject();
@@ -1647,6 +1598,7 @@ public class SweepwaterService {
                     awayTeam = teamJson;
                 }
             }
+            String betTeamName = teamsOdds.getStr("name");
             String marketName = "";
             if ("letBall".equals(key)) {
                 // 让球盘
@@ -1677,6 +1629,7 @@ public class SweepwaterService {
             betInfo.putOpt("odds", marketName + " " + handicap + " @ " + oddsJson.getStr("odds"));
             betInfo.putOpt("handicap", handicap);
             betInfo.putOpt("amount", amount.getAmountXinEr());
+            betInfo.putOpt("betTeamName", betTeamName);
         } else if (WebsiteType.SBO.getId().equals(websiteId)) {
             JSONObject homeTeam = new JSONObject();
             JSONObject awayTeam = new JSONObject();
@@ -1692,6 +1645,7 @@ public class SweepwaterService {
                     awayTeam = teamJson;
                 }
             }
+            String betTeamName = teamsOdds.getStr("name");
             String marketName = "";
             if ("letBall".equals(key)) {
                 // 让球盘
@@ -1724,6 +1678,7 @@ public class SweepwaterService {
             betInfo.putOpt("odds", marketName + " " + handicap + " @ " + oddsJson.getStr("odds"));
             betInfo.putOpt("handicap", handicap);
             betInfo.putOpt("amount", amount.getAmountXinEr());
+            betInfo.putOpt("betTeamName", betTeamName);
         }
 
         return betInfo;
@@ -1807,7 +1762,9 @@ public class SweepwaterService {
                     && Objects.equals(old.getHandicapType(), handicapType)
                     && Objects.equals(old.getTeamA(), nameA)
                     && Objects.equals(old.getTeamB(), nameB);
-
+            if (!baseMatch) {
+                continue;
+            }
             // 特殊情况，如果网站是平博，那么对应的oddsId需要把最后一个|的值删掉后再做对比
             String oldOddsIdA = old.getOddsIdA();
             String oldOddsIdB = old.getOddsIdB();
@@ -1827,7 +1784,7 @@ public class SweepwaterService {
                 oldOddsIdB = oldIdx != -1 ? oldOddsIdB.substring(0, oldIdx + 1) : oldOddsIdB;
             }
 
-            if (baseMatch && Objects.equals(oldOddsIdA, currentOddsIdA) && Objects.equals(oldOddsIdB, currentOddsIdB)) {
+            if (Objects.equals(oldOddsIdA, currentOddsIdA) && Objects.equals(oldOddsIdB, currentOddsIdB)) {
                 lastTimeA = old.getOddsA() != null && !String.format("%.2f", valueA).equals(old.getOddsA());
                 lastTimeB = old.getOddsB() != null && !String.format("%.2f", valueB).equals(old.getOddsB());
                 break; // ✅ 提前退出

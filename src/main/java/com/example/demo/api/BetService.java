@@ -16,10 +16,7 @@ import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.core.result.PageResult;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.dto.bet.SweepwaterBetDTO;
-import com.example.demo.model.dto.settings.BetAmountDTO;
-import com.example.demo.model.dto.settings.IntervalDTO;
-import com.example.demo.model.dto.settings.LimitDTO;
-import com.example.demo.model.dto.settings.ProfitDTO;
+import com.example.demo.model.dto.settings.*;
 import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
 import com.example.demo.model.vo.WebsiteVO;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -262,6 +259,7 @@ public class BetService {
         sweepwaters.removeIf(s -> s.getIsBet() == 1);
         LimitDTO limitDTO = settingsBetService.getLimit(username);
         IntervalDTO intervalDTO = settingsBetService.getInterval(username);
+        OptimizingDTO optimizing = settingsBetService.getOptimizing(username);
         BetAmountDTO amountDTO = settingsService.getBetAmount(username);
         AdminLoginDTO admin = adminService.getAdmin(username);
         ProfitDTO profit = settingsService.getProfit(username);
@@ -359,11 +357,11 @@ public class BetService {
                 if (rollingOrderA == rollingOrderB) {
                     // 并行执行
                     CompletableFuture<JSONObject> betA = CompletableFuture.supplyAsync(() ->
-                                    tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, simulateA),
+                                    tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, simulateA),
                             betExecutor
                     );
                     CompletableFuture<JSONObject> betB = CompletableFuture.supplyAsync(() ->
-                                    tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, simulateB),
+                                    tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, simulateB),
                             betExecutor
                     );
                     CompletableFuture.allOf(betA, betB).join();
@@ -371,15 +369,15 @@ public class BetService {
                     successB = betB.join();
                 } else if (rollingOrderA < rollingOrderB) {
                     // A 优先
-                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, simulateA);
+                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, simulateA);
                     if (successA.getBool("success")) {
-                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, simulateB);
+                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, simulateB);
                     }
                 } else {
                     // B 优先
-                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, simulateA);
+                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, simulateA);
                     if (successB.getBool("success")) {
-                        successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, simulateB);
+                        successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, simulateB);
                     }
                 }
             } catch (Exception e) {
@@ -487,9 +485,11 @@ public class BetService {
                            LimitDTO limitDTO,
                            IntervalDTO intervalDTO,
                            BetAmountDTO amountDTO,
+                           OptimizingDTO optimizing,
                            Integer simulateBet) {
         JSONObject result = new JSONObject();
         String score = isA ? dto.getScoreA() : dto.getScoreB();
+        String betTeamName = isA ? dto.getTeamA() : dto.getTeamB();
         // 构建投注参数并调用投注接口
         JSONObject params = buildBetParams(dto, amountDTO, isA);
 
@@ -542,6 +542,21 @@ public class BetService {
                         result.putOpt("success", false);
                         return result;
                     }
+
+                    if (optimizing.getContrastNum() != null && optimizing.getContrastNum() == 1) {
+                        // 开启了不投注对头单，意思是只要投了某一队，后续就不会再投注另一队
+                        String successKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_SUCCESS_PREFIX, username, websiteId, eventId);
+                        List<String> successList = businessPlatformRedissonClient.getList(successKey);
+                        if (successList != null && !successList.isEmpty()) {
+                            JSONObject jsonObject = JSONUtil.parseObj(successList.get(0));
+                            if (!jsonObject.getStr("betTeamName").equals(betTeamName)) {
+                                // 必须投注同一支队伍
+                                result.putOpt("isBet", false);
+                                result.putOpt("success", false);
+                                return result;
+                            }
+                        }
+                    }
                 }
 
                 // 这里是校验间隔时间
@@ -570,7 +585,7 @@ public class BetService {
                     return result;
                 }
                 // 投注预览
-                JSONObject betPreview = buildBetInfo(username, websiteId, params, dto);
+                JSONObject betPreview = buildBetInfo(username, betTeamName, websiteId, params, dto);
                 if (betPreview == null) {
                     log.info("用户 {}, 网站:{} 投注预览失败，eventId={}", username, WebsiteType.getById(websiteId).getDescription(), eventId);
                     result.putOpt("isBet", false);
@@ -594,8 +609,19 @@ public class BetService {
                     dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                 }
                 if (betResult != null && parseBetSuccess(betResult, dto, isA)) {
-                    // 投注成功则记录投注时间
-                    businessPlatformRedissonClient.getBucket(intervalKey).set(System.currentTimeMillis(), Duration.ofHours(24));
+                    // 异步写入 Redis 列表
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            // 投注成功则记录投注时间
+                            businessPlatformRedissonClient.getBucket(intervalKey).set(System.currentTimeMillis(), Duration.ofHours(24));
+                            String successKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_SUCCESS_PREFIX, username, websiteId, eventId);
+                            // 投注成功则记录
+                            businessPlatformRedissonClient.getList(successKey).add(JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
+                        } catch (Exception e) {
+                            log.warn("异步记录投注成功失败:", e);
+                        }
+                    });
+
                     result.putOpt("isBet", true);
                     result.putOpt("success", true);
                     result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
@@ -676,7 +702,7 @@ public class BetService {
      * @param params
      * @return
      */
-    public JSONObject buildBetInfo(String username, String websiteId, JSONObject params, SweepwaterBetDTO sweepwaterBetDTO) {
+    public JSONObject buildBetInfo(String username, String betTeamName, String websiteId, JSONObject params, SweepwaterBetDTO sweepwaterBetDTO) {
         JSONObject betPreviewResult = new JSONObject();
         JSONObject betInfo = new JSONObject();
 
@@ -736,6 +762,7 @@ public class BetService {
                 betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap") + " @ " + objJson.getStr("odds"));
                 betInfo.putOpt("handicap", objJson.getStr("handicap"));
                 betInfo.putOpt("amount", params.getStr("stake"));
+                betInfo.putOpt("betTeamName", betTeamName);
             }
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             JSONObject data = betPreviewJson.getJSONObject("data");
@@ -747,6 +774,7 @@ public class BetService {
             betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap") + " @ " + betTicket.getStr("odds"));
             betInfo.putOpt("handicap", data.getStr("handicap"));
             betInfo.putOpt("amount", params.getStr("stake"));
+            betInfo.putOpt("betTeamName", betTeamName);
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             JSONObject serverresponse = betPreviewJson.getJSONObject("data");
             String fastCheck = serverresponse.getStr("fast_check");
@@ -772,6 +800,7 @@ public class BetService {
             betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread") + " @ " + serverresponse.getStr("ioratio"));
             betInfo.putOpt("handicap", serverresponse.getStr("spread"));
             betInfo.putOpt("amount", params.getStr("golds"));
+            betInfo.putOpt("betTeamName", betTeamName);
         } else if (WebsiteType.SBO.getId().equals(websiteId)) {
             JSONObject oddsInfo = betPreviewJson.getJSONObject("data").getJSONObject("oddsInfo");
             String firstKey = oddsInfo.keySet().iterator().next();  // 拿第一个 key
@@ -807,6 +836,7 @@ public class BetService {
             betInfo.putOpt("handicap", odd.getStr("point"));
             betInfo.putOpt("amount", params.getStr("stake"));
             betInfo.putOpt("uid", odd.getStr("uid"));
+            betInfo.putOpt("betTeamName", betTeamName);
         }
 
         betPreviewResult.putOpt("betInfo", betInfo);
