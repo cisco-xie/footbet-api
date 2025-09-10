@@ -24,10 +24,9 @@ import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
 import com.example.demo.model.vo.WebsiteVO;
 import com.example.demo.model.vo.dict.BindLeagueVO;
 import com.example.demo.model.vo.dict.BindTeamVO;
-import com.google.common.cache.Cache;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import io.lettuce.core.RedisException;
 import jakarta.annotation.Resource;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -92,14 +91,12 @@ public class SweepwaterService {
     // 赛事缓存
     // 用于记录已获取的 ecid 对应事件，避免重复请求远程 API
     private final ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures = new ConcurrentHashMap<>();
-    private final Cache<String, CompletableFuture<JSONArray>> ecidFetchFuturesCacheA =
-            CacheBuilder.newBuilder()
-                    .expireAfterWrite(5, TimeUnit.SECONDS)  // 缓存 5 秒自动过期
-                    .build();
-    private final Cache<String, CompletableFuture<JSONArray>> ecidFetchFuturesCacheB =
-            CacheBuilder.newBuilder()
-                    .expireAfterWrite(5, TimeUnit.SECONDS)  // 缓存 5 秒自动过期
-                    .build();
+
+    // 本地缓存（存储每个账户最新一次扫水结果,用于对比赔率是否变动） 每个账户最多 10000 条 oddsKey，60 分钟未访问自动过期
+    private final Cache<String, SweepwaterDTO> lastSweepCache = Caffeine.newBuilder()
+            .maximumSize(10000)
+            .expireAfterAccess(Duration.ofMinutes(60))
+            .build();
 
     /**
      * 更新扫水已经投注
@@ -1368,6 +1365,9 @@ public class SweepwaterService {
                                         // 生成格式为 "HHmm"（小时+分钟） todo 以分钟为单位进行切割扫水列表，分key保存
                                         // String minuteKey = now.format(DateTimeFormatter.ofPattern("HHmm"));
                                         // String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username, minuteKey);
+                                        // 更新 lastTime
+                                        updateLastTime(username, sweepwaterDTO, valueA, valueB);
+                                        // 写入 Redis
                                         saveSweepwater(username, sweepwaterDTO);
                                         // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                         tryBet(username, sweepwaterDTO);
@@ -1378,7 +1378,7 @@ public class SweepwaterService {
                         }
                     }
                 } else {
-                    // 处理其他盘类型
+                    // 处理让球盘和大小盘类型
                     JSONObject letBallA = fullCourtA.getJSONObject(key);
                     JSONObject letBallB = fullCourtB.getJSONObject(key);
                     for (String subKey : letBallA.keySet()) {
@@ -1436,6 +1436,9 @@ public class SweepwaterService {
                                         // 生成格式为 "HHmm"（小时+分钟） todo 以分钟为单位进行切割扫水列表，分key保存
                                         // String minuteKey = now.format(DateTimeFormatter.ofPattern("HHmm"));
                                         // String sweepWaterKey = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username, minuteKey);
+                                        // 更新 lastTime
+                                        updateLastTime(username, sweepwaterDTO, valueA, valueB);
+                                        // 写入 Redis
                                         saveSweepwater(username, sweepwaterDTO);
                                         // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                         log.info("扫水匹配到数据-保存扫水数据");
@@ -1741,6 +1744,48 @@ public class SweepwaterService {
         result.put("lastTimeB", lastOddsTimeB > lastOddsTimeA);
         return result;
     }
+    // 生成 oddsKey 方法
+    private String generateOddsKey(String username, SweepwaterDTO dto, String oddsId) {
+        // 特殊情况，如果网站是平博，那么对应的oddsId需要把最后一个|的值删掉后再做对比
+        if (WebsiteType.PINGBO.getId().equals(dto.getWebsiteIdA())) {
+            int oldIdx = oddsId.lastIndexOf("|");
+            oddsId = oldIdx != -1 ? oddsId.substring(0, oldIdx + 1) : oddsId;
+        }
+        if (WebsiteType.PINGBO.getId().equals(dto.getWebsiteIdB())) {
+            int oldIdx = oddsId.lastIndexOf("|");
+            oddsId = oldIdx != -1 ? oddsId.substring(0, oldIdx + 1) : oddsId;
+        }
+        return String.join("|",
+                username,
+                oddsId
+        );
+    }
+    // 更新 lastTimeA/B
+    private void updateLastTime(String username, SweepwaterDTO newDTO, double valueA, double valueB) {
+        String keyA = generateOddsKey(username, newDTO, newDTO.getOddsIdA());
+        String keyB = generateOddsKey(username, newDTO, newDTO.getOddsIdB());
+        SweepwaterDTO lastADTO = lastSweepCache.getIfPresent(keyA);
+        SweepwaterDTO lastBDTO = lastSweepCache.getIfPresent(keyB);
+
+        boolean lastTimeA = true;
+        boolean lastTimeB = true;
+
+        if (lastADTO != null) {
+            double lastOdds = Double.parseDouble(lastADTO.getOddsA());
+            lastTimeA = Double.compare(valueA, lastOdds) != 0;
+        }
+        if (lastBDTO != null) {
+            double lastOdds = Double.parseDouble(lastBDTO.getOddsB());
+            lastTimeB = Double.compare(valueB, lastOdds) != 0;
+        }
+
+        newDTO.setLastOddsTimeA(lastTimeA);
+        newDTO.setLastOddsTimeB(lastTimeB);
+
+        // 更新 Map
+        lastSweepCache.put(keyA, newDTO);
+        lastSweepCache.put(keyB, newDTO);
+    }
 
     // 创建 SweepwaterDTO 对象的简化方法
     private SweepwaterDTO createSweepwaterDTO(String username, String oddsIdA, String oddsIdB, LocalDateTime now, String selectionIdA, String selectionIdB, String courtType, String handicapType, JSONObject eventAJson, JSONObject eventBJson, JSONObject teamA, JSONObject teamB,
@@ -1749,48 +1794,6 @@ public class SweepwaterService {
                                                      String strongA, String strongB, String gTypeA, String gTypeB, String wTypeA, String wTypeB, String rTypeA, String rTypeB, String choseTeamA, String choseTeamB, String conA, String conB, String ratioA, String ratioB,
                                                      JSONObject betInfoA, JSONObject betInfoB
     ) {
-        boolean lastTimeA = true;
-        boolean lastTimeB = true;
-        List<SweepwaterDTO> sweepwaters = new ArrayList<>(getSweepwaters(username));
-        // 如果存在扫水，倒叙遍历找到对应联赛和队伍的扫水信息，查看对应赔率字段odds是否变动，变动则为true，反之false。遍历对比时通过websiteIdA,websiteIdB,type,handicapType,oddsIdA,oddsIdB这些字段判断是否为对应的扫水数据
-        // 从后往前找最近的匹配记录
-        for (int i = sweepwaters.size() - 1; i >= 0; i--) {
-            SweepwaterDTO old = sweepwaters.get(i);
-            boolean baseMatch = Objects.equals(old.getWebsiteIdA(), websiteIdA)
-                    && Objects.equals(old.getWebsiteIdB(), websiteIdB)
-                    && Objects.equals(old.getType(), courtType)
-                    && Objects.equals(old.getHandicapType(), handicapType)
-                    && Objects.equals(old.getTeamA(), nameA)
-                    && Objects.equals(old.getTeamB(), nameB);
-            if (!baseMatch) {
-                continue;
-            }
-            // 特殊情况，如果网站是平博，那么对应的oddsId需要把最后一个|的值删掉后再做对比
-            String oldOddsIdA = old.getOddsIdA();
-            String oldOddsIdB = old.getOddsIdB();
-            String currentOddsIdA = oddsIdA;
-            String currentOddsIdB = oddsIdB;
-
-            if (WebsiteType.PINGBO.getId().equals(websiteIdA)) {
-                int idx = currentOddsIdA.lastIndexOf("|");
-                currentOddsIdA = idx != -1 ? currentOddsIdA.substring(0, idx + 1) : currentOddsIdA;
-                int oldIdx = oldOddsIdA.lastIndexOf("|");
-                oldOddsIdA = oldIdx != -1 ? oldOddsIdA.substring(0, oldIdx + 1) : oldOddsIdA;
-            }
-            if (WebsiteType.PINGBO.getId().equals(websiteIdB)) {
-                int idx = currentOddsIdB.lastIndexOf("|");
-                currentOddsIdB = idx != -1 ? currentOddsIdB.substring(0, idx + 1) : currentOddsIdB;
-                int oldIdx = oldOddsIdB.lastIndexOf("|");
-                oldOddsIdB = oldIdx != -1 ? oldOddsIdB.substring(0, oldIdx + 1) : oldOddsIdB;
-            }
-
-            if (Objects.equals(oldOddsIdA, currentOddsIdA) && Objects.equals(oldOddsIdB, currentOddsIdB)) {
-                lastTimeA = old.getOddsA() != null && !String.format("%.2f", valueA).equals(old.getOddsA());
-                lastTimeB = old.getOddsB() != null && !String.format("%.2f", valueB).equals(old.getOddsB());
-                break; // ✅ 提前退出
-            }
-        }
-
         SweepwaterDTO sweepwaterDTO = new SweepwaterDTO();
         sweepwaterDTO.setId(IdUtil.getSnowflakeNextIdStr());
         sweepwaterDTO.setOddsIdA(oddsIdA);
@@ -1811,10 +1814,8 @@ public class SweepwaterService {
         sweepwaterDTO.setIsHomeA(teamA.getBool("isHome"));
         sweepwaterDTO.setIsHomeB(teamB.getBool("isHome"));
         sweepwaterDTO.setOdds(valueA + " / " + valueB);
-        sweepwaterDTO.setOddsA(String.format("%.2f", valueA));
-        sweepwaterDTO.setOddsB(String.format("%.2f", valueB));
-        sweepwaterDTO.setLastOddsTimeA(lastTimeA);
-        sweepwaterDTO.setLastOddsTimeB(lastTimeB);
+        sweepwaterDTO.setOddsA(String.format("%.3f", valueA));
+        sweepwaterDTO.setOddsB(String.format("%.3f", valueB));
         sweepwaterDTO.setWater(String.format("%.3f", value));
         sweepwaterDTO.setWebsiteIdA(websiteIdA);
         sweepwaterDTO.setWebsiteIdB(websiteIdB);
