@@ -186,7 +186,7 @@ public class HandicapApi {
 
         // 当前失败次数
         int retryCount = retryMap.getOrDefault(key, 0);
-        if (retryCount >= 2) {
+        if (retryCount >= 5) {
             log.warn("登录失败次数达到上限（仅本次任务内），username={}, websiteId={}", username, websiteId);
             return;
         }

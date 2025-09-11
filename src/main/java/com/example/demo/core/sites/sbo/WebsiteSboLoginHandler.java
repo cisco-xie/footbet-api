@@ -242,7 +242,9 @@ public class WebsiteSboLoginHandler implements ApiHandler {
 
             // 第四步：执行登录（使用第三步的URL，因为通常是同一个登录端点）
             JSONObject step4Result = executeStep4(userConfig, step3Url, params, cookieStore, xsrfToken);
-
+            if (step4Result.getInt("status") == 401) {
+                return new JSONObject().set("success", false).set("msg", "第四步:" + step4Result.getJSONObject("body").getStr("message"));
+            }
             // 从第四步响应中获取Location
             String step5Url = extractLocation(step4Result.get("response", OkHttpProxyDispatcher.HttpResult.class), params);
             if (step5Url == null) {

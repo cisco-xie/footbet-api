@@ -84,20 +84,20 @@ public class WebsiteSboChangPwdHandler implements ApiHandler {
                 res.putOpt("msg", "账户登录失效");
                 return res;
             }
-            res.putOpt("msg", "同意协议失败");
+            res.putOpt("msg", "修改密码失败");
             return res;
         }
         // 解析响应
         JSONObject result = new JSONObject();
         JSONObject responseJson = new JSONObject(response.getBody());
-        if (!"Success".equals(responseJson.getStr("status"))) {
+        if (!"success".equalsIgnoreCase(responseJson.getStr("status"))) {
             responseJson.putOpt("code", response.getStatus());
             responseJson.putOpt("success", false);
             responseJson.putOpt("msg", "账户修改密码失败");
             return responseJson;
         }
         result.putOpt("success", true);
-        result.putOpt("msg", "同意协议成功");
+        result.putOpt("msg", "修改密码成功");
         return result;
     }
 
