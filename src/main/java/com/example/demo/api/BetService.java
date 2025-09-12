@@ -56,6 +56,8 @@ public class BetService {
     private SettingsService settingsService;
     @Resource
     private WebsiteService websiteService;
+    // 全局存储处理过的 ID
+    private static final Set<String> processedIds = ConcurrentHashMap.newKeySet();
 
     /**
      * 清空实时投注
@@ -303,6 +305,11 @@ public class BetService {
 
         List<WebsiteVO> websites = websiteService.getWebsites(username);
         for (SweepwaterDTO sweepwaterDTO : sweepwaters) {
+            // 如果已经处理过，直接跳过
+            if (!processedIds.add(sweepwaterDTO.getId())) {
+                continue;
+            }
+            processedIds.add(sweepwaterDTO.getId());
             SweepwaterBetDTO dto = new SweepwaterBetDTO();
             BeanUtils.copyProperties(sweepwaterDTO, dto);
             dto.setIsUnilateral(isUnilateral);
@@ -391,14 +398,15 @@ public class BetService {
                 log.error("sweepwater={} 投注异常", dto.getId(), e);
             }
 
-            // 设置已投注
-            sweepwaterService.setIsBet(username, dto.getId());
-
             dto.setBetSuccessA(successA.getBool("success"));
             dto.setBetSuccessB(successB.getBool("success"));
             
             // 有一个执行了投注则缓存
             if (successA.getBool("isBet") || successB.getBool("isBet")) {
+
+                // 设置扫水已投注
+                sweepwaterService.setIsBet(username, sweepwaterDTO.getId());
+
                 String json = JSONUtil.toJsonStr(dto);
                 if (sweepwaterDTO.getLastOddsTimeA() || sweepwaterDTO.getLastOddsTimeB()) {
                     log.info("新旧拷贝不对，dto: {}=================json: {}", dto, json);
