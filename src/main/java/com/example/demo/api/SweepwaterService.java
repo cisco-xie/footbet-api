@@ -10,15 +10,10 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
-import com.example.demo.common.enmu.PingBoOddsFormatType;
 import com.example.demo.common.enmu.WebsiteType;
-import com.example.demo.common.enmu.XinBaoOddsFormatType;
 import com.example.demo.common.utils.KeyUtil;
-import com.example.demo.common.utils.ToDayRangeUtil;
-import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.core.holder.SweepWaterThreadPoolHolder;
 import com.example.demo.model.dto.AdminLoginDTO;
-import com.example.demo.model.dto.bet.SweepwaterBetDTO;
 import com.example.demo.model.dto.settings.*;
 import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
 import com.example.demo.model.vo.WebsiteVO;
@@ -26,7 +21,6 @@ import com.example.demo.model.vo.dict.BindLeagueVO;
 import com.example.demo.model.vo.dict.BindTeamVO;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.google.common.cache.CacheBuilder;
 import jakarta.annotation.Resource;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -41,12 +35,9 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -93,7 +84,7 @@ public class SweepwaterService {
     private final ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures = new ConcurrentHashMap<>();
 
     // 本地缓存（存储每个账户最新一次扫水结果,用于对比赔率是否变动） 每个账户最多 10000 条 oddsKey，60 分钟未访问自动过期
-    private final Cache<String, SweepwaterDTO> lastSweepCache = Caffeine.newBuilder()
+    private final Cache<String, BigDecimal> lastSweepCache = Caffeine.newBuilder()
             .maximumSize(10000)
             .expireAfterAccess(Duration.ofMinutes(60))
             .build();
@@ -1275,6 +1266,7 @@ public class SweepwaterService {
                 .filter(w -> w.getWebsiteId().equals(websiteIdB))
                 .findFirst();
         BetAmountDTO amountDTO = settingsService.getBetAmount(username);
+        Set<String> localAdded = new HashSet<>(); // 本轮去重缓存
         for (String key : fullCourtA.keySet()) {
             if (fullCourtB.containsKey(key)) {
                 if (("win".equals(key) || "draw".equals(key))) {
@@ -1282,7 +1274,7 @@ public class SweepwaterService {
                         JSONObject valueAJson = fullCourtA.getJSONObject(key);
                         if (valueAJson.containsKey("odds") && StringUtils.isNotBlank(valueAJson.getStr("odds"))) {
 
-                            double valueA = valueAJson.getDouble("odds");
+                            BigDecimal valueA = valueAJson.getBigDecimal("odds");
                             if (isInOddsRange(optionalOddsA, valueA)) {
                                 log.info("网站A当前赔率赔率:{}不在设定范围内", valueA);
                                 continue;
@@ -1290,9 +1282,27 @@ public class SweepwaterService {
                             String decimalOddsA = valueAJson.containsKey("decimalOdds") ? valueAJson.getStr("decimalOdds") : null;
                             if (fullCourtB.containsKey(key) && !fullCourtB.getJSONObject(key).isEmpty()) {
                                 JSONObject valueBJson = fullCourtB.getJSONObject(key);
+
+                                // 特殊情况，如果网站是平博，那么对应的oddsId需要把最后一个|的值删掉后再做对比
+                                String oddsIdA = valueAJson.getStr("id");
+                                String oddsIdB = valueBJson.getStr("id");
+                                if (WebsiteType.PINGBO.getId().equals(websiteIdA)) {
+                                    int oldIdx = oddsIdA.lastIndexOf("|");
+                                    oddsIdA = oldIdx != -1 ? oddsIdA.substring(0, oldIdx + 1) : oddsIdA;
+                                }
+                                if (WebsiteType.PINGBO.getId().equals(websiteIdB)) {
+                                    int oldIdx = oddsIdB.lastIndexOf("|");
+                                    oddsIdB = oldIdx != -1 ? oddsIdB.substring(0, oldIdx + 1) : oddsIdB;
+                                }
+                                String resultKey = username + "|" + key + "|" + oddsIdA + "|" + oddsIdB;
+                                if (!localAdded.add(resultKey)) {
+                                    // 本轮重复 → 跳过
+                                    continue;
+                                }
+
                                 if (valueBJson.containsKey("odds") && StringUtils.isNotBlank(valueBJson.getStr("odds"))) {
 
-                                    double valueB = valueBJson.getDouble("odds");
+                                    BigDecimal valueB = valueBJson.getBigDecimal("odds");
                                     if (isInOddsRange(optionalOddsB, valueB)) {
                                         log.info("网站B当前赔率赔率:{}不在设定范围内", valueA);
                                         continue;
@@ -1302,8 +1312,8 @@ public class SweepwaterService {
                                     // updateOddsCache(username, valueAJson.getStr("id"), valueA);
                                     // 记录网站B的赔率
                                     // updateOddsCache(username, valueBJson.getStr("id"), valueB);
-                                    double value = valueA + valueB + 2;
-                                    BigDecimal result = BigDecimal.valueOf(value).setScale(3, RoundingMode.HALF_UP);
+                                    BigDecimal value = valueA.add(valueB).add(BigDecimal.valueOf(2));
+                                    BigDecimal result = value.setScale(3, RoundingMode.HALF_UP);
                                     double finalValue = result.doubleValue();
                                     String decimalOddsB = valueBJson.containsKey("decimalOdds") ? valueBJson.getStr("decimalOdds") : null;
                                     // 判断赔率是否在指定区间内
@@ -1387,7 +1397,7 @@ public class SweepwaterService {
                         }
                         JSONObject valueAJson = letBallA.getJSONObject(subKey);
                         if (valueAJson.containsKey("odds") && StringUtils.isNotBlank(valueAJson.getStr("odds"))) {
-                            double valueA = valueAJson.getDouble("odds");
+                            BigDecimal valueA = valueAJson.getBigDecimal("odds");
                             if (isInOddsRange(optionalOddsA, valueA)) {
                                 log.info("网站A当前赔率赔率:{}不在设定范围内", valueA);
                                 continue;
@@ -1395,8 +1405,26 @@ public class SweepwaterService {
                             String decimalOddsA = valueAJson.containsKey("decimalOdds") ? valueAJson.getStr("decimalOdds") : null;
                             if (letBallB.containsKey(subKey)) {
                                 JSONObject valueBJson = letBallB.getJSONObject(subKey);
+
+                                // 特殊情况，如果网站是平博，那么对应的oddsId需要把最后一个|的值删掉后再做对比
+                                String oddsIdA = valueAJson.getStr("id");
+                                String oddsIdB = valueBJson.getStr("id");
+                                if (WebsiteType.PINGBO.getId().equals(websiteIdA)) {
+                                    int oldIdx = oddsIdA.lastIndexOf("|");
+                                    oddsIdA = oldIdx != -1 ? oddsIdA.substring(0, oldIdx + 1) : oddsIdA;
+                                }
+                                if (WebsiteType.PINGBO.getId().equals(websiteIdB)) {
+                                    int oldIdx = oddsIdB.lastIndexOf("|");
+                                    oddsIdB = oldIdx != -1 ? oddsIdB.substring(0, oldIdx + 1) : oddsIdB;
+                                }
+                                String resultKey = username + "|" + key + "|" + oddsIdA + "|" + oddsIdB;
+                                if (!localAdded.add(resultKey)) {
+                                    // 本轮重复 → 跳过
+                                    continue;
+                                }
+
                                 if (valueBJson.containsKey("odds") && StringUtils.isNotBlank(valueBJson.getStr("odds"))) {
-                                    double valueB = valueBJson.getDouble("odds");
+                                    BigDecimal valueB = valueBJson.getBigDecimal("odds");
                                     if (isInOddsRange(optionalOddsB, valueB)) {
                                         log.info("网站B当前赔率赔率:{}不在设定范围内", valueA);
                                         continue;
@@ -1406,8 +1434,8 @@ public class SweepwaterService {
                                     // 记录网站B的赔率
                                     // updateOddsCache(username, valueBJson.getStr("id"), valueB);
 
-                                    double value = valueA + valueB + 2;
-                                    BigDecimal result = BigDecimal.valueOf(value).setScale(3, RoundingMode.HALF_UP);
+                                    BigDecimal value = valueA.add(valueB).add(BigDecimal.valueOf(2));
+                                    BigDecimal result = value.setScale(3, RoundingMode.HALF_UP);
                                     double finalValue = result.doubleValue();
                                     String decimalOddsB = valueBJson.containsKey("decimalOdds") ? valueBJson.getStr("decimalOdds") : null;
                                     // 判断赔率水位是否在指定区间内
@@ -1693,9 +1721,12 @@ public class SweepwaterService {
      * @param odds      当前赔率
      * @return
      */
-    private boolean isInOddsRange(Optional<OddsRangeDTO> rangeOpt, double odds) {
-        return rangeOpt.map(range -> odds >= range.getOddsGreater() && odds <= range.getOddsLess())
-                .orElse(false);
+    private boolean isInOddsRange(Optional<OddsRangeDTO> rangeOpt, BigDecimal odds) {
+        return rangeOpt.map(range -> {
+            // 使用 BigDecimal 的比较方法
+            return odds.compareTo(BigDecimal.valueOf(range.getOddsGreater())) >= 0 &&
+                    odds.compareTo(BigDecimal.valueOf(range.getOddsLess())) <= 0;
+        }).orElse(false);
     }
 
     /**
@@ -1760,37 +1791,54 @@ public class SweepwaterService {
                 oddsId
         );
     }
+
     // 更新 lastTimeA/B
-    private void updateLastTime(String username, SweepwaterDTO newDTO, double valueA, double valueB) {
-        String keyA = generateOddsKey(username, newDTO, newDTO.getOddsIdA());
-        String keyB = generateOddsKey(username, newDTO, newDTO.getOddsIdB());
-        SweepwaterDTO lastADTO = lastSweepCache.getIfPresent(keyA);
-        SweepwaterDTO lastBDTO = lastSweepCache.getIfPresent(keyB);
+    private void updateLastTime(String username, SweepwaterDTO dto, BigDecimal valueA, BigDecimal valueB) {
+        // 网站A
+        String keyA = generateOddsKey(username, dto, dto.getOddsIdA());
+        boolean isNewA = updateOddsCache(keyA, valueA);
+        dto.setLastOddsTimeA(isNewA);
+        log.info("检查赔率更新 - 网站A - 新赔率: {}, 是否新: {}", valueA, isNewA);
 
-        boolean lastTimeA = true;
-        boolean lastTimeB = true;
+        // 网站B
+        String keyB = generateOddsKey(username, dto, dto.getOddsIdB());
+        boolean isNewB = updateOddsCache(keyB, valueB);
+        dto.setLastOddsTimeB(isNewB);
+        log.info("检查赔率更新 - 网站B - 新赔率: {}, 是否新: {}", valueB, isNewB);
+    }
 
-        if (lastADTO != null) {
-            double lastOdds = Double.parseDouble(lastADTO.getOddsA());
-            lastTimeA = Double.compare(valueA, lastOdds) != 0;
+    /**
+     * 原子更新缓存并判断是否为新赔率
+     */
+    private boolean updateOddsCache(String key, BigDecimal newValue) {
+        while (true) {
+            BigDecimal cached = lastSweepCache.getIfPresent(key);
+
+            if (cached == null) {
+                // 缓存为空，尝试放入新值
+                if (lastSweepCache.asMap().putIfAbsent(key, newValue) == null) {
+                    return true; // 新赔率
+                }
+                // 并发情况下可能失败，继续循环
+            } else {
+                // 缓存已有值，判断是否相等
+                if (cached.compareTo(newValue) != 0) {
+                    // 尝试替换旧值
+                    if (lastSweepCache.asMap().replace(key, cached, newValue)) {
+                        return true; // 新赔率
+                    }
+                    // 并发情况下可能失败，继续循环
+                } else {
+                    return false; // 旧赔率
+                }
+            }
         }
-        if (lastBDTO != null) {
-            double lastOdds = Double.parseDouble(lastBDTO.getOddsB());
-            lastTimeB = Double.compare(valueB, lastOdds) != 0;
-        }
-
-        newDTO.setLastOddsTimeA(lastTimeA);
-        newDTO.setLastOddsTimeB(lastTimeB);
-
-        // 更新 Map
-        lastSweepCache.put(keyA, newDTO);
-        lastSweepCache.put(keyB, newDTO);
     }
 
     // 创建 SweepwaterDTO 对象的简化方法
     private SweepwaterDTO createSweepwaterDTO(String username, String oddsIdA, String oddsIdB, LocalDateTime now, String selectionIdA, String selectionIdB, String courtType, String handicapType, JSONObject eventAJson, JSONObject eventBJson, JSONObject teamA, JSONObject teamB,
                                                      String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, String nameA, String nameB, String handicapA, String handicapB,
-                                                     double valueA, double valueB, double value, String decimalOddsA, String decimalOddsB, String scoreA, String scoreB,
+                                                     BigDecimal valueA, BigDecimal valueB, double value, String decimalOddsA, String decimalOddsB, String scoreA, String scoreB,
                                                      String strongA, String strongB, String gTypeA, String gTypeB, String wTypeA, String wTypeB, String rTypeA, String rTypeB, String choseTeamA, String choseTeamB, String conA, String conB, String ratioA, String ratioB,
                                                      JSONObject betInfoA, JSONObject betInfoB
     ) {
@@ -1813,9 +1861,9 @@ public class SweepwaterService {
         sweepwaterDTO.setReTimeB(teamB.getStr("reTime"));
         sweepwaterDTO.setIsHomeA(teamA.getBool("isHome"));
         sweepwaterDTO.setIsHomeB(teamB.getBool("isHome"));
-        sweepwaterDTO.setOdds(valueA + " / " + valueB);
-        sweepwaterDTO.setOddsA(String.format("%.3f", valueA));
-        sweepwaterDTO.setOddsB(String.format("%.3f", valueB));
+        sweepwaterDTO.setOdds(String.format("%.3f", valueA) + " / " + String.format("%.3f", valueB));
+        sweepwaterDTO.setOddsA(valueA);
+        sweepwaterDTO.setOddsB(valueB);
         sweepwaterDTO.setWater(String.format("%.3f", value));
         sweepwaterDTO.setWebsiteIdA(websiteIdA);
         sweepwaterDTO.setWebsiteIdB(websiteIdB);
@@ -1954,7 +2002,7 @@ public class SweepwaterService {
     }
 
     // 提取的日志输出方法
-    private static void logInfo(String handicapType, String nameA, String key, double value1, String nameB, String key2, double value2, double value, OddsScanDTO oddsScanDTO) {
+    private static void logInfo(String handicapType, String nameA, String key, BigDecimal value1, String nameB, String key2, BigDecimal value2, double value, OddsScanDTO oddsScanDTO) {
         log.info("比对扫描中,队伍[{}]的{}[{}]赔率是[{}],对比队伍[{}]的{}[{}]赔率[{}],相加结果赔率是[{}],系统设置的区间是[{}]到[{}]", nameA, handicapType, key, value1, nameB, handicapType, key2, value2, value, oddsScanDTO.getWaterLevelFrom(), oddsScanDTO.getWaterLevelTo());
     }
 }

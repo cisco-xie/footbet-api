@@ -3,6 +3,8 @@ package com.example.demo.model.dto.sweepwater;
 import cn.hutool.json.JSONObject;
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 @Data
 public class SweepwaterDTO {
     private String id;
@@ -32,8 +34,8 @@ public class SweepwaterDTO {
     private Boolean isHomeB;        // 是否是主队
     private String project;
     private String odds;
-    private String oddsA;
-    private String oddsB;
+    private BigDecimal oddsA;
+    private BigDecimal oddsB;
     private Boolean lastOddsTimeA;  // 是否是最新赔率
     private Boolean lastOddsTimeB;  // 是否是最新赔率
     private Integer isBet;          // 是否进行过投注

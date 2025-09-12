@@ -3,6 +3,8 @@ package com.example.demo.model.dto.bet;
 import cn.hutool.json.JSONObject;
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 @Data
 public class SweepwaterBetDTO {
     private String id;
@@ -31,8 +33,8 @@ public class SweepwaterBetDTO {
     private Boolean isHomeA;        // 是否是主队
     private Boolean isHomeB;        // 是否是主队
     private String project;
-    private String odds;
-    private String oddsA;
+    private BigDecimal odds;
+    private BigDecimal oddsA;
     private String oddsB;
     private Boolean isUnilateral;   // 是否为单边投注
     private Boolean lastOddsTimeA;  // 是否是最新赔率
