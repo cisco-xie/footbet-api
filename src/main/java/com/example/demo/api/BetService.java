@@ -25,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
 import org.redisson.api.*;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -302,8 +303,14 @@ public class BetService {
 
         List<WebsiteVO> websites = websiteService.getWebsites(username);
         for (SweepwaterDTO sweepwaterDTO : sweepwaters) {
-            SweepwaterBetDTO dto = BeanUtil.copyProperties(sweepwaterDTO, SweepwaterBetDTO.class);
+            SweepwaterBetDTO dto = new SweepwaterBetDTO();
+            BeanUtils.copyProperties(sweepwaterDTO, dto);
             dto.setIsUnilateral(isUnilateral);
+            dto.setLastOddsTimeA(sweepwaterDTO.getLastOddsTimeA());
+            dto.setLastOddsTimeB(sweepwaterDTO.getLastOddsTimeB());
+            if (sweepwaterDTO.getLastOddsTimeA() || sweepwaterDTO.getLastOddsTimeB()) {
+                log.info("新旧拷贝不对，sweepwaterDTO: {}=================dto: {}", sweepwaterDTO, dto);
+            }
             int rollingOrderA = websites.stream()
                     .filter(w -> w.getId().equals(dto.getWebsiteIdA()))
                     .map(WebsiteVO::getRollingOrder)
@@ -392,6 +399,10 @@ public class BetService {
             
             // 有一个执行了投注则缓存
             if (successA.getBool("isBet") || successB.getBool("isBet")) {
+                String json = JSONUtil.toJsonStr(dto);
+                if (sweepwaterDTO.getLastOddsTimeA() || sweepwaterDTO.getLastOddsTimeB()) {
+                    log.info("新旧拷贝不对，dto: {}=================json: {}", dto, json);
+                }
                 String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
                 // 保存投注信息作为历史记录
                 String key = KeyUtil.genKey(
@@ -400,13 +411,13 @@ public class BetService {
                         date,
                         dto.getId()
                 );
-                businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(dto));
-
+                businessPlatformRedissonClient.getBucket(key).set(json);
                 // 维护索引
                 String indexKey = KeyUtil.genKey("INDEX", username,
                         date
                         );
                 businessPlatformRedissonClient.getList(indexKey).add(key);
+
                 // 保存投注信息作为实时记录
                 String realTimeKey = KeyUtil.genKey(
                         RedisConstants.PLATFORM_BET_PREFIX,
@@ -415,8 +426,7 @@ public class BetService {
                         date,
                         dto.getId()
                 );
-                businessPlatformRedissonClient.getBucket(realTimeKey).set(JSONUtil.toJsonStr(dto));
-
+                businessPlatformRedissonClient.getBucket(realTimeKey).set(json);
                 // 实时索引
                 String realTimeIndexKey = KeyUtil.genKey("INDEX", username, "realtime",
                         date);
@@ -430,6 +440,15 @@ public class BetService {
         log.info("投注结束，总花费:{}毫秒", timerTotal.interval());
     }
 
+    public static void main(String[] args) {
+        SweepwaterDTO sdto = new SweepwaterDTO();
+        sdto.setId("1966469348879310848");
+        sdto.setLastOddsTimeA(true);
+        sdto.setLastOddsTimeB(true);
+        SweepwaterBetDTO dto = new SweepwaterBetDTO();
+        BeanUtils.copyProperties(sdto, dto);
+        System.out.println(JSONUtil.toJsonStr(dto));
+    }
     @FunctionalInterface
     public interface RetryableTask {
         boolean execute() throws Exception;

@@ -33,9 +33,9 @@ public class SweepwaterBetDTO {
     private Boolean isHomeA;        // 是否是主队
     private Boolean isHomeB;        // 是否是主队
     private String project;
-    private BigDecimal odds;
+    private String odds;
     private BigDecimal oddsA;
-    private String oddsB;
+    private BigDecimal oddsB;
     private Boolean isUnilateral;   // 是否为单边投注
     private Boolean lastOddsTimeA;  // 是否是最新赔率
     private Boolean lastOddsTimeB;  // 是否是最新赔率
@@ -81,4 +81,5 @@ public class SweepwaterBetDTO {
 
     private String water;           // 水位
     private String createTime;      // 创建时间
+
 }

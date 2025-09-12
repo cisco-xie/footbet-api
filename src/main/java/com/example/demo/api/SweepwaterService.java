@@ -1776,7 +1776,7 @@ public class SweepwaterService {
         return result;
     }
     // 生成 oddsKey 方法
-    private String generateOddsKey(String username, SweepwaterDTO dto, String oddsId) {
+    private String generateOddsKey(String username, SweepwaterDTO dto, String oddsId, boolean isHome) {
         // 特殊情况，如果网站是平博，那么对应的oddsId需要把最后一个|的值删掉后再做对比
         if (WebsiteType.PINGBO.getId().equals(dto.getWebsiteIdA())) {
             int oldIdx = oddsId.lastIndexOf("|");
@@ -1788,20 +1788,22 @@ public class SweepwaterService {
         }
         return String.join("|",
                 username,
-                oddsId
+                dto.getHandicapType(),
+                oddsId,
+                isHome ? "home" : "away"
         );
     }
 
     // 更新 lastTimeA/B
     private void updateLastTime(String username, SweepwaterDTO dto, BigDecimal valueA, BigDecimal valueB) {
         // 网站A
-        String keyA = generateOddsKey(username, dto, dto.getOddsIdA());
+        String keyA = generateOddsKey(username, dto, dto.getOddsIdA(), dto.getIsHomeA());
         boolean isNewA = updateOddsCache(keyA, valueA);
         dto.setLastOddsTimeA(isNewA);
         log.info("检查赔率更新 - 网站A - 新赔率: {}, 是否新: {}", valueA, isNewA);
 
         // 网站B
-        String keyB = generateOddsKey(username, dto, dto.getOddsIdB());
+        String keyB = generateOddsKey(username, dto, dto.getOddsIdB(), dto.getIsHomeB());
         boolean isNewB = updateOddsCache(keyB, valueB);
         dto.setLastOddsTimeB(isNewB);
         log.info("检查赔率更新 - 网站B - 新赔率: {}, 是否新: {}", valueB, isNewB);
