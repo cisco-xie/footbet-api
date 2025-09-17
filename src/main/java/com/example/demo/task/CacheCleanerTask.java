@@ -11,6 +11,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RList;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -30,6 +31,9 @@ public class CacheCleanerTask {
     @Resource(name = "businessPlatformRedissonClient")
     private RedissonClient businessPlatformRedissonClient;
 
+    @Value("${sweepwater.server.count}")
+    private int serverCount;
+
     /**
      * 清理超过1小时的扫水记录
      */
@@ -40,7 +44,21 @@ public class CacheCleanerTask {
         LocalDateTime now = LocalDateTime.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(DatePattern.NORM_DATETIME_PATTERN);
 
-        for (AdminLoginDTO admin : adminUsers) {
+        // 获取本机标识（机器ID、IP、或自定义ID）
+        String serverId = System.getProperty("server.id", "0");
+        int serverIndex = Integer.parseInt(serverId); // 直接用数字索引
+        // 分配账户：比如通过 hash 或 Redis 列表分片
+        List<AdminLoginDTO> myUsers = adminUsers.stream()
+                .filter(u -> Math.abs(u.getUsername().hashCode()) % serverCount == serverIndex)
+                .toList();
+
+        if (myUsers.isEmpty()) {
+            log.info("当前服务器分片没有用户，serverId={}", serverId);
+            return;
+        }
+        log.info("当前服务器serverIndex:{}, 分片扫水用户:{}", serverIndex, myUsers);
+
+        for (AdminLoginDTO admin : myUsers) {
             String username = admin.getUsername();
             String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
             RList<String> sweepList = businessPlatformRedissonClient.getList(key);

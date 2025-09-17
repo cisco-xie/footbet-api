@@ -476,26 +476,30 @@ public class SweepwaterService {
         List<List<BindLeagueVO>> bindLeagueVOList = bindDictService.getAllBindDict(username);
 
         // 先过滤 bindLeagueVOList，去除 leagueIdA 或 leagueIdB 为空的元素，并过滤事件，剔除 idA 或 idB 为空的事件，剔除无事件的 bindLeagueVO
-        bindLeagueVOList = bindLeagueVOList.stream()
+        List<List<BindLeagueVO>> filteredBindLeagueVOList = bindLeagueVOList.stream()
                 .map(leagueGroup -> leagueGroup.stream()
-                        .peek(bindLeagueVO -> {
-                            List<BindTeamVO> filteredEvents = bindLeagueVO.getEvents().stream()
+                        // 1. 过滤 leagueIdA 或 leagueIdB 为空的联赛
+                        .filter(league -> StringUtils.isNotBlank(league.getLeagueIdA()) && StringUtils.isNotBlank(league.getLeagueIdB()))
+                        // 2. 过滤事件：去掉 idA 或 idB 为空的
+                        .map(league -> {
+                            List<BindTeamVO> filteredEvents = league.getEvents().stream()
                                     .filter(event -> StringUtils.isNotBlank(event.getIdA()) && StringUtils.isNotBlank(event.getIdB()))
                                     .collect(Collectors.toList());
-                            bindLeagueVO.setEvents(filteredEvents);
+                            league.setEvents(filteredEvents);
+                            return league;
                         })
-                        // 剔除没有事件的 bindLeagueVO
-                        .filter(bindLeagueVO -> StringUtils.isNotBlank(bindLeagueVO.getLeagueIdA())
-                                && StringUtils.isNotBlank(bindLeagueVO.getLeagueIdB())
-                                && !bindLeagueVO.getEvents().isEmpty())
+                        // 3. 剔除掉没有事件的联赛
+                        .filter(league -> CollUtil.isNotEmpty(league.getEvents()))
                         .collect(Collectors.toList()))
-                .filter(leagueGroup -> !leagueGroup.isEmpty())
+                // 4. 剔除掉空的 group
+                .filter(CollUtil::isNotEmpty)
                 .collect(Collectors.toList());
 
-        if (CollUtil.isEmpty(bindLeagueVOList)) {
-            log.warn("无球队绑定数据，平台用户:{}", username);
+        if (CollUtil.isEmpty(filteredBindLeagueVOList)) {
+            log.info("无球队绑定数据，平台用户:{}", username);
             return;
         }
+
         ExecutorService configExecutor = threadPoolHolder.getConfigExecutor(); // 单独弄个轻量线程池
         // 并行获取配置项
         CompletableFuture<OddsScanDTO> oddsScanFuture = CompletableFuture.supplyAsync(() -> settingsService.getOddsScan(username), configExecutor);
@@ -550,7 +554,7 @@ public class SweepwaterService {
 
             List<CompletableFuture<Void>> leagueFutures = new ArrayList<>();
 
-            for (List<BindLeagueVO> leagueGroup : bindLeagueVOList) {
+            for (List<BindLeagueVO> leagueGroup : filteredBindLeagueVOList) {
                 for (BindLeagueVO bindLeagueVO : leagueGroup) {
                     leagueFutures.add(CompletableFuture.runAsync(() -> {
                         TimeInterval leagueTimer = DateUtil.timer();

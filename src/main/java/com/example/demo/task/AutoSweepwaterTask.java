@@ -11,6 +11,7 @@ import com.example.demo.model.dto.AdminLoginDTO;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -47,6 +48,9 @@ public class AutoSweepwaterTask {
 
     @Resource
     private SweepWaterThreadPoolHolder threadPoolHolder;
+
+    @Value("${sweepwater.server.count}")
+    private int serverCount;
 
     private static final int MAX_CONCURRENT_SWEEPS = 240;
     private final Semaphore sweepPermits = new Semaphore(MAX_CONCURRENT_SWEEPS);
@@ -145,12 +149,26 @@ public class AutoSweepwaterTask {
             return;
         }
 
+        // 获取本机标识（机器ID、IP、或自定义ID）
+        String serverId = System.getProperty("server.id", "0");
+        int serverIndex = Integer.parseInt(serverId); // 直接用数字索引
+        // 分配账户：比如通过 hash 或 Redis 列表分片
+        List<AdminLoginDTO> myUsers = adminUsers.stream()
+                .filter(u -> Math.abs(u.getUsername().hashCode()) % serverCount == serverIndex)
+                .toList();
+
+        if (myUsers.isEmpty()) {
+            log.info("当前服务器分片没有扫水用户，serverId={}", serverId);
+            return;
+        }
+        log.info("当前服务器serverIndex:{}, 分片扫水用户:{}", serverIndex, myUsers);
+
         // 使用工作窃取线程池替代固定线程池
         ExecutorService executorAdminUserService = threadPoolHolder.getUserSweepExecutor();
         // 轮次id，用于记录本轮的id
         String roundId = IdUtil.getSnowflakeNextIdStr();
         try {
-            List<CompletableFuture<Void>> adminFutures = adminUsers.stream()
+            List<CompletableFuture<Void>> adminFutures = myUsers.stream()
                     .map(adminUser -> {
                         long submitTime = System.currentTimeMillis(); // 提交时记录
                         return CompletableFuture.runAsync(() -> {

@@ -101,6 +101,7 @@ public class WebsiteXinBaoInfoHandler implements ApiHandler {
         }
         responseJson.putOpt("success", true);
         responseJson.putOpt("betCredit", XmlUtil.getByXPath("//serverresponse/maxcredit", docResult, XPathConstants.STRING));
+        responseJson.putOpt("durationMs", response.getDurationMs());
         responseJson.putOpt("msg", "获取账户额度成功");
         return responseJson;
     }

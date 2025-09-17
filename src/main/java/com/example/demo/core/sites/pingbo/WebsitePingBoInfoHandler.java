@@ -98,6 +98,7 @@ public class WebsitePingBoInfoHandler implements ApiHandler {
             responseJson.putOpt("msg", "获取账户额度失败");
             return responseJson;
         }
+        responseJson.putOpt("durationMs", result.getDurationMs());
         responseJson.putOpt("msg", "获取账户额度成功");
         return responseJson;
     }
