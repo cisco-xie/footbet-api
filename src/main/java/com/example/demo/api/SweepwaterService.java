@@ -29,6 +29,7 @@ import org.redisson.api.RBucket;
 import org.redisson.api.RList;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
@@ -78,6 +79,9 @@ public class SweepwaterService {
 
     @Resource
     private SweepWaterThreadPoolHolder threadPoolHolder;
+
+    @Value("${sweepwater.server.count}")
+    private int serverCount;
 
     // 赛事缓存
     // 用于记录已获取的 ecid 对应事件，避免重复请求远程 API
@@ -281,6 +285,42 @@ public class SweepwaterService {
         }
     }
 
+    public List<BindLeagueVO> mergeBindLeagueVOs(List<BindLeagueVO> allLeagues) {
+        // key = 联赛唯一标识（leagueNameA + leagueNameB）
+        Map<String, BindLeagueVO> mergedLeagueMap = new LinkedHashMap<>();
+
+        for (BindLeagueVO vo : allLeagues) {
+            if (vo == null || StringUtils.isBlank(vo.getLeagueNameA()) || StringUtils.isBlank(vo.getLeagueNameB())) {
+                continue;
+            }
+
+            String leagueKey = vo.getLeagueNameA() + "_" + vo.getLeagueNameB();
+
+            mergedLeagueMap.merge(leagueKey, vo, (oldVo, newVo) -> {
+                Map<String, BindTeamVO> eventMap = new LinkedHashMap<>();
+
+                // 旧赛事
+                if (oldVo.getEvents() != null) {
+                    for (BindTeamVO e : oldVo.getEvents()) {
+                        eventMap.put(e.getIdA() + "_" + e.getIdB() + "_" + e.getNameA() + "_" + e.getNameB(), e);
+                    }
+                }
+
+                // 新赛事（覆盖）
+                if (newVo.getEvents() != null) {
+                    for (BindTeamVO e : newVo.getEvents()) {
+                        eventMap.put(e.getIdA() + "_" + e.getIdB() + "_" + e.getNameA() + "_" + e.getNameB(), e);
+                    }
+                }
+
+                oldVo.setEvents(new ArrayList<>(eventMap.values()));
+                return oldVo;
+            });
+        }
+
+        return new ArrayList<>(mergedLeagueMap.values());
+    }
+
     /**
      * TODO 新版扫水
      * 使用专门的扫水账号进行统一扫水，提供公用扫水数据给到其他投注账号
@@ -289,12 +329,11 @@ public class SweepwaterService {
      */
     public void sweepwaterNew(List<AdminLoginDTO> adminUsers, List<AdminLoginDTO> sweepwaterUsers) {
         TimeInterval timerTotal = DateUtil.timer();
-        // 最终输出结构
-        List<List<BindLeagueVO>> bindLeagueVOAllList = new ArrayList<>();
 
         // 按 websiteIdA + "_" + websiteIdB 分组
-        Map<String, List<BindLeagueVO>> groupMap = new LinkedHashMap<>();
-
+        Map<String, BindLeagueVO> groupMap = new LinkedHashMap<>();
+        // 1. 收集所有账户的 BindLeagueVO
+        List<BindLeagueVO> allLeagues = new ArrayList<>();
         for (AdminLoginDTO adminUser : adminUsers) {
             List<List<BindLeagueVO>> bindLeagueVOList = bindDictService.getAllBindDict(adminUser.getUsername());
 
@@ -316,18 +355,29 @@ public class SweepwaterService {
                         continue;
                     }
 
-                    // 构造 key 进行分组
-                    String key = vo.getWebsiteIdA() + "_" + vo.getWebsiteIdB();
-                    groupMap.computeIfAbsent(key, k -> new ArrayList<>()).add(vo);
+                    allLeagues.add(vo);
                 }
             }
         }
 
-        // 将分组结果填充到最终结构中，保持 List<List<BindLeagueVO>> 格式
-        for (List<BindLeagueVO> groupList : groupMap.values()) {
-            if (!groupList.isEmpty()) {
-                bindLeagueVOAllList.add(groupList);
-            }
+
+        // 2. 按 websiteIdA+websiteIdB 分组并合并
+        Map<String, List<BindLeagueVO>> websiteGroupMap = new LinkedHashMap<>();
+
+        for (BindLeagueVO vo : allLeagues) {
+            String websiteKey = vo.getWebsiteIdA() + "_" + vo.getWebsiteIdB();
+
+            websiteGroupMap
+                    .computeIfAbsent(websiteKey, k -> new ArrayList<>())
+                    .add(vo);
+        }
+
+        // 3. 对每个分组做 league 合并
+        List<List<BindLeagueVO>> bindLeagueVOAllList = new ArrayList<>();
+
+        for (Map.Entry<String, List<BindLeagueVO>> entry : websiteGroupMap.entrySet()) {
+            List<BindLeagueVO> mergedLeagues = mergeBindLeagueVOs(entry.getValue());
+            bindLeagueVOAllList.add(mergedLeagues);
         }
 
         // 扫水专用账号
@@ -380,10 +430,17 @@ public class SweepwaterService {
             // 球队赔率级线程池（内层）
             ExecutorService teamOddsExecutor = threadPoolHolder.getTeamOddsExecutor();
 
+            // 获取本机标识（机器ID、IP、或自定义ID）
+            String serverId = System.getProperty("server.id", "0");
+            int serverIndex = Integer.parseInt(serverId); // 直接用数字索引
             List<CompletableFuture<Void>> leagueFutures = new ArrayList<>();
 
-            for (List<BindLeagueVO> leagueGroup : bindLeagueVOAllList) {
-                for (BindLeagueVO bindLeagueVO : leagueGroup) {
+            for (int i = 0; i < bindLeagueVOAllList.size(); i++) {
+                // 取模分片
+                if (i % serverCount != serverIndex) {
+                    continue; // 不属于当前服务器，跳过
+                }
+                for (BindLeagueVO bindLeagueVO : bindLeagueVOAllList.get(i)) {
                     leagueFutures.add(CompletableFuture.runAsync(() -> {
                         TimeInterval leagueTimer = DateUtil.timer();
 

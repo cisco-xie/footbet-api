@@ -106,7 +106,8 @@ public class AutoSweepwaterTask {
             long startTime = System.currentTimeMillis();
             try {
                 activeTasks.increment(); // ✅ 真正执行前再加
-                executeSweepwater();
+                // executeSweepwater(); // ✅ 旧方法 - 每个账户单独执行扫水
+                executeSweepwaterNew(); // ✅ 新方法 - 合并所有账户的字典，统一使用扫水账户扫水
             } catch (Exception e) {
                 log.info("本轮扫水-执行异常", e);
             } finally {
@@ -118,6 +119,56 @@ public class AutoSweepwaterTask {
         });
 
         //taskQueue.addLast(future);
+    }
+
+    private void executeSweepwaterNew() {
+        log.info("开始执行自动扫水...");
+
+        if (Thread.currentThread().isInterrupted()) {
+            log.info("executeSweepwater检测到中断，提前退出");
+            return;
+        }
+
+        List<AdminLoginDTO> adminUsers = adminService.getUsers(null);
+        adminUsers.removeIf(adminUser -> adminUser.getStatus() == 0);
+        if (adminUsers.isEmpty()) {
+            log.info("没有开启投注的平台用户!!!");
+            return;
+        }
+
+        List<AdminLoginDTO> sweepwaterUsers = adminUsers.stream()
+                .filter(adminUser -> adminUser.getRoles().contains("sweepwater"))
+                .toList();
+        if (sweepwaterUsers.isEmpty()) {
+            log.info("没有扫水的平台用户!!!");
+            return;
+        }
+
+        adminUsers.removeIf(adminUser -> adminUser.getRoles().contains("sweepwater"));
+        if (adminUsers.isEmpty()) {
+            log.info("没有开启投注的平台用户!!!");
+            return;
+        }
+
+        // 轮次id，用于记录本轮的id
+        String roundId = IdUtil.getSnowflakeNextIdStr();
+        if (Thread.currentThread().isInterrupted()) {
+            log.info("子任务检测到中断，提前返回");
+            return;
+        }
+
+        try {
+            long sweepStart = System.currentTimeMillis();
+            sweepwaterService.sweepwaterNew(adminUsers, sweepwaterUsers);
+            long cost = System.currentTimeMillis() - sweepStart;
+
+            log.info("本轮扫水-用户:{},轮次id:{} 扫水任务耗时: {}ms", adminUsers, roundId, cost);
+        } catch (Exception e) {
+            log.error("本轮扫水-用户:{},轮次id:{} 执行 sweepwater 异常", adminUsers, roundId, e);
+        } finally {
+            // 清理本轮网站赔率缓存
+            sweepwaterService.clearCacheForRound(roundId);
+        }
     }
 
     private void executeSweepwater() {
