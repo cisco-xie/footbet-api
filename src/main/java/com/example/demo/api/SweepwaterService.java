@@ -793,14 +793,13 @@ public class SweepwaterService {
                 return;
             }
 
-            // 提取赛事id
-            List<String> idAs = bindLeagueVO.getEvents().stream()
-                    .map(BindTeamVO::getIdA)   // 提取 idA
+            // 提取球队名称
+            List<String> nameAs = bindLeagueVO.getEvents().stream()
+                    .map(BindTeamVO::getNameA)   // 提取 nameA
                     .filter(Objects::nonNull) // 可选：过滤掉 null
-                    .distinct()               // 去重
                     .toList();
             // 平台绑定球队赛事对应获取盘口赛事列表
-            JSONObject eventAJson = findEventByLeagueId(eventsA, bindLeagueVO.getLeagueIdA(), idAs);
+            JSONObject eventAJson = findEventByLeagueName(eventsA, bindLeagueVO.getLeagueIdA(), nameAs);
             if (eventAJson == null) {
                 log.info("扫水, 平台用户: {}, 网站A: {}, 在盘口赛事中未找到对应联绑定的赛事id:{},名称:{},球队id:{},名称:{}, 退出",
                         username,
@@ -813,13 +812,12 @@ public class SweepwaterService {
                 return;
             }
 
-            // 提取赛事id
-            List<String> idBs = bindLeagueVO.getEvents().stream()
-                    .map(BindTeamVO::getIdB)   // 提取 idB
+            // 提取球队名称
+            List<String> nameBs = bindLeagueVO.getEvents().stream()
+                    .map(BindTeamVO::getNameB)   // 提取 idB
                     .filter(Objects::nonNull) // 可选：过滤掉 null
-                    .distinct()               // 去重
                     .toList();
-            JSONObject eventBJson = findEventByLeagueId(eventsB, bindLeagueVO.getLeagueIdB(), idBs);
+            JSONObject eventBJson = findEventByLeagueName(eventsB, bindLeagueVO.getLeagueIdB(), nameBs);
             if (eventBJson == null) {
                 log.info("扫水, 平台用户: {}, 网站B: {}, 在盘口赛事中未找到对应联绑定的赛事id:{},名称:{},球队id:{},名称:{}, 退出",
                         username,
@@ -967,7 +965,14 @@ public class SweepwaterService {
         log.info("sweepwater扫水-进行清理缓存操作,轮次id:{},已清理,本轮次网站赔率剩余缓存数:{}", roundId, ecidFetchFutures.size());
     }
 
-    private JSONObject findEventByLeagueId(JSONArray events, String leagueId, List<String> ids) {
+    /**
+     * 根据联赛id匹配对应联赛，再根据球队名称匹配对应球队
+     * @param events
+     * @param leagueId
+     * @param names
+     * @return
+     */
+    private JSONObject findEventByLeagueName(JSONArray events, String leagueId, List<String> names) {
         log.info("查找联赛: 联赛={}, leagueId={}", events, leagueId);
         for (Object eventObj : events) {
             JSONObject eventJson = (JSONObject) eventObj;
@@ -977,7 +982,7 @@ public class SweepwaterService {
                     // 移除 id 不在 ids 列表里的赛事
                     eventArray.removeIf(event -> {
                         JSONObject eventItem = (JSONObject) event;
-                        return !ids.contains(eventItem.getStr("id"));
+                        return !names.contains(eventItem.getStr("name"));
                     });
                 }
 
@@ -1681,9 +1686,6 @@ public class SweepwaterService {
             String eventId = teamsOdds.getStr("id");
             for (Object object : teams) {
                 JSONObject teamJson = JSONUtil.parseObj(object);
-                if (!teamJson.getStr("id").equals(eventId)) {
-                    continue;
-                }
                 if (teamJson.getBool("isHome")) {
                     homeTeam = teamJson;
                 } else if (!teamJson.getBool("isHome")) {

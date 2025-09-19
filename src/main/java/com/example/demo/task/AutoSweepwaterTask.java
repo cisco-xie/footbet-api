@@ -106,8 +106,8 @@ public class AutoSweepwaterTask {
             long startTime = System.currentTimeMillis();
             try {
                 activeTasks.increment(); // ✅ 真正执行前再加
-                // executeSweepwater(); // ✅ 旧方法 - 每个账户单独执行扫水
-                executeSweepwaterNew(); // ✅ 新方法 - 合并所有账户的字典，统一使用扫水账户扫水
+                executeSweepwater(); // ✅ 旧方法 - 每个账户单独执行扫水
+//                executeSweepwaterNew(); // ✅ 新方法 - 合并所有账户的字典，统一使用扫水账户扫水
             } catch (Exception e) {
                 log.info("本轮扫水-执行异常", e);
             } finally {

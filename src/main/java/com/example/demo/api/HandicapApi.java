@@ -1250,6 +1250,9 @@ public class HandicapApi {
             JSONObject params = new JSONObject();
             params.putOpt("adminUsername", username);
             params.putOpt("websiteId", websiteId);
+            BigDecimal maxBet = BigDecimal.ZERO;
+            BigDecimal minBet = BigDecimal.ZERO;
+            BigDecimal betAmount = BigDecimal.ZERO;
             // 根据不同站点传入不同的参数
             if (WebsiteType.PINGBO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("tokens"));
@@ -1267,149 +1270,140 @@ public class HandicapApi {
                     oddsFormatType = PingBoOddsFormatType.RM.getId();
                 }
                 params.putOpt("oddsFormatType", oddsFormatType);
-                // if (betPreview != null) {
-                    // JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
-                    // if (betPreviewJson.getBool("success")) {
-                        JSONArray data = betPreviewJson.getJSONArray("data");
-                        if (data == null || data.isEmpty()) {
-                            return null;
-                        }
-                        // 通过当前盘口账户的倍数计算实际投注金额
-                        BigDecimal stake = odds.getBigDecimal("stake");
+                JSONArray data = betPreviewJson.getJSONArray("data");
+                if (data == null || data.isEmpty()) {
+                    return null;
+                }
+                // 通过当前盘口账户的倍数计算实际投注金额
+                BigDecimal stake = odds.getBigDecimal("stake");
 
-                        BigDecimal result = stake
-                                .multiply(BigDecimal.valueOf(multiple))         // 相乘
-                                .setScale(2, RoundingMode.HALF_UP);    // 保留两位小数，四舍五入
+                betAmount = stake
+                        .multiply(BigDecimal.valueOf(multiple))         // 相乘
+                        .setScale(2, RoundingMode.HALF_UP);    // 保留两位小数，四舍五入
 
-                        JSONArray selections = new JSONArray();
-                        for (Object obj : data) {
-                            JSONObject objJson = JSONUtil.parseObj(obj);
-                            JSONObject betInfo = new JSONObject();
-                            JSONObject selection = new JSONObject();
-                            selection.putOpt("stake", result);
-                            selection.putOpt("odds", objJson.getStr("odds"));
-                            selection.putOpt("oddsId", objJson.getStr("oddsId"));
-                            selection.putOpt("selectionId", objJson.getStr("selectionId"));
-                            // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
-                            betInfo.putOpt("league", objJson.getStr("league"));
-                            betInfo.putOpt("team", objJson.getStr("homeTeam") + " -vs- " + objJson.getStr("awayTeam"));
-                            betInfo.putOpt("marketTypeName", "");
-                            betInfo.putOpt("marketName", objJson.getStr("selection"));
-                            betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap") + " @ " + objJson.getStr("odds"));
-                            betInfo.putOpt("handicap", objJson.getStr("handicap"));
-                            betInfo.putOpt("amount", odds.getStr("stake"));
-                            betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));
-                            selection.putOpt("betInfo", betInfo);
-                            selections.add(selection);
-                        }
-                        params.putOpt("selections", selections);
-                    // }
-                // }
+                JSONArray selections = new JSONArray();
+                for (Object obj : data) {
+                    JSONObject objJson = JSONUtil.parseObj(obj);
+                    JSONObject betInfo = new JSONObject();
+                    JSONObject selection = new JSONObject();
+                    selection.putOpt("stake", betAmount);
+                    selection.putOpt("odds", objJson.getStr("odds"));
+                    selection.putOpt("oddsId", objJson.getStr("oddsId"));
+                    selection.putOpt("selectionId", objJson.getStr("selectionId"));
+                    // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
+                    betInfo.putOpt("league", objJson.getStr("league"));
+                    betInfo.putOpt("team", objJson.getStr("homeTeam") + " -vs- " + objJson.getStr("awayTeam"));
+                    betInfo.putOpt("marketTypeName", "");
+                    betInfo.putOpt("marketName", objJson.getStr("selection"));
+                    betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap") + " @ " + objJson.getStr("odds"));
+                    betInfo.putOpt("handicap", objJson.getStr("handicap"));
+                    betInfo.putOpt("amount", odds.getStr("stake"));
+                    betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));
+                    selection.putOpt("betInfo", betInfo);
+                    selections.add(selection);
+                    maxBet = objJson.getBigDecimal("maxStake");
+                    minBet = objJson.getBigDecimal("minStake");
+                }
+                params.putOpt("selections", selections);
             } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                 params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
-                // Object betPreview = betPreview(username, websiteId, odds);
-                // if (betPreview != null) {
-                    // JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
-                    //if (betPreviewJson.getBool("success")) {
-                        // 通过当前盘口账户的倍数计算实际投注金额
-                        BigDecimal stake = odds.getBigDecimal("stake");
+                // 通过当前盘口账户的倍数计算实际投注金额
+                BigDecimal stake = odds.getBigDecimal("stake");
 
-                        BigDecimal result = stake
-                                .multiply(BigDecimal.valueOf(multiple))         // 相乘
-                                .setScale(0, RoundingMode.HALF_UP);    // 保留整数，四舍五入
+                betAmount = stake
+                        .multiply(BigDecimal.valueOf(multiple))         // 相乘
+                        .setScale(0, RoundingMode.HALF_UP);    // 保留整数，四舍五入
 
-                        JSONObject data = betPreviewJson.getJSONObject("data");
-                        JSONObject betTicket = data.getJSONObject("betTicket");
-                        JSONObject betInfo = new JSONObject();
-                        params.putOpt("stake", result);
-                        params.putOpt("odds", betTicket.getStr("odds"));
-                        params.putOpt("decimalOdds", betTicket.getStr("decimalOdds"));
-                        params.putOpt("handicap", betTicket.getStr("handicap"));
-                        params.putOpt("score", betTicket.getStr("score"));
-                        params.putOpt("oddsFormatId", betTicket.getStr("oddsFormatId"));
-                        params.putOpt("marketSelectionId", betTicket.getStr("marketSelectionId"));
-                        // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
-                        betInfo.putOpt("league", data.getStr("leagueName"));
-                        betInfo.putOpt("team", data.getStr("eventName"));
-                        betInfo.putOpt("marketTypeName", data.getStr("marketTypeName"));
-                        betInfo.putOpt("marketName", data.getStr("name"));
-                        betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap") + " @ "  + betTicket.getStr("odds"));
-                        betInfo.putOpt("handicap", data.getStr("handicap"));
-                        betInfo.putOpt("amount", result);
-                        params.putOpt("betInfo", betInfo);
-                    //}
-                // }
+                JSONObject data = betPreviewJson.getJSONObject("data");
+                JSONObject betTicket = data.getJSONObject("betTicket");
+                JSONObject betInfo = new JSONObject();
+                params.putOpt("stake", betAmount);
+                params.putOpt("odds", betTicket.getStr("odds"));
+                params.putOpt("decimalOdds", betTicket.getStr("decimalOdds"));
+                params.putOpt("handicap", betTicket.getStr("handicap"));
+                params.putOpt("score", betTicket.getStr("score"));
+                params.putOpt("oddsFormatId", betTicket.getStr("oddsFormatId"));
+                params.putOpt("marketSelectionId", betTicket.getStr("marketSelectionId"));
+                // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
+                betInfo.putOpt("league", data.getStr("leagueName"));
+                betInfo.putOpt("team", data.getStr("eventName"));
+                betInfo.putOpt("marketTypeName", data.getStr("marketTypeName"));
+                betInfo.putOpt("marketName", data.getStr("name"));
+                betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap") + " @ "  + betTicket.getStr("odds"));
+                betInfo.putOpt("handicap", data.getStr("handicap"));
+                betInfo.putOpt("amount", betAmount);
+                params.putOpt("betInfo", betInfo);
             } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                 params.putAll(account.getToken().getJSONObject("serverresponse"));
-                // Object betPreview = betPreview(username, websiteId, odds);
-                // if (betPreview != null) {
-                    // 通过当前盘口账户的倍数计算实际投注金额
-                    BigDecimal golds = odds.getBigDecimal("golds");
+                // 通过当前盘口账户的倍数计算实际投注金额
+                BigDecimal golds = odds.getBigDecimal("golds");
 
-                    BigDecimal result = golds
-                            .multiply(BigDecimal.valueOf(multiple))         // 相乘
-                            .setScale(0, RoundingMode.HALF_UP);    // 保留整数，四舍五入
+                betAmount = golds
+                        .multiply(BigDecimal.valueOf(multiple))         // 相乘
+                        .setScale(0, RoundingMode.HALF_UP);    // 保留整数，四舍五入
 
-                    JSONObject betInfo = new JSONObject();
-                    // JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
-                    JSONObject serverresponse = betPreviewJson.getJSONObject("serverresponse");
-                    params.putOpt("gid", odds.getStr("gid"));
-                    params.putOpt("golds", result);
-                    params.putOpt("gtype", odds.getStr("gtype"));
-                    params.putOpt("wtype", odds.getStr("wtype"));
-                    params.putOpt("rtype", odds.getStr("rtype"));
-                    params.putOpt("choseTeam", odds.getStr("choseTeam"));
-                    params.putOpt("ioratio", serverresponse.getStr("ioratio"));
-                    params.putOpt("con", serverresponse.getStr("con"));
-                    params.putOpt("ratio", serverresponse.getStr("ratio"));
-                    params.putOpt("autoOdd", odds.getStr("autoOdd"));
+                JSONObject betInfo = new JSONObject();
+                // JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
+                JSONObject serverresponse = betPreviewJson.getJSONObject("serverresponse");
+                params.putOpt("gid", odds.getStr("gid"));
+                params.putOpt("golds", betAmount);
+                params.putOpt("gtype", odds.getStr("gtype"));
+                params.putOpt("wtype", odds.getStr("wtype"));
+                params.putOpt("rtype", odds.getStr("rtype"));
+                params.putOpt("choseTeam", odds.getStr("choseTeam"));
+                params.putOpt("ioratio", serverresponse.getStr("ioratio"));
+                params.putOpt("con", serverresponse.getStr("con"));
+                params.putOpt("ratio", serverresponse.getStr("ratio"));
+                params.putOpt("autoOdd", odds.getStr("autoOdd"));
 
-                    // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
-                    String fastCheck = serverresponse.getStr("fast_check");
-                    String marketName = "";
-                    String marketTypeName = "";
-                    if (fastCheck.contains("REH")) {
-                        marketName = serverresponse.getStr("team_name_h");
-                        marketTypeName = "让球盘";
-                    } else if (fastCheck.contains("REC")) {
-                        marketName = serverresponse.getStr("team_name_c");
-                        marketTypeName = "让球盘";
-                    } else if (fastCheck.contains("ROUC")) {
-                        marketName = "大盘";
-                        marketTypeName = "大小盘";
-                    } else if (fastCheck.contains("ROUH")) {
-                        marketName = "小盘";
-                        marketTypeName = "大小盘";
-                    }
-                    betInfo.putOpt("league", serverresponse.getStr("league_name"));
-                    betInfo.putOpt("team", serverresponse.getStr("team_name_h") + " -vs- " + serverresponse.getStr("team_name_c"));
-                    betInfo.putOpt("marketTypeName", marketTypeName);
-                    betInfo.putOpt("marketName", marketName);
-                    betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread") + " @ " + serverresponse.getStr("ioratio"));
-                    betInfo.putOpt("handicap", serverresponse.getStr("spread"));
-                    betInfo.putOpt("amount", result);
-                    betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));
-                    params.putOpt("betInfo", betInfo);
+                // 保存级别的投注信息联赛、球队等信息,如果投注失败就可以从这里获取投注记录
+                String fastCheck = serverresponse.getStr("fast_check");
+                String marketName = "";
+                String marketTypeName = "";
+                if (fastCheck.contains("REH")) {
+                    marketName = serverresponse.getStr("team_name_h");
+                    marketTypeName = "让球盘";
+                } else if (fastCheck.contains("REC")) {
+                    marketName = serverresponse.getStr("team_name_c");
+                    marketTypeName = "让球盘";
+                } else if (fastCheck.contains("ROUC")) {
+                    marketName = "大盘";
+                    marketTypeName = "大小盘";
+                } else if (fastCheck.contains("ROUH")) {
+                    marketName = "小盘";
+                    marketTypeName = "大小盘";
+                }
+                betInfo.putOpt("league", serverresponse.getStr("league_name"));
+                betInfo.putOpt("team", serverresponse.getStr("team_name_h") + " -vs- " + serverresponse.getStr("team_name_c"));
+                betInfo.putOpt("marketTypeName", marketTypeName);
+                betInfo.putOpt("marketName", marketName);
+                betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread") + " @ " + serverresponse.getStr("ioratio"));
+                betInfo.putOpt("handicap", serverresponse.getStr("spread"));
+                betInfo.putOpt("amount", betAmount);
+                betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));
+                params.putOpt("betInfo", betInfo);
 
-                    // 转换赔率类型
-                    String oddsFormatType;
-                    if (oddsType == 1) {
-                        // 平台设置的马来盘
-                        oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
-                    } else if (oddsType == 2) {
-                        // 平台设置的香港盘
-                        oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
-                    } else {
-                        // 默认马来盘
-                        oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
-                    }
-                    params.putOpt("oddsFormatType", oddsFormatType);
-                } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+                // 转换赔率类型
+                String oddsFormatType;
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
+                maxBet = serverresponse.getBigDecimal("gold_gmax");
+                minBet = serverresponse.getBigDecimal("gold_gmin");
+            } else if (WebsiteType.SBO.getId().equals(websiteId)) {
 
                 // 通过当前盘口账户的倍数计算实际投注金额
                 BigDecimal stake = odds.getBigDecimal("stake");
 
-                BigDecimal result = stake
+                betAmount = stake
                         .multiply(BigDecimal.valueOf(multiple))         // 相乘
                         .setScale(2, RoundingMode.HALF_UP);    // 保留两位小数，四舍五入
 
@@ -1426,7 +1420,7 @@ public class HandicapApi {
                 params.putOpt("oddsId", oddInfo.getStr("oddsId"));
                 params.putOpt("option", odds.getStr("option"));
                 params.putOpt("point", oddInfo.getStr("point"));
-                params.putOpt("stake", result);
+                params.putOpt("stake", betAmount);
                 params.putOpt("uid", oddInfo.getStr("uid"));
                 params.putOpt("betInfo", betPreviewInfo);
 
@@ -1443,29 +1437,104 @@ public class HandicapApi {
                     oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
                 }
                 params.putOpt("oddsFormatType", oddsFormatType);
+                maxBet = betPreviewJson.getJSONObject("data").getBigDecimal("maxBet");
+                minBet = betPreviewJson.getJSONObject("data").getBigDecimal("minBet");
             }
-            // }
-            JSONObject result = apiHandler.execute(account, params);
-            if (result == null) {
-                // 此账号投注失败进入下一个账号进行投注
-                continue;
+
+            // ================== 投注与拆分逻辑 ==================
+            List<JSONObject> splitResults = new ArrayList<>();
+            List<JSONObject> failedSplits = new ArrayList<>();
+
+            if (betAmount.compareTo(maxBet) <= 0) {
+                JSONObject result = apiHandler.execute(account, params);
+                if (result != null && result.getBool("success")) {
+                    result.putOpt("account", account.getAccount());
+                    result.putOpt("accountId", account.getId());
+                    splitResults.add(result);
+                } else {
+                    failedSplits.add(params);
+                }
+            } else {
+                int splitCount = betAmount.divide(maxBet, 0, RoundingMode.UP).intValue();
+                for (int s = 0; s < splitCount; s++) {
+                    BigDecimal thisAmount = (s < splitCount - 1)
+                            ? maxBet
+                            : betAmount.subtract(maxBet.multiply(BigDecimal.valueOf(splitCount - 1)));
+
+                    JSONObject paramsCopy = JSONUtil.parseObj(params.toString());
+                    switch (WebsiteType.getById(websiteId)) {
+                        case PINGBO -> {
+                            JSONArray selections = paramsCopy.getJSONArray("selections");
+                            for (Object obj : selections) {
+                                JSONObject sel = (JSONObject) obj;
+                                sel.putOpt("stake", thisAmount);
+                            }
+                        }
+                        case ZHIBO -> paramsCopy.putOpt("stake", thisAmount);
+                        case XINBAO -> paramsCopy.putOpt("golds", thisAmount);
+                        case SBO -> paramsCopy.putOpt("stake", thisAmount);
+                    }
+
+                    JSONObject result = apiHandler.execute(account, paramsCopy);
+                    if (result == null) {
+                        log.warn("账号 {} 第 {} 次拆分投注失败，金额 {}", account.getAccount(), s + 1, thisAmount);
+                        paramsCopy.putOpt("splitIndex", s + 1);
+                        paramsCopy.putOpt("splitAmount", thisAmount);
+                        failedSplits.add(paramsCopy);
+                        continue;
+                    }
+                    result.putOpt("splitIndex", s + 1);
+                    result.putOpt("splitAmount", thisAmount);
+                    result.putOpt("account", account.getAccount());
+                    result.putOpt("accountId", account.getId());
+                    splitResults.add(result);
+                }
             }
-            /*if (result.getBool("success")) {
-                // 保存记录投注账号id
-                result.putOpt("account", account.getAccount());
-                result.putOpt("accountId", account.getId());
-                return result;
-            }*/
-            result.putOpt("account", account.getAccount());
-            result.putOpt("accountId", account.getId());
-            return result;
+
+            // ================== 失败补投逻辑 ==================
+            if (!failedSplits.isEmpty()) {
+                for (JSONObject failedParam : failedSplits) {
+                    boolean retried = false;
+                    for (ConfigAccountVO otherAcc : accounts) {
+                        if (otherAcc.getId().equals(account.getId())) continue;
+                        if (otherAcc.getEnable() == 0 || otherAcc.getIsTokenValid() == 0) continue;
+
+                        WebsiteApiFactory otherFactory = factoryManager.getFactory(websiteId);
+                        ApiHandler otherHandler = otherFactory.bet();
+                        JSONObject retryResult = otherHandler.execute(otherAcc, failedParam);
+                        if (retryResult != null) {
+                            retryResult.putOpt("retry", true);
+                            retryResult.putOpt("account", otherAcc.getAccount());
+                            retryResult.putOpt("accountId", otherAcc.getId());
+                            splitResults.add(retryResult);
+                            retried = true;
+                            break;
+                        }
+                    }
+                    if (!retried) {
+                        log.error("投注补单失败，仍未成功，参数={}", failedParam);
+                    }
+                }
+            }
+
+            // ================== 返回处理 ==================
+            if (splitResults.isEmpty()) {
+                continue; // 尝试下一个账号
+            } else if (splitResults.size() == 1) {
+                return splitResults.get(0);
+            } else {
+                JSONObject summaryResult = new JSONObject();
+                summaryResult.putOpt("code", 200);
+                summaryResult.putOpt("message", "拆分投注成功，共" + splitResults.size() + "次");
+                summaryResult.putOpt("splitCount", splitResults.size());
+                summaryResult.putOpt("totalAmount", betAmount);
+                summaryResult.putOpt("splitDetails", splitResults);
+                summaryResult.putOpt("account", account.getAccount());
+                summaryResult.putOpt("accountId", account.getId());
+                return summaryResult;
+            }
         }
         return null;
-    }
-
-    public static void main(String[] args) {
-        LocalDateTime localDateTime = LocalDateTimeUtil.parse("2025-09-01T05:34:17.43-04:00".replace("-04:00", ""));
-        System.out.println(LocalDateTimeUtil.format(localDateTime.plusHours(12), DatePattern.NORM_DATETIME_PATTERN));
     }
 
 }

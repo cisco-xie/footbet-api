@@ -26,7 +26,7 @@ public class ConfigAccountVO {
     @Schema(description = "自动登录（0否1是）")
     private Integer autoLogin = 1;
     @Schema(description = "用途(0通用 1扫水 2投注)")
-    private Integer useType = 0;
+    private Integer useType = 2;
     @NotBlank(message = "盘口账号不能为空")
     private String account;
     @NotBlank(message = "盘口密码不能为空")

@@ -28,6 +28,8 @@ import org.redisson.api.*;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -515,6 +517,14 @@ public class BetService {
                            OptimizingDTO optimizing,
                            Integer simulateBet) {
         JSONObject result = new JSONObject();
+
+        if (!limitDTO.getWebsiteLimit().contains(websiteId)) {
+            // 单边投注，当前网站不是所指定的网站，直接跳出不投注
+            result.putOpt("isBet", false);
+            result.putOpt("success", false);
+            return result;
+        }
+
         String score = isA ? dto.getScoreA() : dto.getScoreB();
         String betTeamName = isA ? dto.getTeamA() : dto.getTeamB();
         // 构建投注参数并调用投注接口
@@ -544,8 +554,8 @@ public class BetService {
                 }
 
                 if (dto.getLastOddsTimeA() == dto.getLastOddsTimeB()) {
-                    // 如果两个都是旧或者新,则不进行投注,需要在前端显示
-                    result.putOpt("isBet", true);
+                    // 如果两个都是旧或者新,则不进行投注,不需要在前端显示
+                    result.putOpt("isBet", false);
                     result.putOpt("success", false);
                     return result;
                 }
@@ -558,13 +568,6 @@ public class BetService {
                         return result;
                     } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2 && !lastOddsTime) {
                         // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
-                        result.putOpt("isBet", false);
-                        result.putOpt("success", false);
-                        return result;
-                    }
-
-                    if (limitDTO.getWebsiteLimit() != null && !limitDTO.getWebsiteLimit().contains(websiteId)) {
-                        // 单边投注，当前网站不是所指定的网站，直接跳出不投注
                         result.putOpt("isBet", false);
                         result.putOpt("success", false);
                         return result;
@@ -626,7 +629,6 @@ public class BetService {
                         dto.setBetInfoB(betPreview.getJSONObject("betInfo"));
                     }
                 }
-
                 // 投注
                 Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betInfo"), betPreview.getJSONObject("betPreview"));
 
@@ -643,7 +645,22 @@ public class BetService {
                             businessPlatformRedissonClient.getBucket(intervalKey).set(System.currentTimeMillis(), Duration.ofHours(24));
                             String successKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_SUCCESS_PREFIX, username, websiteId, eventId);
                             // 投注成功则记录
-                            businessPlatformRedissonClient.getList(successKey).add(JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
+
+                            // 处理单个结果和拆分结果的情况
+                            JSONObject betInfoToStore = null;
+                            if (betResult instanceof JSONObject) {
+                                betInfoToStore = ((JSONObject) betResult).getJSONObject("betInfo");
+                            } else if (betResult instanceof List) {
+                                List<JSONObject> betResults = (List<JSONObject>) betResult;
+                                if (!betResults.isEmpty()) {
+                                    // 取第一个结果的betInfo
+                                    betInfoToStore = betResults.get(0).getJSONObject("betInfo");
+                                }
+                            }
+
+                            if (betInfoToStore != null) {
+                                businessPlatformRedissonClient.getList(successKey).add(betInfoToStore);
+                            }
                         } catch (Exception e) {
                             log.warn("异步记录投注成功失败:", e);
                         }
@@ -775,6 +792,8 @@ public class BetService {
 
         betPreviewResult.putOpt("betPreview", betPreviewJson);
 
+        BigDecimal maxBet = BigDecimal.ZERO;
+        BigDecimal minBet = BigDecimal.ZERO;
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
             JSONArray data = betPreviewJson.getJSONArray("data");
             if (data == null || data.isEmpty()) {
@@ -790,6 +809,8 @@ public class BetService {
                 betInfo.putOpt("handicap", objJson.getStr("handicap"));
                 betInfo.putOpt("amount", params.getStr("stake"));
                 betInfo.putOpt("betTeamName", betTeamName);
+                maxBet = objJson.getBigDecimal("maxStake");
+                minBet = objJson.getBigDecimal("minStake");
             }
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             JSONObject data = betPreviewJson.getJSONObject("data");
@@ -828,6 +849,8 @@ public class BetService {
             betInfo.putOpt("handicap", serverresponse.getStr("spread"));
             betInfo.putOpt("amount", params.getStr("golds"));
             betInfo.putOpt("betTeamName", betTeamName);
+            maxBet = serverresponse.getBigDecimal("gold_gmax");
+            minBet = serverresponse.getBigDecimal("gold_gmin");
         } else if (WebsiteType.SBO.getId().equals(websiteId)) {
             JSONObject oddsInfo = betPreviewJson.getJSONObject("data").getJSONObject("oddsInfo");
             String firstKey = oddsInfo.keySet().iterator().next();  // 拿第一个 key
@@ -864,9 +887,13 @@ public class BetService {
             betInfo.putOpt("amount", params.getStr("stake"));
             betInfo.putOpt("uid", odd.getStr("uid"));
             betInfo.putOpt("betTeamName", betTeamName);
+            maxBet = betPreviewJson.getJSONObject("data").getBigDecimal("maxBet");
+            minBet = betPreviewJson.getJSONObject("data").getBigDecimal("minBet");
         }
 
         betPreviewResult.putOpt("betInfo", betInfo);
+        betPreviewResult.putOpt("maxBet", maxBet);
+        betPreviewResult.putOpt("minBet", minBet);
         return betPreviewResult;
     }
 
@@ -1031,40 +1058,106 @@ public class BetService {
      * 解析投注返回
      */
     private boolean parseBetSuccess(Object betResult, SweepwaterBetDTO sweepwaterDTO, boolean isA) {
-        JSONObject betResultJson = JSONUtil.parseObj(betResult);
+        // 处理单个投注结果和拆分投注结果
+        if (betResult instanceof JSONObject) {
+            return parseSingleBetResult((JSONObject) betResult, sweepwaterDTO, isA);
+        } else if (betResult instanceof List) {
+            return parseSplitBetResults((List<JSONObject>) betResult, sweepwaterDTO, isA);
+        }
+        return false;
+    }
+
+    /**
+     * 处理单个投注结果
+     */
+    private boolean parseSingleBetResult(JSONObject betResultJson, SweepwaterBetDTO sweepwaterDTO, boolean isA) {
         if (!betResultJson.getBool("success", false)) {
             return false;
         }
 
-        String betId = null;
+        String betId = extractBetId(betResultJson, isA ? sweepwaterDTO.getWebsiteIdA() : sweepwaterDTO.getWebsiteIdB());
         String account = betResultJson.getStr("account");
         String accountId = betResultJson.getStr("accountId");
-        String websiteId = isA ? sweepwaterDTO.getWebsiteIdA() : sweepwaterDTO.getWebsiteIdB();
-
-        // 投注成功后就用betId去盘口投注历史接口中查找当前的投注单，进行保存
-        if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
-            betId = betResultJson.getJSONObject("data").getJSONObject("betInfo").getStr("betId");
-        } else if (WebsiteType.PINGBO.getId().equals(websiteId)) {
-            betId = betResultJson.getJSONArray("response").getJSONObject(0).getStr("wagerId");
-        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
-            betId = betResultJson.getJSONObject("data").getJSONObject("serverresponse").getStr("ticket_id");
-        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
-            betId = betResultJson.getJSONObject("data").getStr("transId");
-        }
 
         if (StringUtils.isNotBlank(betId)) {
-            if (isA) {
-                sweepwaterDTO.setBetIdA(betId);
-                sweepwaterDTO.setBetAccountA(account);
-                sweepwaterDTO.setBetAccountIdA(accountId);
-            } else {
-                sweepwaterDTO.setBetIdB(betId);
-                sweepwaterDTO.setBetAccountB(account);
-                sweepwaterDTO.setBetAccountIdB(accountId);
-            }
+            setBetInfoToDTO(sweepwaterDTO, isA, betId, account, accountId);
             return true;
         }
         return false;
+    }
+
+    /**
+     * 处理拆分投注结果
+     */
+    private boolean parseSplitBetResults(List<JSONObject> betResults, SweepwaterBetDTO sweepwaterDTO, boolean isA) {
+        if (betResults == null || betResults.isEmpty()) {
+            return false;
+        }
+
+        String websiteId = isA ? sweepwaterDTO.getWebsiteIdA() : sweepwaterDTO.getWebsiteIdB();
+        List<String> betIds = new ArrayList<>();
+        String account = null;
+        String accountId = null;
+        boolean hasSuccess = false;
+
+        // 遍历所有拆分投注结果
+        for (JSONObject betResult : betResults) {
+            if (betResult.getBool("success", false)) {
+                hasSuccess = true;
+
+                String singleBetId = extractBetId(betResult, websiteId);
+                if (StringUtils.isNotBlank(singleBetId)) {
+                    betIds.add(singleBetId);
+                }
+
+                // 取第一个成功的账号信息（所有拆分投注应该使用同一个账号）
+                if (account == null) {
+                    account = betResult.getStr("account");
+                    accountId = betResult.getStr("accountId");
+                }
+            } else {
+                log.warn("拆分投注中有一个失败: {}", betResult);
+            }
+        }
+
+        if (hasSuccess && !betIds.isEmpty()) {
+            // 将所有投注ID用逗号分隔存储
+            String combinedBetId = String.join(",", betIds);
+            setBetInfoToDTO(sweepwaterDTO, isA, combinedBetId, account, accountId);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 从投注结果中提取投注ID
+     */
+    private String extractBetId(JSONObject betResultJson, String websiteId) {
+        if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+            return betResultJson.getJSONObject("data").getJSONObject("betInfo").getStr("betId");
+        } else if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            return betResultJson.getJSONArray("response").getJSONObject(0).getStr("wagerId");
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+            return betResultJson.getJSONObject("data").getJSONObject("serverresponse").getStr("ticket_id");
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            return betResultJson.getJSONObject("data").getStr("transId");
+        }
+        return null;
+    }
+
+    /**
+     * 设置投注信息到DTO
+     */
+    private void setBetInfoToDTO(SweepwaterBetDTO sweepwaterDTO, boolean isA, String betId, String account, String accountId) {
+        if (isA) {
+            sweepwaterDTO.setBetIdA(betId);
+            sweepwaterDTO.setBetAccountA(account);
+            sweepwaterDTO.setBetAccountIdA(accountId);
+        } else {
+            sweepwaterDTO.setBetIdB(betId);
+            sweepwaterDTO.setBetAccountB(account);
+            sweepwaterDTO.setBetAccountIdB(accountId);
+        }
     }
 
     /**
