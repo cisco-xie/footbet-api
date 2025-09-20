@@ -144,8 +144,15 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
 
             // 半场/全场判定
             String type;
-            if ("HT".equals(session)) type = "firstHalf";
-            else {
+            String sessionValue;
+            if ("HT".equals(session)) {
+                type = "firstHalf";
+                sessionValue = "1H";
+            } else if ("FT".equals(session)) {
+                sessionValue = "2H";
+                type = "fullCourt";
+            } else {
+                sessionValue = "HT";
                 type = "fullCourt";
             }
 
@@ -159,7 +166,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                     reTime = NumberUtil.parseInt(minuteStr, 0);
                 }
             }
-            if ("Y".equals(midfield)) session = "HT";
+            if ("Y".equals(midfield)) sessionValue = "HT";
 
             // 获取联赛容器
             JSONObject league = leagueMap.computeIfAbsent(lid, k -> {
@@ -180,7 +187,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             homeTeam.putOpt("name", home);
             homeTeam.putOpt("isHome", true);
             homeTeam.putOpt("score", score);
-            homeTeam.putOpt("session", session);
+            homeTeam.putOpt("session", sessionValue);
             homeTeam.putOpt("reTime", reTime);
             homeTeam.putOpt("fullCourt", new JSONObject());
             homeTeam.putOpt("firstHalf", new JSONObject());
@@ -190,71 +197,15 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             awayTeam.putOpt("name", away);
             awayTeam.putOpt("isHome", false);
             awayTeam.putOpt("score", score);
-            awayTeam.putOpt("session", session);
+            awayTeam.putOpt("session", sessionValue);
             awayTeam.putOpt("reTime", reTime);
             awayTeam.putOpt("fullCourt", new JSONObject());
             awayTeam.putOpt("firstHalf", new JSONObject());
 
-            // 盘口组装逻辑
+            // ============= 盘口组装逻辑（全场 / 半场 / 子盘口） =============
             BiConsumer<JSONObject, Boolean> processOdds = (team, isHome) -> {
-                String prefix = type.equals("firstHalf") ? "H" : "";
-
-                // 让球盘
-                if (gameJson.containsKey("IOR_" + prefix + "REH") && StringUtils.isNotBlank(gameJson.getStr("IOR_" + prefix + "REH"))) {
-                    JSONObject letBall = (JSONObject) team.getJSONObject(type).computeIfAbsent("letBall", k -> new JSONObject());
-                    String ratio = gameJson.getStr("RATIO_" + prefix + "RE", "0");
-                    String oddsKey = ratio.contains("/") ? ratio : ratio.replace(".0", "");
-                    String odds = calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_" + prefix + (isHome ? "REH" : "REC")));
-
-                    JSONObject item = new JSONObject();
-                    item.putOpt("id", gid);
-                    item.putOpt("odds", odds);
-                    item.putOpt("oddFType", oddsFormatType);
-                    item.putOpt("gtype", gameJson.getStr("MT_GTYPE"));
-                    item.putOpt("wtype", prefix + "RE");
-                    item.putOpt("rtype", prefix + (isHome ? "REH" : "REC"));
-                    item.putOpt("choseTeam", isHome ? "H" : "C");
-                    item.putOpt("con", getMiddleValue(ratio));
-                    item.putOpt("ratio", isHome ? getRatio(ratio, "主队") : -getRatio(ratio, "客队"));
-                    item.putOpt("handicap", (isHome && !"0".equals(ratio) ? "-" : "") + ratio);
-                    item.putOpt("wall", isHome ? "hanging" : "foot");
-
-                    letBall.putOpt(getHandicapRange(oddsKey), item);
-
-                    // 记录主队的赔率
-                    String key = isHome ? "H" : "C";
-                    apiUrlService.updateOddsCache(username, gid + key, Double.parseDouble(odds));
-                    // 记录客队的赔率
-                    apiUrlService.updateOddsCache(username, gid + key, Double.parseDouble(odds));
-                }
-
-                // 大小盘
-                if (gameJson.containsKey("IOR_" + prefix + "ROUH") && StringUtils.isNotBlank(gameJson.getStr("IOR_" + prefix + "ROUH"))) {
-                    JSONObject overSize = (JSONObject) team.getJSONObject(type).computeIfAbsent("overSize", k -> new JSONObject());
-                    String ratio = gameJson.getStr("RATIO_" + prefix + "ROUO", "0");
-                    String oddsKey = ratio.contains("/") ? ratio : ratio.replace(".0", "");
-                    String odds = calculateOddsValue(oddsFormatType, gameJson.getDouble("IOR_" + prefix + (isHome ? "ROUC" : "ROUH")));
-
-                    JSONObject item = new JSONObject();
-                    item.putOpt("id", gid);
-                    item.putOpt("odds", odds);
-                    item.putOpt("oddFType", oddsFormatType);
-                    item.putOpt("gtype", gameJson.getStr("MT_GTYPE"));
-                    item.putOpt("wtype", prefix + "ROU");
-                    item.putOpt("rtype", prefix + (isHome ? "ROUC" : "ROUH"));
-                    item.putOpt("choseTeam", isHome ? "C" : "H");
-                    item.putOpt("con", getMiddleValue(ratio));
-                    item.putOpt("ratio", isHome ? getRatio(ratio, "大") : -getRatio(ratio, "小"));
-                    item.putOpt("handicap", ratio);
-
-                    overSize.putOpt(getHandicapRange(oddsKey), item);
-
-                    // 记录主队的赔率
-                    String key = isHome ? "H" : "C";
-                    apiUrlService.updateOddsCache(username, gid + key, Double.parseDouble(odds));
-                    // 记录客队的赔率
-                    apiUrlService.updateOddsCache(username, gid + key, Double.parseDouble(odds));
-                }
+                // 处理盘口（全场 + 半场）
+                parseOddsBlock(gameJson, gid, oddsFormatType, username, team, isHome);
             };
 
             processOdds.accept(homeTeam, true);
@@ -274,6 +225,82 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
         responseJson.putOpt("msg", "成功");
         responseJson.putOpt("leagues", finalResult);
         return responseJson;
+    }
+
+    /**
+     * 公共盘口解析逻辑,根据字段名自动区分全场 / 半场，并解析让球盘和大小盘
+     */
+    private void parseOddsBlock(JSONObject gameJson, String gid, String oddsFormatType,
+                                String username, JSONObject team, boolean isHome) {
+
+        for (String key : gameJson.keySet()) {
+            // 判断盘口类型容器
+            String type;
+            if (key.contains("HRE") || key.contains("HROU")) {
+                type = "firstHalf"; // 上半场
+            } else if (key.contains("RE") || key.contains("ROU")) {
+                type = "fullCourt"; // 全场
+            } else {
+                continue; // 非盘口字段跳过
+            }
+
+            if (StringUtils.isBlank(gameJson.getStr(key))) {
+                continue;
+            }
+
+            JSONObject teamTypeObj = team.getJSONObject(type);
+            if (teamTypeObj == null) {
+                teamTypeObj = new JSONObject();
+                team.putOpt(type, teamTypeObj);
+            }
+
+            // 让球盘
+            if (key.endsWith("REH") || key.endsWith("REC")) {
+                JSONObject letBall = (JSONObject) teamTypeObj.computeIfAbsent("letBall", k -> new JSONObject());
+                String ratioKey = key.contains("_H") ? key.replace("IOR_", "RATIO_") : key.replace("IOR_", "RATIO_");
+                String ratio = gameJson.getStr(ratioKey, "0");
+                String oddsKey = ratio.contains("/") ? ratio : ratio.replace(".0", "");
+                String odds = calculateOddsValue(oddsFormatType, gameJson.getDouble(key));
+
+                JSONObject item = new JSONObject();
+                item.putOpt("id", gid);
+                item.putOpt("odds", odds);
+                item.putOpt("oddFType", oddsFormatType);
+                item.putOpt("gtype", gameJson.getStr("MT_GTYPE"));
+                item.putOpt("wtype", key.contains("H") ? "HRE" : "RE");
+                item.putOpt("rtype", key);
+                item.putOpt("choseTeam", key.endsWith("H") ? "H" : "C");
+                item.putOpt("con", getMiddleValue(ratio));
+                item.putOpt("ratio", key.endsWith("H") ? getRatio(ratio, "主队") : -getRatio(ratio, "客队"));
+                item.putOpt("handicap", (key.endsWith("H") && !"0".equals(ratio) ? "-" : "") + ratio);
+                item.putOpt("wall", key.endsWith("H") ? "hanging" : "foot");
+
+                letBall.putOpt(getHandicapRange(oddsKey), item);
+            }
+
+            // 大小盘
+            if (key.endsWith("ROUH") || key.endsWith("ROUC")) {
+                JSONObject overSize = (JSONObject) teamTypeObj.computeIfAbsent("overSize", k -> new JSONObject());
+                String ratioKey = key.contains("_H") ? key.replace("IOR_", "RATIO_HROU") : key.replace("IOR_", "RATIO_ROUO");
+                String ratio = gameJson.getStr(ratioKey, "0");
+                String oddsKey = ratio.contains("/") ? ratio : ratio.replace(".0", "");
+                String odds = calculateOddsValue(oddsFormatType, gameJson.getDouble(key));
+
+                JSONObject item = new JSONObject();
+                item.putOpt("id", gid);
+                item.putOpt("odds", odds);
+                item.putOpt("oddFType", oddsFormatType);
+                item.putOpt("gtype", gameJson.getStr("MT_GTYPE"));
+                item.putOpt("wtype", key.contains("H") ? "HROU" : "ROU");
+                item.putOpt("rtype", key);
+                item.putOpt("choseTeam", key.endsWith("C") ? "C" : "H");
+                item.putOpt("con", getMiddleValue(ratio));
+                item.putOpt("ratio", key.endsWith("C") ? getRatio(ratio, "大") : -getRatio(ratio, "小"));
+                item.putOpt("handicap", ratio);
+
+                overSize.putOpt(getHandicapRange(oddsKey), item);
+            }
+        }
     }
 
     /**

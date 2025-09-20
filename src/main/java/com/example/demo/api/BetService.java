@@ -66,8 +66,15 @@ public class BetService {
      * @param username
      */
     public void betClear(String username) {
-        String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, "realtime", "*", "*");
-        businessPlatformRedissonClient.getKeys().deleteByPattern(pattern);
+        // 删除下注明细
+        String betPattern = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, "realtime", "*", "*");
+        businessPlatformRedissonClient.getKeys().deleteByPattern(betPattern);
+
+        // 删除实时索引
+        String indexPattern = KeyUtil.genKey("INDEX", username, "realtime", "*");
+        businessPlatformRedissonClient.getKeys().deleteByPattern(indexPattern);
+
+        log.info("清理下注缓存完成，用户:{}，pattern:{} 和 {}", username, betPattern, indexPattern);
     }
 
     /**
@@ -525,6 +532,13 @@ public class BetService {
             return result;
         }
 
+        if (dto.getLastOddsTimeA() == dto.getLastOddsTimeB()) {
+            // 如果两个都是旧或者新,则不进行投注,不需要在前端显示
+            result.putOpt("isBet", false);
+            result.putOpt("success", false);
+            return result;
+        }
+
         String score = isA ? dto.getScoreA() : dto.getScoreB();
         String betTeamName = isA ? dto.getTeamA() : dto.getTeamB();
         // 构建投注参数并调用投注接口
@@ -553,13 +567,30 @@ public class BetService {
                     dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                 }
 
-                if (dto.getLastOddsTimeA() == dto.getLastOddsTimeB()) {
-                    // 如果两个都是旧或者新,则不进行投注,不需要在前端显示
-                    result.putOpt("isBet", false);
-                    result.putOpt("success", false);
+                boolean lastOddsTime = isA ? dto.getLastOddsTimeA() : dto.getLastOddsTimeB();
+
+                if (simulateBet == 1) {
+                    // 模拟投注
+                    if (isUnilateral) {
+                        if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1 && lastOddsTime) {
+                            // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
+                            result.putOpt("isBet", true);
+                            result.putOpt("success", false);
+                        } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2 && !lastOddsTime) {
+                            // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
+                            result.putOpt("isBet", true);
+                            result.putOpt("success", false);
+                        } else {
+                            result.putOpt("isBet", true);
+                            result.putOpt("success", true);
+                        }
+                    } else {
+                        result.putOpt("isBet", true);
+                        result.putOpt("success", true);
+                    }
                     return result;
                 }
-                boolean lastOddsTime = isA ? dto.getLastOddsTimeA() : dto.getLastOddsTimeB();
+
                 if (isUnilateral) {
                     if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1 && lastOddsTime) {
                         // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
@@ -608,12 +639,6 @@ public class BetService {
                     return result;
                 }
 
-                if (simulateBet == 1) {
-                    // 模拟投注
-                    result.putOpt("isBet", true);
-                    result.putOpt("success", false);
-                    return result;
-                }
                 // 投注预览
                 JSONObject betPreview = buildBetInfo(username, betTeamName, websiteId, params, dto);
                 if (betPreview == null) {

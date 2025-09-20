@@ -495,18 +495,9 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         // 设置第六步特定的headers
         Map<String, String> step6Headers = buildStep6Headers(params);
 
-        // 记录调试信息
-        log.info("第六步signin-sbo URL: {}", step6Url);
-        log.info("第六步Cookie: {}", cookieStore.toString());
-
         OkHttpProxyDispatcher.HttpResult response;
         try {
             response = dispatcher.execute("GET", step6Url, null, step6Headers, userConfig, false);
-
-            // 记录响应信息
-            log.info("第六步响应状态码: {}", response.getStatus());
-            log.info("第六步响应头: {}", response.getHeaders());
-            log.info("第六步响应体: {}", response.getBody());
 
             // 保存cookie
             updateCookieStore(response, cookieStore);
@@ -533,18 +524,9 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         // 设置第七步特定的headers
         Map<String, String> step7Headers = buildStep7Headers(params);
 
-        // 记录调试信息
-        log.info("第七步GetCurrentAsiProduct URL: {}", step7Url);
-        log.info("第七步Cookie: {}", cookieStore.toString());
-
         OkHttpProxyDispatcher.HttpResult response;
         try {
             response = dispatcher.execute("GET", step7Url, null, step7Headers, userConfig, false);
-
-            // 记录响应信息
-            log.info("第七步响应状态码: {}", response.getStatus());
-            log.info("第七步响应头: {}", response.getHeaders());
-            log.info("第七步响应体: {}", response.getBody());
 
             // 保存cookie
             updateCookieStore(response, cookieStore);
@@ -572,19 +554,9 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         // 设置第七步特定的headers
         Map<String, String> step7Headers = buildStep7Headers(params);
 
-        // 记录调试信息
-        log.info("第八步GetCurrentAsiProduct URL: {}", step8Url);
-        log.info("第八步Cookie: {}", cookieStore.toString());
-
         OkHttpProxyDispatcher.HttpResult response;
         try {
             response = dispatcher.execute("GET", step8Url, null, step7Headers, userConfig, false);
-
-            // 记录响应信息
-            log.info("第八步响应状态码: {}", response.getStatus());
-            log.info("第八步响应头: {}", response.getHeaders());
-            log.info("第八步响应体: {}", response.getBody());
-
             // 保存cookie
             updateCookieStore(response, cookieStore);
 
@@ -609,22 +581,10 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         params.set("cookie", cookieStore.toString());
         params.set("contentType", "application/json");
 
-        // 记录调试信息
-        log.info("第九步CheckLoginBrand URL: {}", step9Url);
-        log.info("第九步Cookie: {}", cookieStore.toString());
-
         OkHttpProxyDispatcher.HttpResult response;
         try {
             String requestBody = buildRequestCheckLoginBrand(params);
-            log.info("第九步请求体: {}", requestBody);
-
             response = dispatcher.execute("POST", step9Url, requestBody, buildHeaders(params), userConfig, false);
-
-            // 记录响应信息
-            log.info("第九步响应状态码: {}", response.getStatus());
-            log.info("第九步响应头: {}", response.getHeaders());
-            log.info("第九步响应体: {}", response.getBody());
-
             // 保存cookie
             updateCookieStore(response, cookieStore);
 
@@ -648,18 +608,9 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         // 更新cookie
         params.set("cookie", cookieStore.toString());
 
-        // 记录调试信息
-        log.info("第十步getCustomerInfo URL: {}", step7Url);
-        log.info("第十步Cookie: {}", cookieStore.toString());
-
         OkHttpProxyDispatcher.HttpResult response;
         try {
             response = dispatcher.execute("GET", step7Url, null, buildHeaders(params), userConfig, false);
-
-            // 记录响应信息
-            log.info("第十步响应状态码: {}", response.getStatus());
-            log.info("第十步响应头: {}", response.getHeaders());
-            log.info("第十步响应体: {}", response.getBody());
 
             // 保存cookie
             updateCookieStore(response, cookieStore);
@@ -684,18 +635,9 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         // 更新cookie
         params.set("cookie", cookieStore.toString());
 
-        // 记录调试信息
-        log.info("第十一步getTokens URL: {}", step8Url);
-        log.info("第十一步Cookie: {}", cookieStore.toString());
-
         OkHttpProxyDispatcher.HttpResult response;
         try {
             response = dispatcher.execute("GET", step8Url, null, buildHeaders(params), userConfig, false);
-
-            // 记录响应信息
-            log.info("第十一步响应状态码: {}", response.getStatus());
-            log.info("第十一步响应头: {}", response.getHeaders());
-            log.info("第十一步响应体: {}", response.getBody());
 
             // 保存cookie
             updateCookieStore(response, cookieStore);
@@ -720,18 +662,9 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         // 更新cookie
         params.set("cookie", cookieStore.toString());
 
-        // 记录调试信息
-        log.info("第十二步getTokens URL: {}", step8Url);
-        log.info("第十二步Cookie: {}", cookieStore.toString());
-
         OkHttpProxyDispatcher.HttpResult response;
         try {
             response = dispatcher.execute("GET", step8Url, null, buildHeaders(params), userConfig, false);
-
-            // 记录响应信息
-            log.info("第十二步响应状态码: {}", response.getStatus());
-            log.info("第十二步响应头: {}", response.getHeaders());
-            log.info("第十二步响应体: {}", response.getBody());
 
             JSONObject result = parseResponse(params, response);
             result.set("success", true);        // 请求成功

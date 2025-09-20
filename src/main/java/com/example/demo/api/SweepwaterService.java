@@ -973,7 +973,6 @@ public class SweepwaterService {
      * @return
      */
     private JSONObject findEventByLeagueName(JSONArray events, String leagueId, List<String> names) {
-        log.info("查找联赛: 联赛={}, leagueId={}", events, leagueId);
         for (Object eventObj : events) {
             JSONObject eventJson = (JSONObject) eventObj;
             if (leagueId.equals(eventJson.getStr("id"))) {
@@ -985,7 +984,6 @@ public class SweepwaterService {
                         return !names.contains(eventItem.getStr("name"));
                     });
                 }
-
                 return eventJson;
             }
         }
@@ -1072,6 +1070,8 @@ public class SweepwaterService {
                         bindTeamNameB
                 )) {
                     log.info("扫水,网站A:{}-赛事:{}-队伍:{},网站B:{}-赛事:{}-队伍:{},队伍组合符合设置的对立队伍", WebsiteType.getById(websiteIdA).getDescription(), eventAJson.getStr("league"), processedEventA.getTeamName(), WebsiteType.getById(websiteIdB).getDescription(), eventBJson.getStr("league"), processedEventB.getTeamName());
+                    log.info("准备进入扫水对比, eventA:{}======================================eventB:{}", eventA, eventB);
+                    log.info("准备进入扫水对比, processedEventA:{}======================================processedEventB:{}", JSONUtil.parseObj(processedEventA), JSONUtil.parseObj(processedEventB));
                     // 处理全场赔率
                     processFullCourtOdds(
                             username, sweepwaterUsername, oddsScan, profit, interval, limit, oddsRanges,
@@ -1167,6 +1167,7 @@ public class SweepwaterService {
         }
         // 场间休息不处理
         if ("HT".equalsIgnoreCase(session)) {
+            log.info("当前赛事为场间休息session:{}，不扫水", session);
             return false;
         }
 
@@ -1182,6 +1183,7 @@ public class SweepwaterService {
 
         // 非有效阶段直接返回
         if (courseType == -1) {
+            log.info("当前赛事阶段无效session:{}，不扫水", session);
             return false;
         }
 
@@ -1333,6 +1335,7 @@ public class SweepwaterService {
                 .findFirst();
         BetAmountDTO amountDTO = settingsService.getBetAmount(username);
         Set<String> localAdded = new HashSet<>(); // 本轮去重缓存
+        log.info("进入比对扫描:{}-fullCourtA:{}==================================fullCourtB:{}", courtType, fullCourtA, fullCourtB);
         for (String key : fullCourtA.keySet()) {
             if (fullCourtB.containsKey(key)) {
                 if (("win".equals(key) || "draw".equals(key))) {
@@ -1455,6 +1458,7 @@ public class SweepwaterService {
                     }
                 } else {
                     // 处理让球盘和大小盘类型
+                    log.info("处理让球盘和大小盘类型");
                     JSONObject letBallA = fullCourtA.getJSONObject(key);
                     JSONObject letBallB = fullCourtB.getJSONObject(key);
                     for (String subKey : letBallA.keySet()) {
