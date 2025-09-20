@@ -1469,7 +1469,7 @@ public class SweepwaterService {
                         if (valueAJson.containsKey("odds") && StringUtils.isNotBlank(valueAJson.getStr("odds"))) {
                             BigDecimal valueA = valueAJson.getBigDecimal("odds");
                             if (isInOddsRange(optionalOddsA, valueA)) {
-                                log.info("网站A当前赔率赔率:{}不在设定范围内", valueA);
+                                log.info("网站A:{} 当前赔率赔率:{}不在设定范围内", WebsiteType.getById(websiteIdA).getDescription(), valueA);
                                 continue;
                             }
                             String decimalOddsA = valueAJson.containsKey("decimalOdds") ? valueAJson.getStr("decimalOdds") : null;
@@ -1496,7 +1496,7 @@ public class SweepwaterService {
                                 if (valueBJson.containsKey("odds") && StringUtils.isNotBlank(valueBJson.getStr("odds"))) {
                                     BigDecimal valueB = valueBJson.getBigDecimal("odds");
                                     if (isInOddsRange(optionalOddsB, valueB)) {
-                                        log.info("网站B当前赔率赔率:{}不在设定范围内", valueA);
+                                        log.info("网站B:{} 当前赔率赔率:{}不在设定范围内", WebsiteType.getById(websiteIdB).getDescription(), valueB);
                                         continue;
                                     }
                                     // 记录网站A的赔率

@@ -569,6 +569,25 @@ public class BetService {
 
                 boolean lastOddsTime = isA ? dto.getLastOddsTimeA() : dto.getLastOddsTimeB();
 
+                // 这里是校验间隔时间
+                long intervalMillis = intervalDTO.getBetSuccessSec() * 1000L;
+
+                if (!tryLockIntervalKey(intervalKey, intervalMillis)) {
+                    log.info("投注间隔时间未到, 用户 {}, 网站:{}：key={}", username, WebsiteType.getById(websiteId).getDescription(), intervalKey);
+                    result.putOpt("isBet", false);
+                    result.putOpt("success", false);
+                    return result;
+                }
+
+                // 校验投注次数限制
+                // 投注前锁定次数（确保不会超过）
+                if (!tryReserveBetLimit(limitKey, score, limitDTO)) {
+                    log.info("用户 {}, 网站:{} 当前比分 {} 投注次数超限，eventId={}", username, WebsiteType.getById(websiteId).getDescription(), score, eventId);
+                    result.putOpt("isBet", false);
+                    result.putOpt("success", false);
+                    return result;
+                }
+
                 if (simulateBet == 1) {
                     // 模拟投注
                     if (isUnilateral) {
@@ -618,25 +637,6 @@ public class BetService {
                             }
                         }
                     }
-                }
-
-                // 这里是校验间隔时间
-                long intervalMillis = intervalDTO.getBetSuccessSec() * 1000L;
-
-                if (!tryLockIntervalKey(intervalKey, intervalMillis)) {
-                    log.info("投注间隔时间未到, 用户 {}, 网站:{}：key={}", username, WebsiteType.getById(websiteId).getDescription(), intervalKey);
-                    result.putOpt("isBet", false);
-                    result.putOpt("success", false);
-                    return result;
-                }
-
-                // 校验投注次数限制
-                // 投注前锁定次数（确保不会超过）
-                if (!tryReserveBetLimit(limitKey, score, limitDTO)) {
-                    log.info("用户 {}, 网站:{} 当前比分 {} 投注次数超限，eventId={}", username, WebsiteType.getById(websiteId).getDescription(), score, eventId);
-                    result.putOpt("isBet", false);
-                    result.putOpt("success", false);
-                    return result;
                 }
 
                 // 投注预览
