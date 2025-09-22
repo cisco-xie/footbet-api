@@ -63,7 +63,7 @@ public class AutoSweepwaterTask {
     private final LongAdder activeTasks = new LongAdder();
 
     // @Async("sweepTaskExecutor") // ✅ 独立线程池执行
-    @Scheduled(fixedRate = 500)
+    @Scheduled(fixedRate = 1000)
     public void autoSweepwater() {
         // 非阻塞式尝试获取信号量，获取不到就跳过（不再执行新任务）
         if (!sweepPermits.tryAcquire()) {
@@ -167,7 +167,7 @@ public class AutoSweepwaterTask {
             log.error("本轮扫水-用户:{},轮次id:{} 执行 sweepwater 异常", adminUsers, roundId, e);
         } finally {
             // 清理本轮网站赔率缓存
-            sweepwaterService.clearCacheForRound(roundId);
+            // sweepwaterService.clearCacheForRound(roundId);
         }
     }
 
@@ -250,7 +250,7 @@ public class AutoSweepwaterTask {
             log.error("自动扫水 执行异常", e);
         } finally {
             // 清理本轮网站赔率缓存
-            sweepwaterService.clearCacheForRound(roundId);
+            //sweepwaterService.clearCacheForRound(roundId);
         }
     }
 

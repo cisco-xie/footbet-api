@@ -226,108 +226,6 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
         return responseJson;
     }
 
-    public static JSONArray convertOdds(JSONArray input) {
-        // leagueId -> leagueJson
-        Map<String, JSONObject> leagueMap = new LinkedHashMap<>();
-
-        for (Object obj : input) {
-            JSONObject item = (JSONObject) obj;
-
-            String leagueName = item.getStr("league");
-            String ecid = item.getStr("ecid");
-            String leagueKey = ecid + "_" + leagueName;
-
-            // 获取或创建 league
-            JSONObject leagueJson = leagueMap.computeIfAbsent(leagueKey, k -> {
-                JSONObject l = new JSONObject();
-                l.set("id", ecid);
-                l.set("league", leagueName);
-                l.set("events", new JSONArray());
-                return l;
-            });
-
-            // 在 events 里查找当前 event
-            JSONArray events = leagueJson.getJSONArray("events");
-            String eventId = item.getStr("eventId");
-            JSONObject eventJson = null;
-            for (Object e : events) {
-                JSONObject ej = (JSONObject) e;
-                if (eventId.equals(ej.getStr("id"))) {
-                    eventJson = ej;
-                    break;
-                }
-            }
-            if (eventJson == null) {
-                eventJson = new JSONObject();
-                eventJson.set("id", eventId);
-                eventJson.set("name", item.getStr("homeTeam"));
-                eventJson.set("isHome", true);
-                eventJson.set("score", item.getStr("score"));
-                eventJson.set("session", item.getStr("session"));
-                eventJson.set("reTime", item.getInt("reTime"));
-
-                // 初始化盘口结构
-                JSONObject fullCourt = new JSONObject();
-                fullCourt.set("letBall", new JSONObject());
-                fullCourt.set("overSize", new JSONObject());
-                JSONObject firstHalf = new JSONObject();
-                firstHalf.set("letBall", new JSONObject());
-                firstHalf.set("overSize", new JSONObject());
-
-                eventJson.set("fullCourt", fullCourt);
-                eventJson.set("firstHalf", firstHalf);
-
-                events.add(eventJson);
-            }
-
-            // 确定盘口维度
-            String type = item.getStr("type"); // fullCourt or firstHalf
-            String handicapType = item.getStr("handicapType"); // letBall or overSize
-
-            JSONObject targetBlock = eventJson.getJSONObject(type);
-            JSONObject handicapBlock = targetBlock.getJSONObject(handicapType);
-
-            // 添加 home 盘口
-            JSONObject homeObj = new JSONObject();
-            homeObj.set("id", item.getStr("gid"));
-            homeObj.set("odds", item.getStr("homeOdds"));
-            homeObj.set("oddFType", item.getStr("homeOddFType"));
-            homeObj.set("gtype", item.getStr("homeGtype"));
-            homeObj.set("wtype", item.getStr("homeWtype"));
-            homeObj.set("rtype", item.getStr("homeRtype"));
-            homeObj.set("choseTeam", item.getStr("homeChoseTeam"));
-            homeObj.set("con", item.getInt("homeCon"));
-            homeObj.set("ratio", item.getInt("homeRatio"));
-            homeObj.set("handicap", item.get("homeHandicap"));
-            homeObj.set("wall", item.getStr("homeWall"));
-
-            handicapBlock.set(item.getStr("homeHandicap"), homeObj);
-
-            // 添加 away 盘口
-            JSONObject awayObj = new JSONObject();
-            awayObj.set("id", item.getStr("gid"));
-            awayObj.set("odds", item.getStr("awayOdds"));
-            awayObj.set("oddFType", item.getStr("awayOddFType"));
-            awayObj.set("gtype", item.getStr("awayGtype"));
-            awayObj.set("wtype", item.getStr("awayWtype"));
-            awayObj.set("rtype", item.getStr("awayRtype"));
-            awayObj.set("choseTeam", item.getStr("awayChoseTeam"));
-            awayObj.set("con", item.getInt("awayCon"));
-            awayObj.set("ratio", item.getInt("awayRatio"));
-            awayObj.set("handicap", item.get("awayHandicap"));
-            awayObj.set("wall", item.getStr("awayWall"));
-
-            // 可能和 homeHandicap 一样，这里我加个后缀避免覆盖
-            String awayKey = String.valueOf(item.get("awayHandicap"));
-            if (handicapBlock.containsKey(awayKey)) {
-                awayKey = awayKey + "_opponent";
-            }
-            handicapBlock.set(awayKey, awayObj);
-        }
-
-        return new JSONArray(leagueMap.values());
-    }
-
     /**
      * 公共盘口解析逻辑, 根据明确的字段名解析全场 / 半场的让球盘和大小盘
      */
@@ -456,7 +354,6 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             overSize.putOpt(getHandicapRange(ratioFirstOverSize), item);
         }
     }
-
 
     /**
      * 发送账户额度请求并返回结果

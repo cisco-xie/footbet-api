@@ -83,10 +83,6 @@ public class SweepwaterService {
     @Value("${sweepwater.server.count}")
     private int serverCount;
 
-    // 赛事缓存
-    // 用于记录已获取的 ecid 对应事件，避免重复请求远程 API
-    private final ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures = new ConcurrentHashMap<>();
-
     // 本地缓存（存储每个账户最新一次扫水结果,用于对比赔率是否变动） 每个账户最多 10000 条 oddsKey，60 分钟未访问自动过期
     private final Cache<String, BigDecimal> lastSweepCache = Caffeine.newBuilder()
             .maximumSize(10000)
@@ -422,7 +418,7 @@ public class SweepwaterService {
                     .collect(Collectors.toMap(WebsiteVO::getId, Function.identity()));
 
             log.info("sweepwater 开始执行");
-
+            ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures = new ConcurrentHashMap<>();
             // 联赛级线程池（外层）
             ExecutorService leagueExecutor = threadPoolHolder.getLeagueExecutor();
             // 赛事级线程池（内层）
@@ -465,7 +461,7 @@ public class SweepwaterService {
                             for (BindTeamVO event : events) {
                                 eventFutures.add(handleEventAsync(sweepwaterUsername, sweepwaterUsername, bindLeagueVO, event,
                                         oddsScan, profit, interval, limit, oddsRanges, timeFrames, typeFilter,
-                                        websiteMap, null, eventExecutor));
+                                        websiteMap, null, ecidFetchFutures, eventExecutor));
                             }
                         } else {
                             log.info("扫水任务 - 联赛数量大于5,执行parallelStream批处理模式");
@@ -474,7 +470,7 @@ public class SweepwaterService {
                                 events.parallelStream().forEach(event -> {
                                     handleEventLogic(sweepwaterUsername, sweepwaterUsername, bindLeagueVO, event,
                                             oddsScan, profit, interval, limit, oddsRanges, timeFrames, typeFilter,
-                                            websiteMap, null);
+                                            websiteMap, null, ecidFetchFutures);
                                 });
                             }, eventExecutor));
                         }
@@ -568,6 +564,7 @@ public class SweepwaterService {
         CompletableFuture<List<TimeFrameDTO>> timeFramesFuture = CompletableFuture.supplyAsync(() -> settingsFilterService.getTimeFrames(username), configExecutor);
         CompletableFuture<List<WebsiteVO>> websitesFuture = CompletableFuture.supplyAsync(() -> websiteService.getWebsites(username), configExecutor);
 
+        ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures = new ConcurrentHashMap<>();
         try {
             TimeInterval configTimer = DateUtil.timer();
             CompletableFuture.allOf(
@@ -599,7 +596,6 @@ public class SweepwaterService {
             // 用于记录已获取的 ecid 对应事件，避免重复请求远程 API
             // ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFuturesA = ecidFetchFutures;
             // ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFuturesB = ecidFetchFutures;
-
             log.info("sweepwater 开始执行，平台用户:{}", username);
 
             // 联赛级线程池（外层）
@@ -631,24 +627,11 @@ public class SweepwaterService {
                         List<CompletableFuture<Void>> eventFutures = new ArrayList<>();
 
                         List<BindTeamVO> events = bindLeagueVO.getEvents();
-                        if (events.size() <= 5) {
-                            log.info("扫水任务 - 联赛数量小于5,执行线程池并发模式");
-                            // 每场比赛单独任务（保持最大并发）
-                            for (BindTeamVO event : events) {
-                                eventFutures.add(handleEventAsync(username, sweepwaterUsername, bindLeagueVO, event,
-                                        oddsScan, profit, interval, limit, oddsRanges, timeFrames, typeFilter,
-                                        websiteMap, roundId, eventExecutor));
-                            }
-                        } else {
-                            log.info("扫水任务 - 联赛数量大于5,执行parallelStream批处理模式");
-                            // 批处理方式（一个线程处理一批赛事，内部 parallelStream）
-                            eventFutures.add(CompletableFuture.runAsync(() -> {
-                                events.parallelStream().forEach(event -> {
-                                    handleEventLogic(username, sweepwaterUsername, bindLeagueVO, event,
-                                            oddsScan, profit, interval, limit, oddsRanges, timeFrames, typeFilter,
-                                            websiteMap, roundId);
-                                });
-                            }, eventExecutor));
+                        // 每场比赛单独任务（保持最大并发）
+                        for (BindTeamVO event : events) {
+                            eventFutures.add(handleEventAsync(username, sweepwaterUsername, bindLeagueVO, event,
+                                    oddsScan, profit, interval, limit, oddsRanges, timeFrames, typeFilter,
+                                    websiteMap, roundId, ecidFetchFutures, eventExecutor));
                         }
 
                         // 等待当前联赛所有事件处理完
@@ -688,6 +671,9 @@ public class SweepwaterService {
         } catch (Exception ex) {
             log.info("获取配置失败，平台用户:{}，异常:{}", username, ex.getMessage(), ex);
             return;
+        } finally {
+            // 清理本轮网站赔率缓存
+            clearCache(ecidFetchFutures);
         }
         log.info("sweepwater扫水-结束,平台用户:{},轮次id:{},耗时:{}毫秒", username, roundId, timerTotal.interval());
     }
@@ -701,12 +687,13 @@ public class SweepwaterService {
             List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter,
             Map<String, WebsiteVO> websiteMap,
             String roundId,
+            ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures,
             ExecutorService eventExecutor
     ) {
         return CompletableFuture.runAsync(() -> {
             handleEventLogic(username, sweepwaterUsername, bindLeagueVO, event,
                     oddsScan, profit, interval, limit, oddsRanges, timeFrames, typeFilter,
-                    websiteMap, roundId);
+                    websiteMap, roundId, ecidFetchFutures);
         }, eventExecutor).orTimeout(10, TimeUnit.SECONDS).exceptionally(ex -> {
             log.info("sweepwater扫水-事件任务异常，平台用户:{}, 网站A:{}-网站B:{},联赛:{}-{}，异常:",
                     username,
@@ -724,7 +711,7 @@ public class SweepwaterService {
             OddsScanDTO oddsScan, ProfitDTO profit, IntervalDTO interval,
             LimitDTO limit, List<OddsRangeDTO> oddsRanges,
             List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter,
-            Map<String, WebsiteVO> websiteMap, String roundId
+            Map<String, WebsiteVO> websiteMap, String roundId, ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures
     ) {
         try {
             if (Thread.currentThread().isInterrupted()) {
@@ -754,10 +741,12 @@ public class SweepwaterService {
 
             TimeInterval getEventsTimer = DateUtil.timer();
             CompletableFuture<JSONArray> futureA = getEventsForEcidAsync(
+                    ecidFetchFutures,
                     sweepwaterUsername, websiteIdA,
                     bindLeagueVO.getLeagueIdA(), event.getIdA(), roundId, threadPoolHolder.getTeamOddsExecutor());
 
             CompletableFuture<JSONArray> futureB = getEventsForEcidAsync(
+                    ecidFetchFutures,
                     sweepwaterUsername, websiteIdB,
                     bindLeagueVO.getLeagueIdB(), event.getIdB(), roundId, threadPoolHolder.getTeamOddsExecutor());
 
@@ -798,8 +787,10 @@ public class SweepwaterService {
                     .map(BindTeamVO::getNameA)   // 提取 nameA
                     .filter(Objects::nonNull) // 可选：过滤掉 null
                     .toList();
+            // 扫水任务启动时，先构建一次索引
+            Map<String, JSONObject> leagueMapA = buildLeagueMap(eventsA);
             // 平台绑定球队赛事对应获取盘口赛事列表
-            JSONObject eventAJson = findEventByLeagueName(eventsA, bindLeagueVO.getLeagueIdA(), nameAs);
+            JSONObject eventAJson = findEventByLeagueName(leagueMapA, bindLeagueVO.getLeagueIdA(), nameAs);
             if (eventAJson == null) {
                 log.info("扫水, 平台用户: {}, 网站A: {}, 在盘口赛事中未找到对应联绑定的赛事id:{},名称:{},球队id:{},名称:{}, 退出",
                         username,
@@ -817,7 +808,8 @@ public class SweepwaterService {
                     .map(BindTeamVO::getNameB)   // 提取 idB
                     .filter(Objects::nonNull) // 可选：过滤掉 null
                     .toList();
-            JSONObject eventBJson = findEventByLeagueName(eventsB, bindLeagueVO.getLeagueIdB(), nameBs);
+            Map<String, JSONObject> leagueMapB = buildLeagueMap(eventsB);
+            JSONObject eventBJson = findEventByLeagueName(leagueMapB, bindLeagueVO.getLeagueIdB(), nameBs);
             if (eventBJson == null) {
                 log.info("扫水, 平台用户: {}, 网站B: {}, 在盘口赛事中未找到对应联绑定的赛事id:{},名称:{},球队id:{},名称:{}, 退出",
                         username,
@@ -901,6 +893,7 @@ public class SweepwaterService {
      * @return CompletableFuture<JSONArray>
      */
     public CompletableFuture<JSONArray> getEventsForEcidAsync(
+            ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures,
             String username,
             String websiteId, String leagueId, String id, String roundId,
             ExecutorService teamOddsExecutor) {
@@ -951,43 +944,59 @@ public class SweepwaterService {
     /**
      * 清空缓存
      */
-    public void clearCache(ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidCache) {
-        ecidCache.clear();
+    public void clearCache(ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures) {
+        ecidFetchFutures.clear();
     }
 
     /**
      * 清理当期轮次缓存赔率信息
      * @param roundId
      */
-    public void clearCacheForRound(String roundId) {
+    /*public void clearCacheForRound(String roundId) {
         log.info("sweepwater扫水-进行清理缓存操作,轮次id:{},准备清理,本轮次网站赔率缓存数:{}", roundId, ecidFetchFutures.size());
         ecidFetchFutures.keySet().removeIf(key -> key.startsWith(roundId + "-"));
         log.info("sweepwater扫水-进行清理缓存操作,轮次id:{},已清理,本轮次网站赔率剩余缓存数:{}", roundId, ecidFetchFutures.size());
-    }
+    }*/
 
     /**
+     * 构建 leagueId → JSONObject 索引
+     */
+    private Map<String, JSONObject> buildLeagueMap(JSONArray events) {
+        Map<String, JSONObject> leagueMap = new HashMap<>();
+        for (Object obj : events) {
+            JSONObject leagueJson = (JSONObject) obj;
+            leagueMap.put(leagueJson.getStr("id"), leagueJson);
+        }
+        return leagueMap;
+    }
+    /**
      * 根据联赛id匹配对应联赛，再根据球队名称匹配对应球队
-     * @param events
+     * @param leagueMap
      * @param leagueId
      * @param names
      * @return
      */
-    private JSONObject findEventByLeagueName(JSONArray events, String leagueId, List<String> names) {
-        for (Object eventObj : events) {
-            JSONObject eventJson = (JSONObject) eventObj;
-            if (leagueId.equals(eventJson.getStr("id"))) {
-                JSONArray eventArray = eventJson.getJSONArray("events");
-                if (eventArray != null) {
-                    // 移除 id 不在 ids 列表里的赛事
-                    eventArray.removeIf(event -> {
-                        JSONObject eventItem = (JSONObject) event;
-                        return !names.contains(eventItem.getStr("name"));
-                    });
+    private JSONObject findEventByLeagueName(Map<String, JSONObject> leagueMap, String leagueId, List<String> names) {
+        JSONObject eventJson = leagueMap.get(leagueId);
+        if (eventJson == null) {
+            return null;
+        }
+
+        JSONArray eventArray = eventJson.getJSONArray("events");
+        if (eventArray != null && !eventArray.isEmpty()) {
+            // names 转为 HashSet，加速 contains 查询
+            Set<String> nameSet = new HashSet<>(names);
+
+            Iterator<Object> iterator = eventArray.iterator();
+            while (iterator.hasNext()) {
+                JSONObject eventItem = (JSONObject) iterator.next();
+                String name = eventItem.getStr("name");
+                if (!nameSet.contains(name)) {
+                    iterator.remove(); // 原地删除，不创建多余对象
                 }
-                return eventJson;
             }
         }
-        return null; // 如果没有找到，返回null
+        return eventJson;
     }
 
     /**
@@ -1335,7 +1344,6 @@ public class SweepwaterService {
                 .findFirst();
         BetAmountDTO amountDTO = settingsService.getBetAmount(username);
         Set<String> localAdded = new HashSet<>(); // 本轮去重缓存
-        log.info("进入比对扫描:{}-fullCourtA:{}==================================fullCourtB:{}", courtType, fullCourtA, fullCourtB);
         for (String key : fullCourtA.keySet()) {
             if (fullCourtB.containsKey(key)) {
                 if (("win".equals(key) || "draw".equals(key))) {

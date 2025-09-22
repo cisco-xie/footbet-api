@@ -322,7 +322,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                         JSONObject node = new JSONObject();
                         node.putOpt("id", o.getLong("id"));
                         node.putOpt("handicap", point);
-                        node.putOpt("odds", price.getBigDecimal("price").toString());
+                        node.putOpt("odds", price.getBigDecimal("price"));
                         node.putOpt("wall", isHome ? "hanging" : "foot");
 
                         if (isFirstHalf) {
@@ -338,7 +338,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                     JSONObject node = new JSONObject();
                     node.putOpt("id", o.getLong("id"));
                     node.putOpt("handicap", getHandicapRange(point));
-                    node.putOpt("odds", price.getBigDecimal("price").toString());
+                    node.putOpt("odds", price.getBigDecimal("price"));
 
                     if (isFirstHalf) {
                         halfOverSize.putOpt(getHandicapRange(point), node);
