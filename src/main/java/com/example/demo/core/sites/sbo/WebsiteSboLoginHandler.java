@@ -313,7 +313,7 @@ public class WebsiteSboLoginHandler implements ApiHandler {
             if (!step11Result.getBool("success", false) && 200 != step11Result.getInt("status")) {
                 return new JSONObject().set("success", false).set("msg", "获取token失败");
             }
-            if (!JSONUtil.isTypeJSONObject(step11Result.getStr("body"))) {
+            if (!JSONUtil.isTypeJSONObject(step11Result.getStr("body")) || !JSONUtil.parseObj(step11Result.getStr("body")).containsKey("authToken")) {
                 responseJson.putOpt("success", false);
                 responseJson.putOpt("msg", "登录失败");
                 return responseJson;
