@@ -1783,7 +1783,7 @@ public class SweepwaterService {
             betInfo.putOpt("marketName", marketName);
             betInfo.putOpt("odds", marketName + " " + handicap + " @ " + oddsJson.getStr("odds"));
             betInfo.putOpt("handicap", handicap);
-            betInfo.putOpt("amount", amount.getAmountXinEr());
+            betInfo.putOpt("amount", amount.getAmountSbo());
             betInfo.putOpt("betTeamName", betTeamName);
         }
 

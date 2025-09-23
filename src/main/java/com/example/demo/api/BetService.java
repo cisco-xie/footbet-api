@@ -324,9 +324,6 @@ public class BetService {
             dto.setIsUnilateral(isUnilateral);
             dto.setLastOddsTimeA(sweepwaterDTO.getLastOddsTimeA());
             dto.setLastOddsTimeB(sweepwaterDTO.getLastOddsTimeB());
-            if (sweepwaterDTO.getLastOddsTimeA() || sweepwaterDTO.getLastOddsTimeB()) {
-                log.info("新旧拷贝不对，sweepwaterDTO: {}=================dto: {}", sweepwaterDTO, dto);
-            }
             int rollingOrderA = websites.stream()
                     .filter(w -> w.getId().equals(dto.getWebsiteIdA()))
                     .map(WebsiteVO::getRollingOrder)
