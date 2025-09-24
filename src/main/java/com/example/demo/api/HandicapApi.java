@@ -315,6 +315,7 @@ public class HandicapApi {
             params.putOpt("oldPassword", accountVO.getPassword());
             params.putOpt("newPassword", password);
             params.putOpt("chgPassword", password);
+            params.putAll(accountVO.getToken().getJSONObject("tokens"));
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + accountVO.getToken().getStr("token"));
             params.putOpt("oldPassword", accountVO.getPassword());
@@ -429,7 +430,6 @@ public class HandicapApi {
 
     // 运行同意协议工厂
     public void accept(String username, ConfigAccountVO account, String websiteId, Map<String, Integer> retryMap, JSONObject resultLogin) {
-        TimeInterval timer = DateUtil.timer();
         // 同意协议
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
         ApiHandler apiHandler = factory.accept();
@@ -441,6 +441,7 @@ public class HandicapApi {
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            params.putAll(account.getToken().getJSONObject("tokens"));
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {

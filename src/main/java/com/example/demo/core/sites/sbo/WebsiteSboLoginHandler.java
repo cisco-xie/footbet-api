@@ -630,7 +630,7 @@ public class WebsiteSboLoginHandler implements ApiHandler {
      */
     private JSONObject executeStep11(ConfigAccountVO userConfig, String sportsBookUrl,
                                     JSONObject params, StringBuilder cookieStore) {
-        String step8Url = sportsBookUrl + "/api/oddsApi/getTokens";
+        String step8Url = sportsBookUrl + "/q/api/oddsApi/getTokens";
 
         // 更新cookie
         params.set("cookie", cookieStore.toString());

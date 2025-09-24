@@ -42,8 +42,20 @@ public class WebsitePingBoAcceptHandler implements ApiHandler {
     public Map<String, String> buildHeaders(JSONObject params) {
         // 构造请求头
         Map<String, String> headers = new HashMap<>();
+        String custid = params.getStr("X-Custid");
+        String browser = params.getStr("X-Browser-Session-Id");
+        String slid = params.getStr("X-SLID");
+        String lcu = params.getStr("X-Lcu");
+        String cookie = "JSESSIONID=60080FF6CE15EA2EAE4212CCBE25C58E; pctag=48737fbc-cfb0-4199-b54b-32a6a57fc64e; dgRH0=6Zn5gZ2NOAamUly; skin=ps3838; b-user-id=86848c3d-24b8-fa15-e0c4-c26ae9df3b9a; _gid=GA1.2.1677352228.1736944373; _ga=GA1.2.1445030965.1736944373; PCTR=1894710782467; u=" + lcu + "; lcu=" + lcu + "; custid=" + custid + "; BrowserSessionId=" + browser + "; _og=QQ==; _ulp=KzhkT2JESFJ1US9xbC9rZkxDaHJZb3V2YVZlTCtKN2ViYnBYdGNCY0U2SzB4bnZpTVZaQWVwamhPQW5FSkNqS3xiOGZmZmEzZGNlM2Y0MGJiMmRlNDE2ZTEwYTMzMWM3Mg==; uoc=be97830afef253f33d2a502d243b8c37; _userDefaultView=COMPACT; SLID=" + slid + "; _sig=Tcy1OV014TnpZeVl6RTROek0wTXpjNE5nOjNjZWtOQmp0eUczZGhEVE5TcHZzYWVHRmU6MTcxMzE1ODI0NDo3MzY5NDQzODI6bm9uZTpXb2U1NlZ6M3Uw; _apt=Woe56Vz3u0; _ga_DXNRHBHDY9=GS1.1.1736944373.1.1.1736944383.50.0.1813848857; _ga_1YEJQEHQ55=GS1.1.1736944373.1.1.1736944383.50.0.0; _vid=dde4ede6a2ad88833c20148ab7cecb52; __prefs=W251bGwsMSwxLDAsMSxudWxsLGZhbHNlLDAuMDAwMCxmYWxzZSx0cnVlLCJfM0xJTkVTIiwxLG51bGwsdHJ1ZSx0cnVlLGZhbHNlLGZhbHNlLG51bGwsbnVsbCx0cnVlXQ==; lang=zh_CN; _lastView=eyJoNjEwMDAwMDAxIjoiQ09NUEFDVCJ9";
+
         headers.put("accept", "*/*");
         headers.put("content-type", "application/x-www-form-urlencoded");
+
+        headers.put("x-custid", custid);
+        headers.put("x-lcu", lcu);
+        headers.put("x-slid", slid);
+        headers.put("x-u", params.getStr("X-U"));
+        headers.put("cookie", cookie);
 
         return headers;
     }
@@ -72,6 +84,7 @@ public class WebsitePingBoAcceptHandler implements ApiHandler {
             return res;
         }
 
+        log.info("平博账户同意协议结果:{}", result);
         // 正常响应，解析 body
         String body = result.getBody();
         boolean responseBool = Boolean.parseBoolean(body);
@@ -104,7 +117,7 @@ public class WebsitePingBoAcceptHandler implements ApiHandler {
         String requestBody = buildRequest(params);
 
         // 构造请求体
-        String queryParams = String.format("locale=zh_CN&_=%s&withCredentials=true&promoEmail=false",
+        String queryParams = String.format("locale=zh_CN&_=%s&withCredentials=true&promoEmail=false&version=",
                 System.currentTimeMillis()
         );
 

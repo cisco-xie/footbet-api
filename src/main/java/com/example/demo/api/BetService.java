@@ -523,14 +523,7 @@ public class BetService {
         JSONObject result = new JSONObject();
 
         if (!limitDTO.getWebsiteLimit().contains(websiteId)) {
-            // 单边投注，当前网站不是所指定的网站，直接跳出不投注
-            result.putOpt("isBet", false);
-            result.putOpt("success", false);
-            return result;
-        }
-
-        if (dto.getLastOddsTimeA() == dto.getLastOddsTimeB()) {
-            // 如果两个都是旧或者新,则不进行投注,不需要在前端显示
+            // 当前网站不是所指定的网站，直接跳出不投注
             result.putOpt("isBet", false);
             result.putOpt("success", false);
             return result;
@@ -542,9 +535,9 @@ public class BetService {
         JSONObject params = buildBetParams(dto, amountDTO, isA);
 
         // 校验投注间隔key
-        String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, eventId);
+        String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, simulateBet.toString(), eventId);
         // 投注次数限制key
-        String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, eventId);
+        String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, simulateBet.toString(), eventId);
 
         // 投注（带重试机制,默认重试0次,也就是不重试）
         int maxRetry = 0;
@@ -585,38 +578,35 @@ public class BetService {
                     return result;
                 }
 
-                if (simulateBet == 1) {
-                    // 模拟投注
-                    if (isUnilateral) {
-                        if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1 && lastOddsTime) {
-                            // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
-                            result.putOpt("isBet", true);
-                            result.putOpt("success", false);
-                        } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2 && !lastOddsTime) {
-                            // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
-                            result.putOpt("isBet", true);
-                            result.putOpt("success", false);
-                        } else {
-                            result.putOpt("isBet", true);
-                            result.putOpt("success", true);
-                        }
-                    } else {
-                        result.putOpt("isBet", true);
-                        result.putOpt("success", true);
-                    }
-                    return result;
-                }
-
                 if (isUnilateral) {
+                    if (dto.getLastOddsTimeA() == dto.getLastOddsTimeB()) {
+                        // 如果两个都是旧或者新,则不进行投注,不需要在前端显示
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        return result;
+                    }
+
                     if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1 && lastOddsTime) {
                         // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
                         result.putOpt("isBet", false);
                         result.putOpt("success", false);
+
+                        // 撤销预占额度
+                        rollbackBetLimit(limitKey, score);
+                        // 撤销预占间隔
+                        releaseIntervalKey(intervalKey);
+
                         return result;
                     } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2 && !lastOddsTime) {
                         // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
                         result.putOpt("isBet", false);
                         result.putOpt("success", false);
+
+                        // 撤销预占额度
+                        rollbackBetLimit(limitKey, score);
+                        // 撤销预占间隔
+                        releaseIntervalKey(intervalKey);
+
                         return result;
                     }
 
@@ -630,6 +620,12 @@ public class BetService {
                                 // 必须投注同一支队伍
                                 result.putOpt("isBet", false);
                                 result.putOpt("success", false);
+
+                                // 撤销预占额度
+                                rollbackBetLimit(limitKey, score);
+                                // 撤销预占间隔
+                                releaseIntervalKey(intervalKey);
+
                                 return result;
                             }
                         }
@@ -642,6 +638,12 @@ public class BetService {
                     log.info("用户 {}, 网站:{} 投注预览失败，eventId={}", username, WebsiteType.getById(websiteId).getDescription(), eventId);
                     result.putOpt("isBet", false);
                     result.putOpt("success", false);
+
+                    // 撤销预占额度
+                    rollbackBetLimit(limitKey, score);
+                    // 撤销预占间隔
+                    releaseIntervalKey(intervalKey);
+
                     return result;
                 } else {
                     log.info("用户 {}, 网站:{} 投注预览成功，eventId={}, isA={}, 预览结果={}, 原本手动解析的betInfo={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, betPreview, isA ? dto.getBetInfoA() : dto.getBetInfoB());
@@ -651,6 +653,41 @@ public class BetService {
                         dto.setBetInfoB(betPreview.getJSONObject("betInfo"));
                     }
                 }
+
+                if (simulateBet == 1) {
+                    // 模拟投注
+                    if (isUnilateral) {
+                        if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1 && lastOddsTime) {
+                            // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
+                            result.putOpt("isBet", true);
+                            result.putOpt("success", false);
+
+                            // 撤销预占额度
+                            rollbackBetLimit(limitKey, score);
+                            // 撤销预占间隔
+                            releaseIntervalKey(intervalKey);
+
+                        } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2 && !lastOddsTime) {
+                            // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
+                            result.putOpt("isBet", true);
+                            result.putOpt("success", false);
+
+                            // 撤销预占额度
+                            rollbackBetLimit(limitKey, score);
+                            // 撤销预占间隔
+                            releaseIntervalKey(intervalKey);
+
+                        } else {
+                            result.putOpt("isBet", true);
+                            result.putOpt("success", true);
+                        }
+                    } else {
+                        result.putOpt("isBet", true);
+                        result.putOpt("success", true);
+                    }
+                    return result;
+                }
+
                 // 投注
                 Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betInfo"), betPreview.getJSONObject("betPreview"));
 

@@ -71,5 +71,6 @@ public class SweepwaterDTO {
     private String teamVSAB;         // 盛帆网站的专属参数 客队名称
 
     private String water;           // 水位
+    private String startTime;       // 创建时间
     private String createTime;      // 创建时间
 }

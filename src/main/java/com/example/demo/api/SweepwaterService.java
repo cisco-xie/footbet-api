@@ -22,6 +22,7 @@ import com.example.demo.model.vo.dict.BindTeamVO;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import jakarta.annotation.Resource;
+import lombok.Data;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -418,7 +419,8 @@ public class SweepwaterService {
                     .collect(Collectors.toMap(WebsiteVO::getId, Function.identity()));
 
             log.info("sweepwater 开始执行");
-            ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures = new ConcurrentHashMap<>();
+            ConcurrentHashMap<String, OddsCacheEntry> ecidFetchFutures = new ConcurrentHashMap<>();
+
             // 联赛级线程池（外层）
             ExecutorService leagueExecutor = threadPoolHolder.getLeagueExecutor();
             // 赛事级线程池（内层）
@@ -564,7 +566,7 @@ public class SweepwaterService {
         CompletableFuture<List<TimeFrameDTO>> timeFramesFuture = CompletableFuture.supplyAsync(() -> settingsFilterService.getTimeFrames(username), configExecutor);
         CompletableFuture<List<WebsiteVO>> websitesFuture = CompletableFuture.supplyAsync(() -> websiteService.getWebsites(username), configExecutor);
 
-        ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures = new ConcurrentHashMap<>();
+        ConcurrentHashMap<String, OddsCacheEntry> ecidFetchFutures = new ConcurrentHashMap<>();
         try {
             TimeInterval configTimer = DateUtil.timer();
             CompletableFuture.allOf(
@@ -687,7 +689,7 @@ public class SweepwaterService {
             List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter,
             Map<String, WebsiteVO> websiteMap,
             String roundId,
-            ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures,
+            ConcurrentHashMap<String, OddsCacheEntry> ecidFetchFutures,
             ExecutorService eventExecutor
     ) {
         return CompletableFuture.runAsync(() -> {
@@ -711,7 +713,7 @@ public class SweepwaterService {
             OddsScanDTO oddsScan, ProfitDTO profit, IntervalDTO interval,
             LimitDTO limit, List<OddsRangeDTO> oddsRanges,
             List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter,
-            Map<String, WebsiteVO> websiteMap, String roundId, ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures
+            Map<String, WebsiteVO> websiteMap, String roundId, ConcurrentHashMap<String, OddsCacheEntry> ecidFetchFutures
     ) {
         try {
             if (Thread.currentThread().isInterrupted()) {
@@ -882,6 +884,18 @@ public class SweepwaterService {
         });
     }
 
+    // 定义赔率缓存实体
+    @Data
+    static class OddsCacheEntry {
+        final CompletableFuture<JSONArray> future;
+        final long timestamp;
+
+        OddsCacheEntry(CompletableFuture<JSONArray> future, long timestamp) {
+            this.future = future;
+            this.timestamp = timestamp;
+        }
+    }
+
     /**
      * 使用异步缓存保存每个 key 的请求任务，避免重复请求
      * @param username 用户名
@@ -893,7 +907,7 @@ public class SweepwaterService {
      * @return CompletableFuture<JSONArray>
      */
     public CompletableFuture<JSONArray> getEventsForEcidAsync(
-            ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures,
+            ConcurrentHashMap<String, OddsCacheEntry> ecidFetchFutures,
             String username,
             String websiteId, String leagueId, String id, String roundId,
             ExecutorService teamOddsExecutor) {
@@ -914,37 +928,49 @@ public class SweepwaterService {
                     username, website.getDescription(), cacheKey, leagueId, id);
         }
 
-        return ecidFetchFutures.computeIfAbsent(cacheKey, key ->
-                CompletableFuture.supplyAsync(() -> {
-                    try {
-                        log.info("首次拉取赔率，通过 API 获取: 用户={}, 网站={}, key={}, 联赛={}, ecid={}",
-                                username, website.getDescription(), key, leagueId, id);
+        long now = System.currentTimeMillis();
+        OddsCacheEntry entry = ecidFetchFutures.get(cacheKey);
 
-                        JSONArray events;
-                        if (website == WebsiteType.SBO) {
-                            // 盛帆：单赛事拉取
-                            events = (JSONArray) handicapApi.eventsOdds(
-                                    username, websiteId, null, id);
-                        } else {
-                            // 其他网站平博和新二：一次拉所有联赛赔率
-                            events = (JSONArray) handicapApi.eventsOdds(
-                                    username, websiteId, leagueId, null);
-                        }
+        // 命中缓存且未过期（3秒）
+        if (entry != null && (now - entry.timestamp) < 3000) {
+            log.info("从缓存中获取赔率: 用户={}, 网站={}, key={}, 联赛={}, ecid={}",
+                    username, website.getDescription(), cacheKey, leagueId, id);
+            return entry.future;
+        }
 
-                        return events != null ? events : new JSONArray();
-                    } catch (Exception e) {
-                        log.error("拉取eventsOdds异常: key={}, 用户={}, 网站={}, 联赛={}, ecid={}",
-                                key, username, websiteId, leagueId, id, e);
-                        return new JSONArray();
-                    }
-                }, teamOddsExecutor)
-        );
+        // 新建 Future
+        CompletableFuture<JSONArray> newFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+                log.info("拉取最新赔率: 用户={}, 网站={}, key={}, 联赛={}, ecid={}",
+                        username, website.getDescription(), cacheKey, leagueId, id);
+
+                JSONArray events;
+                if (website == WebsiteType.SBO) {
+                    // 盛帆：单赛事拉取
+                    events = (JSONArray) handicapApi.eventsOdds(username, websiteId, null, id);
+                } else {
+                    // 平博/新二：一次拉整个联赛赔率
+                    events = (JSONArray) handicapApi.eventsOdds(username, websiteId, leagueId, null);
+                }
+
+                return events != null ? events : new JSONArray();
+            } catch (Exception e) {
+                log.error("拉取eventsOdds异常: key={}, 用户={}, 网站={}, 联赛={}, ecid={}",
+                        cacheKey, username, websiteId, leagueId, id, e);
+                return new JSONArray();
+            }
+        }, teamOddsExecutor);
+
+        // 覆盖写入缓存
+        ecidFetchFutures.put(cacheKey, new OddsCacheEntry(newFuture, now));
+
+        return newFuture;
     }
 
     /**
      * 清空缓存
      */
-    public void clearCache(ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFutures) {
+    public void clearCache(ConcurrentHashMap<String, OddsCacheEntry> ecidFetchFutures) {
         ecidFetchFutures.clear();
     }
 
@@ -977,6 +1003,7 @@ public class SweepwaterService {
      * @return
      */
     private JSONObject findEventByLeagueName(Map<String, JSONObject> leagueMap, String leagueId, List<String> names) {
+        // 直接通过 leagueId 查找
         JSONObject eventJson = leagueMap.get(leagueId);
         if (eventJson == null) {
             return null;
@@ -987,15 +1014,10 @@ public class SweepwaterService {
             // names 转为 HashSet，加速 contains 查询
             Set<String> nameSet = new HashSet<>(names);
 
-            Iterator<Object> iterator = eventArray.iterator();
-            while (iterator.hasNext()) {
-                JSONObject eventItem = (JSONObject) iterator.next();
-                String name = eventItem.getStr("name");
-                if (!nameSet.contains(name)) {
-                    iterator.remove(); // 原地删除，不创建多余对象
-                }
-            }
+            // 使用 removeIf，避免 ConcurrentModificationException
+            eventArray.removeIf(event -> !nameSet.contains(((JSONObject) event).getStr("name")));
         }
+
         return eventJson;
     }
 
@@ -1831,25 +1853,6 @@ public class SweepwaterService {
         }
     }
 
-    /**
-     * 判断两个赔率缓存中，哪一个是最近变动的
-     */
-    private Map<String, Boolean> isLatestChanged(String oddsKeyA, String oddsKeyB) {
-        Object oddsRedisA = businessPlatformRedissonClient.getBucket(oddsKeyA).get();
-        Object oddsRedisB = businessPlatformRedissonClient.getBucket(oddsKeyB).get();
-
-        JSONObject oddsJsonA = JSONUtil.parseObj(oddsRedisA);
-        JSONObject oddsJsonB = JSONUtil.parseObj(oddsRedisB);
-
-        Long lastOddsTimeA = oddsJsonA.getLong("time", 0L);
-        Long lastOddsTimeB = oddsJsonB.getLong("time", 0L);
-
-        log.info("查询两个队的赔率时间-oddsKeyA:{}=={}, oddsKeyB:{}=={}", oddsKeyA, lastOddsTimeA, oddsKeyB, lastOddsTimeB);
-        Map<String, Boolean> result = new HashMap<>();
-        result.put("lastTimeA", lastOddsTimeA > lastOddsTimeB);
-        result.put("lastTimeB", lastOddsTimeB > lastOddsTimeA);
-        return result;
-    }
     // 生成 oddsKey 方法
     private String generateOddsKey(String username, SweepwaterDTO dto, String oddsId, boolean isHome) {
         // 特殊情况，如果网站是平博，那么对应的oddsId需要把最后一个|的值删掉后再做对比
