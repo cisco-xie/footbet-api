@@ -825,10 +825,19 @@ public class SweepwaterService {
             }
 
             TimeInterval oddsTimer = DateUtil.timer();
+            String bindIdA = event.getIdA();
+            if (WebsiteType.XINBAO.getId().equals(websiteIdA)) {
+                bindIdA = event.getEcidA();
+            }
+            String bindIdB = event.getIdB();
+            if (WebsiteType.XINBAO.getId().equals(websiteIdB)) {
+                bindIdB = event.getEcidB();
+            }
             aggregateEventOdds(username, sweepwaterUsername, oddsScan, profit, interval, limit,
                     oddsRanges, timeFrames, typeFilter,
                     websiteMap.get(websiteIdA), websiteMap.get(websiteIdB),
                     eventAJson, eventBJson,
+                    bindIdA, bindIdB,
                     event.getNameA(), event.getNameB(),
                     websiteIdA, websiteIdB,
                     bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(),
@@ -1054,6 +1063,7 @@ public class SweepwaterService {
             List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter,
             WebsiteVO websiteA, WebsiteVO websiteB,
             JSONObject eventAJson, JSONObject eventBJson,
+            String bindIdA, String bindIdB,
             String bindTeamNameA, String bindTeamNameB,
             String websiteIdA, String websiteIdB,
             String leagueIdA, String leagueIdB,
@@ -1098,7 +1108,11 @@ public class SweepwaterService {
                         processedEventA.getTeamName(),
                         processedEventB.getTeamName(),
                         bindTeamNameA,
-                        bindTeamNameB
+                        bindTeamNameB,
+                        processedEventA.getId(),
+                        processedEventB.getId(),
+                        bindIdA,
+                        bindIdB
                 )) {
                     log.info("扫水,网站A:{}-赛事:{}-队伍:{},网站B:{}-赛事:{}-队伍:{},队伍组合符合设置的对立队伍", WebsiteType.getById(websiteIdA).getDescription(), eventAJson.getStr("league"), processedEventA.getTeamName(), WebsiteType.getById(websiteIdB).getDescription(), eventBJson.getStr("league"), processedEventB.getTeamName());
                     log.info("准备进入扫水对比, eventA:{}======================================eventB:{}", eventA, eventB);
@@ -1152,6 +1166,7 @@ public class SweepwaterService {
             List<TimeFrameDTO> timeFrames) {
 
         // 提取基础信息
+        String id = eventJson.getStr("id");
         String teamName = eventJson.getStr("name");
         String score = eventJson.getStr("score");
         int reTime = eventJson.getInt("reTime");        // 比赛时长
@@ -1160,7 +1175,7 @@ public class SweepwaterService {
         // 检查时间范围有效性
         boolean isValid = checkTimeFrameValidity(session, reTime, timeFrames);
         if (!isValid) {
-            return new EventData(teamName, score, null, null, false);
+            return new EventData(id, teamName, score, null, null, false);
         }
 
         // 初始化全场和上半场数据
@@ -1179,7 +1194,7 @@ public class SweepwaterService {
             cleanOddsData(firstHalf, website, isHome, typeFilter);
         }
 
-        return new EventData(teamName, score, fullCourt, firstHalf, true);
+        return new EventData(id, teamName, score, fullCourt, firstHalf, true);
     }
 
     /**
@@ -1304,28 +1319,24 @@ public class SweepwaterService {
     /**
      * 检查是否是对立队伍组合
      *
-     * @param teamNameA 队伍A名称
-     * @param teamNameB 队伍B名称
-     * @param bindNameA 绑定名称A
-     * @param bindNameB 绑定名称B
+     * @param teamNameA 盘口返回的队伍A名称
+     * @param teamNameB 盘口返回的队伍B名称
+     * @param bindNameA 绑定队伍名称A
+     * @param bindNameB 绑定队伍名称B
+     * @param idA       盘口返回的赛事idA
+     * @param idB       盘口返回的赛事idB
+     * @param bindIdA   绑定的赛事idA
+     * @param bindIdB   绑定的赛事idB
      * @return 是否是对立组合
      */
     private static boolean isOppositeTeamCombination(
             String teamNameA, String teamNameB,
-            String bindNameA, String bindNameB) {
+            String bindNameA, String bindNameB,
+            String idA, String idB,
+            String bindIdA, String bindIdB) {
 
-        return (teamNameA.equals(bindNameA) && !teamNameB.equals(bindNameB)) ||
-                (!teamNameA.equals(bindNameA) && teamNameB.equals(bindNameB));
-    }
-
-    public static void main(String[] args) {
-        String[] teamNameAs = Arrays.asList("北部精神", "曼利联").toArray(new String[0]);
-        String[] teamNameBs = Arrays.asList("思比瑞特", "曼立联", "圣乔治城", "芒特德瑞特城流浪者", "卧龙岗狼队", "圣乔治").toArray(new String[0]);
-        for (String teamNameA : teamNameAs) {
-            for (String teamNameB : teamNameBs) {
-                System.out.println(isOppositeTeamCombination(teamNameA, teamNameB, teamNameA, teamNameB)); // false
-            }
-        }
+        return ((teamNameA.equals(bindNameA) && !teamNameB.equals(bindNameB)) ||
+                (!teamNameA.equals(bindNameA) && teamNameB.equals(bindNameB))) && idA.equals(bindIdA) && idB.equals(bindIdB);
     }
 
     /**
@@ -1334,15 +1345,17 @@ public class SweepwaterService {
     @Getter
     private static class EventData {
         // Getters
+        private final String id;
         private final String teamName;
         private final String score;
         private final JSONObject fullCourt;
         private final JSONObject firstHalf;
         private final boolean valid;
 
-        public EventData(String teamName, String score,
+        public EventData(String id, String teamName, String score,
                          JSONObject fullCourt, JSONObject firstHalf,
                          boolean valid) {
+            this.id = id;
             this.teamName = teamName;
             this.score = score;
             this.fullCourt = fullCourt;

@@ -182,7 +182,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
 
             // 主队和客队对象
             JSONObject homeTeam = new JSONObject();
-            homeTeam.putOpt("id", homeTeamId);
+            homeTeam.putOpt("id", ecid);
             homeTeam.putOpt("name", home);
             homeTeam.putOpt("isHome", true);
             homeTeam.putOpt("score", score);
@@ -192,7 +192,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             homeTeam.putOpt("firstHalf", new JSONObject());
 
             JSONObject awayTeam = new JSONObject();
-            awayTeam.putOpt("id", awayTeamId);
+            awayTeam.putOpt("id", ecid);
             awayTeam.putOpt("name", away);
             awayTeam.putOpt("isHome", false);
             awayTeam.putOpt("score", score);
@@ -275,7 +275,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             item.putOpt("handicap", isHome ? homeHandicap : gameJson.getStr(ratioFull));
             item.putOpt("wall", isHome ? "hanging" : "foot");
 
-            letBall.putOpt(getHandicapRange(ratioFull), item);
+            letBall.putOpt(getHandicapRange(homeHandicap), item);
         }
 
         // ========== 全场大小 ==========
@@ -328,7 +328,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             item.putOpt("handicap", isHome ? homeHandicap : gameJson.getStr(ratioFirst));
             item.putOpt("wall", isHome ? "hanging" : "foot");
 
-            letBall.putOpt(getHandicapRange(ratioFirst), item);
+            letBall.putOpt(getHandicapRange(homeHandicap), item);
         }
 
         // ========== 半场大小 ==========
@@ -421,7 +421,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             JSONArray events = league.getJSONArray("events");
             for (Object eventObj : events) {
                 JSONObject team = (JSONObject) eventObj;
-                String teamId = team.getStr("id");
+                String teamId = team.getStr("id") + "_" + team.getStr("name");
 
                 // 合并逻辑
                 JSONObject existing = teamMap.get(teamId);
@@ -442,23 +442,6 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
         }
 
         return result;
-    }
-
-    // 公共字段抽取方法
-    private JSONObject buildBaseLeagueJson(JSONObject gameJson, String lid, String gid, String ecid, String league, String session, String half, int reTime, String type, String score) {
-        JSONObject base = new JSONObject();
-        base.putOpt("id", lid);
-        base.putOpt("league", league);
-        base.putOpt("type", type);
-        base.putOpt("session", session);
-        base.putOpt("reTime", reTime);
-        base.putOpt("eventId", lid);
-        base.putOpt("gid", gid);
-        base.putOpt("ecid", ecid);
-        base.putOpt("homeTeam", gameJson.getStr("TEAM_H"));
-        base.putOpt("awayTeam", gameJson.getStr("TEAM_C"));
-        base.putOpt("score", score);
-        return base;
     }
 
     private void mergeHandicap(JSONObject target, JSONObject source) {
