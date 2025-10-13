@@ -1251,7 +1251,7 @@ public class HandicapApi {
         for (int i = 0; i < size; i++) {
             int idx = Math.abs(indexRef.getAndIncrement() % size);
             ConfigAccountVO account = accounts.get(idx);
-            log.info("获取赛事列表,网站:{},idx:{},账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, account.getAccount());
+            log.info("投注操作,网站:{},idx:{},账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, account.getAccount());
 
             if (account.getEnable() == 0 || account.getIsTokenValid() == 0) {
                 // 未启用或未登录直接跳过
@@ -1362,7 +1362,7 @@ public class HandicapApi {
 
                     JSONObject betInfo = new JSONObject();
                     // JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
-                    JSONObject serverresponse = betPreviewJson.getJSONObject("serverresponse");
+                    JSONObject serverresponse = betPreviewJson.getJSONObject("data");
                     params.putOpt("gid", odds.getStr("gid"));
                     params.putOpt("golds", betAmount);
                     params.putOpt("gtype", odds.getStr("gtype"));
@@ -1459,6 +1459,7 @@ public class HandicapApi {
                     minBet = betPreviewJson.getJSONObject("data").getBigDecimal("minBet");
                 }
             } catch (Exception e) {
+                log.info("配置投注参数失败, 网站: {}",  WebsiteType.getById(websiteId).getDescription(), e);
                 continue;
             }
 
@@ -1467,6 +1468,7 @@ public class HandicapApi {
             List<JSONObject> failedSplits = new ArrayList<>();
 
             if (betAmount.compareTo(maxBet) <= 0) {
+                log.info("投注金额小于等于最大投注金额，直接投注，网站:{}，params={}", WebsiteType.getById(websiteId).getDescription(), params);
                 JSONObject result = apiHandler.execute(account, params);
                 if (result != null && result.getBool("success")) {
                     result.putOpt("account", account.getAccount());
@@ -1495,10 +1497,10 @@ public class HandicapApi {
                         case XINBAO -> paramsCopy.putOpt("golds", thisAmount);
                         case SBO -> paramsCopy.putOpt("stake", thisAmount);
                     }
-
+                    log.info("投注金额大于最大投注金额，网站:{} ,账号 {} 第 {} 次拆分投注，金额 {}, paramsCopy={}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), s + 1, thisAmount, paramsCopy);
                     JSONObject result = apiHandler.execute(account, paramsCopy);
                     if (result == null) {
-                        log.warn("账号 {} 第 {} 次拆分投注失败，金额 {}", account.getAccount(), s + 1, thisAmount);
+                        log.info("网站:{} 账号 {} 第 {} 次拆分投注失败，金额 {}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), s + 1, thisAmount);
                         paramsCopy.putOpt("splitIndex", s + 1);
                         paramsCopy.putOpt("splitAmount", thisAmount);
                         failedSplits.add(paramsCopy);
@@ -1514,6 +1516,7 @@ public class HandicapApi {
 
             // ================== 失败补投逻辑 ==================
             if (!failedSplits.isEmpty()) {
+                log.info("网站:{} 账号 {} 投注失败，开始补投，失败次数 {}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), failedSplits.size());
                 for (JSONObject failedParam : failedSplits) {
                     boolean retried = false;
                     for (ConfigAccountVO otherAcc : accounts) {
@@ -1533,7 +1536,7 @@ public class HandicapApi {
                         }
                     }
                     if (!retried) {
-                        log.error("投注补单失败，仍未成功，参数={}", failedParam);
+                        log.info("网站:{} 投注补单失败，仍未成功，参数={}", WebsiteType.getById(websiteId).getDescription(), failedParam);
                     }
                 }
             }

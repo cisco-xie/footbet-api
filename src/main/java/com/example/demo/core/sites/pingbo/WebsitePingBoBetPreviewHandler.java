@@ -137,7 +137,7 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
 
         // 3. 空数组直接返回失败
         if (responseArray.isEmpty()) {
-            log.error("[平博][投注预览][投注预览失败，结果为空][params={}]", params);
+            log.info("[平博][投注预览][投注预览失败，结果为空][params={}]", params);
             result.putOpt("code", status);
             result.putOpt("success", false);
             result.putOpt("msg", "投注预览失败，结果为空");

@@ -457,24 +457,21 @@ public class SweepwaterService {
                         List<CompletableFuture<Void>> eventFutures = new ArrayList<>();
 
                         List<BindTeamVO> events = bindLeagueVO.getEvents();
-                        if (events.size() <= 5) {
-                            log.info("扫水任务 - 联赛数量小于5,执行线程池并发模式");
-                            // 每场比赛单独任务（保持最大并发）
-                            for (BindTeamVO event : events) {
-                                eventFutures.add(handleEventAsync(sweepwaterUsername, sweepwaterUsername, bindLeagueVO, event,
-                                        oddsScan, profit, interval, limit, oddsRanges, timeFrames, typeFilter,
-                                        websiteMap, null, ecidFetchFutures, eventExecutor));
+                        // 每场比赛单独任务（保持最大并发）
+                        for (BindTeamVO event : events) {
+                            // 获取交叉对应的球队名称
+                            String bindNameB = null;
+                            for (BindTeamVO crossEvent : events) {
+                                if (event.getIdA().equals(crossEvent.getIdA()) &&
+                                        event.getIdB().equals(crossEvent.getIdB()) &&
+                                        !event.getNameA().equals(crossEvent.getNameA())) {
+                                    bindNameB = crossEvent.getNameB();
+                                }
                             }
-                        } else {
-                            log.info("扫水任务 - 联赛数量大于5,执行parallelStream批处理模式");
-                            // 批处理方式（一个线程处理一批赛事，内部 parallelStream）
-                            eventFutures.add(CompletableFuture.runAsync(() -> {
-                                events.parallelStream().forEach(event -> {
-                                    handleEventLogic(sweepwaterUsername, sweepwaterUsername, bindLeagueVO, event,
-                                            oddsScan, profit, interval, limit, oddsRanges, timeFrames, typeFilter,
-                                            websiteMap, null, ecidFetchFutures);
-                                });
-                            }, eventExecutor));
+                            if (StringUtils.isBlank(bindNameB)) { continue; }
+                            eventFutures.add(handleEventAsync(sweepwaterUsername, sweepwaterUsername, bindLeagueVO, event, bindNameB,
+                                    oddsScan, profit, interval, limit, oddsRanges, timeFrames, typeFilter,
+                                    websiteMap, null, ecidFetchFutures, eventExecutor));
                         }
 
                         // 等待当前联赛所有事件处理完
@@ -631,7 +628,18 @@ public class SweepwaterService {
                         List<BindTeamVO> events = bindLeagueVO.getEvents();
                         // 每场比赛单独任务（保持最大并发）
                         for (BindTeamVO event : events) {
-                            eventFutures.add(handleEventAsync(username, sweepwaterUsername, bindLeagueVO, event,
+                            // 获取交叉对应的球队名称
+                            String bindNameB = null;
+                            for (BindTeamVO crossEvent : events) {
+                                if (event.getIdA().equals(crossEvent.getIdA()) &&
+                                        event.getIdB().equals(crossEvent.getIdB()) &&
+                                        !event.getNameA().equals(crossEvent.getNameA())) {
+                                    bindNameB = crossEvent.getNameB();
+                                }
+                            }
+                            if (StringUtils.isBlank(bindNameB)) { continue; }
+                            log.info("联赛扫水，球队A:{}，交叉对应球队B:{}", event.getNameA(), bindNameB);
+                            eventFutures.add(handleEventAsync(username, sweepwaterUsername, bindLeagueVO, event, bindNameB,
                                     oddsScan, profit, interval, limit, oddsRanges, timeFrames, typeFilter,
                                     websiteMap, roundId, ecidFetchFutures, eventExecutor));
                         }
@@ -683,7 +691,7 @@ public class SweepwaterService {
     // todo 每场比赛独立处理的包装
     private CompletableFuture<Void> handleEventAsync(
             String username, String sweepwaterUsername,
-            BindLeagueVO bindLeagueVO, BindTeamVO event,
+            BindLeagueVO bindLeagueVO, BindTeamVO event, String bindNameB,
             OddsScanDTO oddsScan, ProfitDTO profit, IntervalDTO interval,
             LimitDTO limit, List<OddsRangeDTO> oddsRanges,
             List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter,
@@ -693,7 +701,7 @@ public class SweepwaterService {
             ExecutorService eventExecutor
     ) {
         return CompletableFuture.runAsync(() -> {
-            handleEventLogic(username, sweepwaterUsername, bindLeagueVO, event,
+            handleEventLogic(username, sweepwaterUsername, bindLeagueVO, event, bindNameB,
                     oddsScan, profit, interval, limit, oddsRanges, timeFrames, typeFilter,
                     websiteMap, roundId, ecidFetchFutures);
         }, eventExecutor).orTimeout(10, TimeUnit.SECONDS).exceptionally(ex -> {
@@ -709,7 +717,7 @@ public class SweepwaterService {
     // todo 实际赛事赔率处理逻辑
     private void handleEventLogic(
             String username, String sweepwaterUsername,
-            BindLeagueVO bindLeagueVO, BindTeamVO event,
+            BindLeagueVO bindLeagueVO, BindTeamVO event, String bindNameB,
             OddsScanDTO oddsScan, ProfitDTO profit, IntervalDTO interval,
             LimitDTO limit, List<OddsRangeDTO> oddsRanges,
             List<TimeFrameDTO> timeFrames, TypeFilterDTO typeFilter,
@@ -838,7 +846,7 @@ public class SweepwaterService {
                     websiteMap.get(websiteIdA), websiteMap.get(websiteIdB),
                     eventAJson, eventBJson,
                     bindIdA, bindIdB,
-                    event.getNameA(), event.getNameB(),
+                    event.getNameA(), bindNameB,
                     websiteIdA, websiteIdB,
                     bindLeagueVO.getLeagueIdA(), bindLeagueVO.getLeagueIdB(),
                     event.getIdA(), event.getIdB(),
@@ -1019,6 +1027,7 @@ public class SweepwaterService {
         }
 
         JSONArray eventArray = eventJson.getJSONArray("events");
+        log.info("匹配对应球队eventArray:{},绑定的球队名称列表:{}",eventArray, String.join(", ", names));
         if (eventArray != null && !eventArray.isEmpty()) {
             // names 转为 HashSet，加速 contains 查询
             Set<String> nameSet = new HashSet<>(names);
@@ -1073,6 +1082,31 @@ public class SweepwaterService {
         JSONArray eventsA = eventAJson.getJSONArray("events");
         JSONArray eventsB = eventBJson.getJSONArray("events");
 
+        // 同步更改比赛时间，以新二盘口的时间为主
+        boolean reTimeXinEr = WebsiteType.XINBAO.getId().equals(websiteIdA);
+        for (Object eventObjA : eventsA) {
+            JSONObject eventA = (JSONObject) eventObjA;
+            for (Object eventObjB : eventsB) {
+                JSONObject eventB = (JSONObject) eventObjB;
+                if (eventA.getStr("name").equals(bindTeamNameA) &&
+                        eventB.getStr("name").equals(bindTeamNameB)
+                ) {
+                    // A和B属于同一场比赛
+                    if (reTimeXinEr) {
+                        // A是新二盘口,以新二盘口的比赛时间为主更新B盘口对应的比赛时间
+                        String reTime = eventA.getStr("reTime");
+                        eventB.putOpt("reTime", reTime);
+                    } else {
+                        // B是新二盘口,以新二盘口的比赛时间为主更新A盘口对应的比赛时间
+                        String reTime = eventB.getStr("reTime");
+                        eventA.putOpt("reTime", reTime);
+                    }
+                    // 找到配对后可以跳出内层循环，避免重复修改
+                    break;
+                }
+            }
+        }
+
         // 处理网站A的所有事件
         for (Object eventObjA : eventsA) {
             JSONObject eventA = (JSONObject) eventObjA;
@@ -1084,7 +1118,7 @@ public class SweepwaterService {
 
             // 如果事件不符合时间范围要求则跳过
             if (!processedEventA.isValid()) {
-                log.info("扫水,网站A:{}-赛事:{},不符合设置的时间范围:{},跳过", WebsiteType.getById(websiteIdA).getDescription(), eventAJson.getStr("league"), JSONUtil.parseArray(timeFrames));
+                log.info("扫水,网站A:{}-赛事:{},不符合设置的时间范围:{},跳过, 赛事信息:{}", WebsiteType.getById(websiteIdA).getDescription(), eventAJson.getStr("league"), JSONUtil.parseArray(timeFrames), eventA);
                 continue;
             }
 
@@ -1099,21 +1133,14 @@ public class SweepwaterService {
 
                 // 如果事件不符合时间范围要求则跳过
                 if (!processedEventB.isValid()) {
-                    log.info("扫水,网站B:{}-赛事:{},不符合设置的时间范围:{},跳过", WebsiteType.getById(websiteIdB).getDescription(), eventBJson.getStr("league"), JSONUtil.parseArray(timeFrames));
+                    log.info("扫水,网站B:{}-赛事:{},不符合设置的时间范围:{},跳过, 赛事信息:{}", WebsiteType.getById(websiteIdB).getDescription(), eventBJson.getStr("league"), JSONUtil.parseArray(timeFrames), eventB);
                     continue;
                 }
 
                 // 检查是否是对立队伍组合
-                if (isOppositeTeamCombination(
-                        processedEventA.getTeamName(),
-                        processedEventB.getTeamName(),
-                        bindTeamNameA,
-                        bindTeamNameB,
-                        processedEventA.getId(),
-                        processedEventB.getId(),
-                        bindIdA,
-                        bindIdB
-                )) {
+                if (processedEventA.getTeamName().equals(bindTeamNameA) &&
+                    processedEventB.getTeamName().equals(bindTeamNameB)
+                ) {
                     log.info("扫水,网站A:{}-赛事:{}-队伍:{},网站B:{}-赛事:{}-队伍:{},队伍组合符合设置的对立队伍", WebsiteType.getById(websiteIdA).getDescription(), eventAJson.getStr("league"), processedEventA.getTeamName(), WebsiteType.getById(websiteIdB).getDescription(), eventBJson.getStr("league"), processedEventB.getTeamName());
                     log.info("准备进入扫水对比, eventA:{}======================================eventB:{}", eventA, eventB);
                     log.info("准备进入扫水对比, processedEventA:{}======================================processedEventB:{}", JSONUtil.parseObj(processedEventA), JSONUtil.parseObj(processedEventB));
@@ -1144,6 +1171,15 @@ public class SweepwaterService {
                     );
                 } else {
                     log.info("扫水,网站A:{}-赛事:{}-队伍:{},网站B:{}-赛事:{}-队伍:{},队伍组合不符合设置的对立队伍,跳过", WebsiteType.getById(websiteIdA).getDescription(), eventAJson.getStr("league"), processedEventA.getTeamName(), WebsiteType.getById(websiteIdB).getDescription(), eventBJson.getStr("league"), processedEventB.getTeamName());
+                    log.info("扫水,队伍组合不符合设置的对立队伍,跳过, {}, {}, {}, {}, {}, {}, {}, {}",
+                            processedEventA.getTeamName(),
+                            processedEventB.getTeamName(),
+                            bindTeamNameA,
+                            bindTeamNameB,
+                            processedEventA.getId(),
+                            processedEventB.getId(),
+                            bindIdA,
+                            bindIdB);
                 }
             }
         }
@@ -1169,7 +1205,7 @@ public class SweepwaterService {
         String id = eventJson.getStr("id");
         String teamName = eventJson.getStr("name");
         String score = eventJson.getStr("score");
-        int reTime = eventJson.getInt("reTime");        // 比赛时长
+        String reTime = eventJson.getStr("reTime");        // 比赛时长
         String session = eventJson.getStr("session");   // 比赛阶段 1H:上半场，2H:下半场，HT:中场休息
 
         // 检查时间范围有效性
@@ -1201,21 +1237,21 @@ public class SweepwaterService {
      * 检查时间范围有效性
      *
      * @param session 赛事阶段
-     * @param reTime 比赛进行时间(秒)
+     * @param reTime 比赛进行时间
      * @param timeFrames 时间段配置列表
      * @return 是否在有效时间范围内
      */
     private boolean checkTimeFrameValidity(
-            String session, int reTime, List<TimeFrameDTO> timeFrames) {
+            String session, String reTime, List<TimeFrameDTO> timeFrames) {
 
-        if (timeFrames == null || timeFrames.isEmpty()) {
+        if (timeFrames == null || timeFrames.isEmpty() || "中场".equals(reTime)) {
             return true;
         }
         // 场间休息不处理
-        if ("HT".equalsIgnoreCase(session)) {
+        /*if ("HT".equalsIgnoreCase(session)) {
             log.info("当前赛事为场间休息session:{}，不扫水", session);
             return false;
-        }
+        }*/
 
         int courseType;
         if ("1H".equalsIgnoreCase(session)) {
@@ -1228,20 +1264,19 @@ public class SweepwaterService {
         }
 
         // 非有效阶段直接返回
-        if (courseType == -1) {
+        /*if (courseType == -1) {
             log.info("当前赛事阶段无效session:{}，不扫水", session);
             return false;
-        }
-
+        }*/
         // 查找对应的时间段配置
         Optional<TimeFrameDTO> timeFrameOpt = timeFrames.stream()
-                .filter(w -> w.getBallType() == 1 && w.getCourseType() == courseType)
+                .filter(w -> w.getBallType() == 1)
                 .findFirst();
-
+        int reTimeValue = Integer.parseInt(reTime);
         // 检查时间是否在配置范围内
         if (timeFrameOpt.isPresent()) {
             TimeFrameDTO timeFrame = timeFrameOpt.get();
-            if (reTime < timeFrame.getTimeFormSec() || reTime > timeFrame.getTimeToSec()) {
+            if (reTimeValue < timeFrame.getTimeFormSec() || reTimeValue > timeFrame.getTimeToSec()) {
                 log.info("当前赛事时间:{}不在[{}-{}]范围内",
                         reTime, timeFrame.getTimeFormSec(), timeFrame.getTimeToSec());
                 return false;
@@ -1336,7 +1371,8 @@ public class SweepwaterService {
             String bindIdA, String bindIdB) {
 
         return ((teamNameA.equals(bindNameA) && !teamNameB.equals(bindNameB)) ||
-                (!teamNameA.equals(bindNameA) && teamNameB.equals(bindNameB))) && idA.equals(bindIdA) && idB.equals(bindIdB);
+                (!teamNameA.equals(bindNameA) && teamNameB.equals(bindNameB))) &&
+                idA.equals(bindIdA) && idB.equals(bindIdB);
     }
 
     /**
@@ -1733,6 +1769,9 @@ public class SweepwaterService {
             String eventId = teamsOdds.getStr("id");
             for (Object object : teams) {
                 JSONObject teamJson = JSONUtil.parseObj(object);
+                if (!teamJson.getStr("id").equals(eventId)) {
+                    continue;
+                }
                 if (teamJson.getBool("isHome")) {
                     homeTeam = teamJson;
                 } else if (!teamJson.getBool("isHome")) {
@@ -1935,6 +1974,7 @@ public class SweepwaterService {
                                                      String strongA, String strongB, String gTypeA, String gTypeB, String wTypeA, String wTypeB, String rTypeA, String rTypeB, String choseTeamA, String choseTeamB, String conA, String conB, String ratioA, String ratioB,
                                                      JSONObject betInfoA, JSONObject betInfoB
     ) {
+        String reTime = WebsiteType.XINBAO.getId().equals(websiteIdA) ? teamA.getStr("reTime") : teamB.getStr("reTime");
         SweepwaterDTO sweepwaterDTO = new SweepwaterDTO();
         sweepwaterDTO.setId(IdUtil.getSnowflakeNextIdStr());
         sweepwaterDTO.setOddsIdA(oddsIdA);
@@ -1950,8 +1990,8 @@ public class SweepwaterService {
         sweepwaterDTO.setTeam(nameA + " × " + nameB);
         sweepwaterDTO.setTeamA(nameA);
         sweepwaterDTO.setTeamB(nameB);
-        sweepwaterDTO.setReTimeA(teamA.getStr("reTime"));
-        sweepwaterDTO.setReTimeB(teamB.getStr("reTime"));
+        sweepwaterDTO.setReTimeA(reTime);
+        sweepwaterDTO.setReTimeB(reTime);
         sweepwaterDTO.setIsHomeA(teamA.getBool("isHome"));
         sweepwaterDTO.setIsHomeB(teamB.getBool("isHome"));
         sweepwaterDTO.setOdds(String.format("%.3f", valueA) + " / " + String.format("%.3f", valueB));

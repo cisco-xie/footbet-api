@@ -98,6 +98,62 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                 System.currentTimeMillis()
         );
     }
+    /**
+     * 从比赛时间字符串中提取分钟数或中场标识。
+     *
+     * 示例：
+     *  - "1H^02:54" -> "02"
+     *  - "2H^62:30" -> "62"
+     *  - "MTIME^HT" -> "中场"
+     *  - "FT^90:00" -> "90"
+     *
+     * 说明：
+     * 1. 若为中场（包含 "MTIME" 或 "HT"），返回 "中场"
+     * 2. 否则提取 "^" 后时间的分钟部分（冒号前的数字）
+     * 3. 非法或空值返回空字符串 ""
+     */
+    public static String extractMatchMinute(String reTimeSet) {
+        if (reTimeSet == null || reTimeSet.isEmpty()) {
+            return "";
+        }
+
+        // 统一格式
+        String s = reTimeSet.trim().toUpperCase(Locale.ROOT);
+        if (s.contains("MTIME") || s.endsWith("^HT") || s.contains("^HT")) {
+            return "中场";
+        }
+
+        // 正常格式：1H^02:54 或 2H^62:30
+        String[] parts = s.split("\\^");
+        if (parts.length > 1) {
+            String[] timeParts = parts[1].split(":");
+            if (timeParts.length > 0) {
+                // 只保留数字部分（去除可能的非数字字符）
+                String minuteStr = timeParts[0].replaceAll("\\D", "");
+                return minuteStr;
+            }
+        }
+
+        return "";
+    }
+
+    // ===== 示例测试 =====
+    public static void main(String[] args) {
+        String[] tests = {
+                "1H^02:54",
+                "2H^62:30",
+                "MTIME^HT",
+                "FT^90:00",
+                "HT",
+                "MTIME^ht",
+                "1H^--:--",
+                "1H^"
+        };
+
+        for (String t : tests) {
+            System.out.printf("%-12s -> %s%n", t, extractMatchMinute(t));
+        }
+    }
 
     /**
      * 解析响应体
@@ -156,15 +212,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             }
 
             // 时间处理
-            int reTime = 0;
-            if (StringUtils.isNotBlank(reTimeSet)) {
-                String[] parts = reTimeSet.split("\\^");
-                if (parts.length > 1) {
-                    String[] timeParts = parts[1].split(":");
-                    String minuteStr = timeParts[0].replaceAll("\\D", "");
-                    reTime = NumberUtil.parseInt(minuteStr, 0);
-                }
-            }
+            String reTime = extractMatchMinute(reTimeSet);
             if ("Y".equals(midfield)) sessionValue = "HT";
 
             // 获取联赛容器
@@ -396,8 +444,11 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
      * @param handicap
      * @return
      */
-    public String getHandicapRange(String handicap) {
-        return handicap.replaceAll(" / ", "-");
+    public static String getHandicapRange(String handicap) {
+        // 先移除负号
+        String withoutNegative = handicap.replace("-", "");
+        // 再替换斜杠
+        return withoutNegative.replaceAll(" / ", "-");
     }
 
     /**

@@ -84,7 +84,7 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
         String autoOdd = params.getStr("autoOdd");
         // 构造请求体
         return String.format("p=FT_bet&uid=%s&ver=%s&langx=zh-cn&odd_f_type=%s&golds=%s&gid=%s&gtype=%s&wtype=%s&rtype=%s&chose_team=%s&ioratio=%s&con=%s&ratio=%s&autoOdd=%s" +
-                        "&timestamp=%s&timestamp2=&isRB=Y&imp=N&ptype=&isYesterday=N&f=1M",
+                        "&timestamp=%s&timestamp2=&isRB=Y&imp=N&ptype=&isYesterday=N&f=1R",
                 params.getStr("uid"),
                 Constants.VER,
                 oddsFormatType,
@@ -119,8 +119,10 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
 
         // 2. 获取响应内容
         String responseBody = response.getBody().trim();
-        JSONObject responseJson;
+        // 4. 日志输出
+        log.info("[新2][投注结果]{}", responseBody);
 
+        JSONObject responseJson;
         // 3. 判断是否为 JSON 格式
         try {
             responseJson = JSONUtil.parseObj(responseBody);
@@ -131,9 +133,6 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
                     .putOpt("success", false)
                     .putOpt("msg", "投注返回格式错误（JSON 解析失败）");
         }
-
-        // 4. 日志输出
-        log.info("[新2][投注结果]{}", responseJson);
 
         // 5. 提取并验证投注结果
         JSONObject serverResponse = responseJson.getJSONObject("serverresponse");

@@ -50,7 +50,7 @@ public class AutoLoginTask {
 
     @Async("loginTaskExecutor") // ✅ 独立线程池执行
     // 上一次任务完成后再延迟 10 分钟后执行
-    @Scheduled(fixedDelay = 2 * 60 * 1000)
+    @Scheduled(fixedDelay = 5 * 60 * 1000)
     public void autoLogin() {
         long startTime = System.currentTimeMillis();
         try {

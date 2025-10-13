@@ -63,7 +63,7 @@ public class AutoSweepwaterTask {
     private final LongAdder activeTasks = new LongAdder();
 
     // @Async("sweepTaskExecutor") // ✅ 独立线程池执行
-    @Scheduled(fixedRate = 1000)
+    @Scheduled(fixedRate = 300)
     public void autoSweepwater() {
         // 非阻塞式尝试获取信号量，获取不到就跳过（不再执行新任务）
         if (!sweepPermits.tryAcquire()) {

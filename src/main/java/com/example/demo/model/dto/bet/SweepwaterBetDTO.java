@@ -52,6 +52,9 @@ public class SweepwaterBetDTO {
     private String betIdB;          // 投注成功后盘口返回的id
     private JSONObject betInfoA;    // 投注成功后获取盘口的未结注单
     private JSONObject betInfoB;    // 投注成功后获取盘口的未结注单
+    private Integer simulateBetA;   // 是否模拟投注   0否1是
+    private Integer simulateBetB;   // 是否模拟投注   0否1是
+
     private String decimalOddsA;    // 智博网站的投注专属参数
     private String decimalOddsB;    // 智博网站的投注专属参数
     private String handicapA;       // 智博网站的投注专属参数
@@ -81,5 +84,6 @@ public class SweepwaterBetDTO {
 
     private String water;           // 水位
     private String createTime;      // 创建时间
+    private String sweepwaterCreateTime;      // 扫水时间
 
 }
