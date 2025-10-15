@@ -30,12 +30,10 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -79,6 +77,81 @@ public class BetService {
         businessPlatformRedissonClient.getKeys().deleteByPattern(indexPattern);
 
         log.info("清理下注缓存完成，用户:{}，pattern:{} 和 {}", username, betPattern, indexPattern);
+    }
+
+    /**
+     * 简单结果容器：返回新投注列表与当前 index 总数（调用方可保存 currentTotal 作为下次的 lastSeenTotal）
+     */
+    public static class NewSinceResult {
+        public final List<SweepwaterBetDTO> newBets;
+        public final int previousTotalSeen;
+        public final int currentTotal;
+
+        public NewSinceResult(List<SweepwaterBetDTO> newBets, int previousTotalSeen, int currentTotal) {
+            this.newBets = newBets;
+            this.previousTotalSeen = previousTotalSeen;
+            this.currentTotal = currentTotal;
+        }
+    }
+
+    /**
+     * 查询是否存在新的投注
+     * 根据调用方提供的 lastSeenTotal（之前看到的 index.size()），返回从 lastSeenTotal 开始到当前总数的所有“新”投注。
+     * - lastSeenTotal 表示上次已读的 index.size()（例如：上次 total 为 100，则 new 区间是 [100, currentTotal-1]）
+     * - 如果 lastSeenTotal < 0 或 null，则视为 0（返回全部）
+     */
+    public boolean getNewRealtimeBetsSince(String username, Integer lastSeenTotal) {
+        int pageNum = 1;
+        int pageSize = 50000000;
+        // 日期 key
+        String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
+        String indexKey = KeyUtil.genKey("INDEX", username, "realtime", date);
+        RList<String> index = businessPlatformRedissonClient.getList(indexKey);
+
+        int currentTotal = index.size();
+
+        int prevTotal = (lastSeenTotal == null || lastSeenTotal < 0) ? 0 : lastSeenTotal;
+
+        // 没有新数据
+        if (currentTotal <= prevTotal) return false;
+
+        int start = currentTotal - pageNum * pageSize;
+        if (start < 0) start = 0;
+        int end = currentTotal - (pageNum - 1) * pageSize - 1;
+        if (end < 0) {
+            return false;
+        }
+
+        // 批量读取新增的投注
+        List<String> newKeys = index.range(start, end);
+        if (newKeys.isEmpty()) return false;
+
+        RBatch batch = businessPlatformRedissonClient.createBatch();
+        List<RFuture<Object>> futures = new ArrayList<>();
+        for (String key : newKeys) {
+            futures.add(batch.getBucket(key).getAsync());
+        }
+        batch.execute();
+
+        int currentSuccess = 0;
+        for (RFuture<Object> future : futures) {
+            try {
+                Object json = future.toCompletableFuture().join();
+                if (json != null) {
+                    SweepwaterBetDTO dto = JSONUtil.toBean((String) json, SweepwaterBetDTO.class);
+                    if ((dto.getBetSuccessA() != null && dto.getBetSuccessA())
+                            || (dto.getBetSuccessB() != null && dto.getBetSuccessB())) {
+                        // 找到至少一个成功投注即返回 true
+                        currentSuccess += 1;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("读取实时投注单缓存失败", e);
+            }
+        }
+
+        // 所有成功投注数量校验是否大于前端传入的数量
+        return currentSuccess > prevTotal;
     }
 
     /**
@@ -263,7 +336,6 @@ public class BetService {
         return new PageResult<>(pageData, (long) filteredList.size(), pageNum, pageSize);
     }
 
-
     /**
      * 投注
      * @param username
@@ -321,6 +393,13 @@ public class BetService {
 
         List<WebsiteVO> websites = websiteService.getWebsites(username);
         for (SweepwaterDTO sweepwaterDTO : sweepwaters) {
+            // 30秒投注限制不需要
+            /*LocalDateTime createTime = LocalDateTime.parse(sweepwaterDTO.getCreateTime(), DateTimeFormatter.ofPattern(DatePattern.NORM_DATETIME_MS_PATTERN));
+            long seconds = Duration.between(createTime, LocalDateTime.now()).getSeconds();
+            if (seconds > 30) {
+                log.info("赔率数据过期({}秒前)，放弃处理投注", seconds);
+                continue; // 直接退出方法
+            }*/
             // 如果已经处理过，直接跳过
             if (!processedIds.add(sweepwaterDTO.getId())) {
                 continue;
@@ -698,12 +777,6 @@ public class BetService {
         while (attempt <= maxRetry && !success) {
             attempt++;
             try {
-                if (isA) {
-                    dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
-                } else {
-                    dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
-                }
-
                 boolean lastOddsTime = isA ? dto.getLastOddsTimeA() : dto.getLastOddsTimeB();
 
                 // 这里是校验间隔时间
@@ -740,6 +813,11 @@ public class BetService {
                             // 回滚投注次数
                             limitManager.rollbackReservation(limitKey, reservationId);
                         } else {
+                            if (isA) {
+                                dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                            } else {
+                                dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                            }
                             result.putOpt("isBet", true);
                             result.putOpt("success", true);
                             // 记录投注成功到限流管理器（关键步骤）
@@ -767,6 +845,11 @@ public class BetService {
                             // 回滚投注次数
                             limitManager.rollbackReservation(limitKey, reservationId);
                         } else {
+                            if (isA) {
+                                dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                            } else {
+                                dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                            }
                             result.putOpt("isBet", true);
                             result.putOpt("success", true);
                             // 记录投注成功到限流管理器（关键步骤）
@@ -873,12 +956,12 @@ public class BetService {
                 log.info("用户 {}, 网站:{} 开始投注，eventId={}, isA={}, 投注参数={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, params);
                 Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betInfo"), betPreview.getJSONObject("betPreview"));
                 log.info("用户 {}, 网站:{} 开始投注，eventId={}, isA={}, 投注结果={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, betResult);
-                if (isA) {
-                    dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
-                } else {
-                    dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
-                }
                 if (betResult != null && parseBetSuccess(betResult, dto, isA)) {
+                    if (isA) {
+                        dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                    } else {
+                        dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                    }
                     // 1. 记录到限流管理器（关键步骤）
                     try {
                         limitManager.confirmSuccess(limitKey, reservationId);
@@ -914,7 +997,6 @@ public class BetService {
                             log.info("异步记录投注成功失败:", e);
                         }
                     });
-
                     result.putOpt("isBet", true);
                     result.putOpt("success", true);
                     result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));

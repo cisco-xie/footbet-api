@@ -42,6 +42,13 @@ public class BetController extends BaseController {
     @Resource
     private BetService betService;
 
+    @Operation(summary = "查询是否存在新的投注")
+    @GetMapping("/bets/exist/new")
+    public Result<Boolean> existNew(@RequestParam(defaultValue = "0") Integer lastSeenTotal) {
+        AdminLoginDTO admin = getUser();
+        return Result.success(betService.getNewRealtimeBetsSince(admin.getUsername(), lastSeenTotal));
+    }
+
     @Operation(summary = "获取实时进单列表")
     @GetMapping("/bets/realtime")
     public Result<PageResult<SweepwaterBetDTO>> getBetsReal(@RequestParam(value = "teamName", required = false) String teamName,
