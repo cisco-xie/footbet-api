@@ -13,8 +13,10 @@ public class LimitVO {
     private Integer betLimitScore;
     @Schema(description = "单边投注(开启后只投注最新赔率的一边)")
     private Integer unilateralBet;
-    @Schema(description = "选边(1=旧, 2=新)")
+    @Schema(description = "单边(1=旧, 2=新)")
     private Integer unilateralBetType;
+    @Schema(description = "双边(0=不限, 1=旧, 2=新)")
+    private Integer bothSideOption;
     @Schema(description = "指定网站(智博, 平博, 新二)")
     private List<String> websiteLimit;
     @Schema(description = "投注失败重试")

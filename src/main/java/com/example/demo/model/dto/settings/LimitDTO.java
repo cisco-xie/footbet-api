@@ -15,6 +15,8 @@ public class LimitDTO {
     private Integer unilateralBet;
     @Schema(description = "选边(1=旧, 2=新)")
     private Integer unilateralBetType;
+    @Schema(description = "双边(0=不限, 1=旧, 2=新)")
+    private Integer bothSideOption;
     @Schema(description = "指定网站(智博, 平博, 新二)")
     private List<String> websiteLimit;
     @Schema(description = "投注失败重试")

@@ -362,6 +362,29 @@ public class BetService {
                     // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
                     continue;
                 }
+            } else {
+                // 双边投注
+                if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 1
+                        && dto.getLastOddsTimeA()
+                        && limitDTO.getWebsiteLimit().contains(dto.getWebsiteIdA())) {
+                    // 双边旧投注,当前网站赔率是最新的，直接跳出不投注
+                    continue;
+                } else if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 2
+                        && !dto.getLastOddsTimeA()
+                        && limitDTO.getWebsiteLimit().contains(dto.getWebsiteIdA())) {
+                    // 双边新投注,当前网站赔率不是最新的，直接跳出不投注
+                    continue;
+                } else if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 1
+                        && dto.getLastOddsTimeB()
+                        && limitDTO.getWebsiteLimit().contains(dto.getWebsiteIdB())) {
+                    // 双边旧投注,当前网站赔率是最新的，直接跳出不投注
+                    continue;
+                } else if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 2
+                        && !dto.getLastOddsTimeB()
+                        && limitDTO.getWebsiteLimit().contains(dto.getWebsiteIdB())) {
+                    // 双边新投注,当前网站赔率不是最新的，直接跳出不投注
+                    continue;
+                }
             }
 
             int rollingOrderA = websites.stream()
@@ -730,16 +753,31 @@ public class BetService {
                             }
                         }
                     } else {
-                        result.putOpt("isBet", true);
-                        result.putOpt("success", true);
-                        // 记录投注成功到限流管理器（关键步骤）
-                        try {
-                            limitManager.confirmSuccess(limitKey, reservationId);
-                            log.info("用户 {}, 网站:{} 成功记录投注限制", username, WebsiteType.getById(websiteId).getDescription());
-                        } catch (Exception e) {
-                            log.info("用户 {}, 网站:{} 记录投注限制异常: {}",
-                                    username, WebsiteType.getById(websiteId).getDescription(), e.getMessage());
-                            // 即使记录失败，投注已真实成功，继续后续逻辑
+                        // 双边投注
+                        if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 1 && lastOddsTime) {
+                            // 双边旧投注,当前网站赔率是最新的，直接跳出不投注
+                            result.putOpt("isBet", false);
+                            result.putOpt("success", false);
+                            // 回滚投注次数
+                            limitManager.rollbackReservation(limitKey, reservationId);
+                        } else if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 2 && !lastOddsTime) {
+                            // 双边新投注,当前网站赔率不是最新的，直接跳出不投注
+                            result.putOpt("isBet", false);
+                            result.putOpt("success", false);
+                            // 回滚投注次数
+                            limitManager.rollbackReservation(limitKey, reservationId);
+                        } else {
+                            result.putOpt("isBet", true);
+                            result.putOpt("success", true);
+                            // 记录投注成功到限流管理器（关键步骤）
+                            try {
+                                limitManager.confirmSuccess(limitKey, reservationId);
+                                log.info("用户 {}, 网站:{} 成功记录投注限制", username, WebsiteType.getById(websiteId).getDescription());
+                            } catch (Exception e) {
+                                log.info("用户 {}, 网站:{} 记录投注限制异常: {}",
+                                        username, WebsiteType.getById(websiteId).getDescription(), e.getMessage());
+                                // 即使记录失败，投注已真实成功，继续后续逻辑
+                            }
                         }
                     }
                     return result;
@@ -780,6 +818,25 @@ public class BetService {
                                 return result;
                             }
                         }
+                    }
+                } else {
+                    // 双边投注
+                    if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 1 && lastOddsTime) {
+                        // 双边旧投注,当前网站赔率是最新的，直接跳出不投注
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        // 回滚投注次数
+                        limitManager.rollbackReservation(limitKey, reservationId);
+                        log.info("不满足双边投注旧， 网站:{}", WebsiteType.getById(websiteId).getDescription());
+                        return result;
+                    } else if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 2 && !lastOddsTime) {
+                        // 双边新投注,当前网站赔率不是最新的，直接跳出不投注
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        // 回滚投注次数
+                        limitManager.rollbackReservation(limitKey, reservationId);
+                        log.info("不满足双边投注新， 网站:{}", WebsiteType.getById(websiteId).getDescription());
+                        return result;
                     }
                 }
 
