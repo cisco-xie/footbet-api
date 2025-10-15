@@ -763,7 +763,7 @@ public class SweepwaterService {
             CompletableFuture.allOf(futureA, futureB).join();
 
             // 记录获取赔率的时间
-            String getOddsTime = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_MS_PATTERN);
+            String getOddsTime = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN);
             JSONArray eventsA = futureA.get();
             JSONArray eventsB = futureB.get();
 

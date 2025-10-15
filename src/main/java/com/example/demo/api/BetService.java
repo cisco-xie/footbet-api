@@ -69,29 +69,14 @@ public class BetService {
      */
     public void betClear(String username) {
         // 删除下注明细
-        String betPattern = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, "realtime", "*", "*");
+        String betPattern = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, "realtime", "*");
         businessPlatformRedissonClient.getKeys().deleteByPattern(betPattern);
 
         // 删除实时索引
-        String indexPattern = KeyUtil.genKey("INDEX", username, "realtime", "*");
+        String indexPattern = KeyUtil.genKey("INDEX", username, "realtime");
         businessPlatformRedissonClient.getKeys().deleteByPattern(indexPattern);
 
         log.info("清理下注缓存完成，用户:{}，pattern:{} 和 {}", username, betPattern, indexPattern);
-    }
-
-    /**
-     * 简单结果容器：返回新投注列表与当前 index 总数（调用方可保存 currentTotal 作为下次的 lastSeenTotal）
-     */
-    public static class NewSinceResult {
-        public final List<SweepwaterBetDTO> newBets;
-        public final int previousTotalSeen;
-        public final int currentTotal;
-
-        public NewSinceResult(List<SweepwaterBetDTO> newBets, int previousTotalSeen, int currentTotal) {
-            this.newBets = newBets;
-            this.previousTotalSeen = previousTotalSeen;
-            this.currentTotal = currentTotal;
-        }
     }
 
     /**
@@ -103,9 +88,7 @@ public class BetService {
     public boolean getNewRealtimeBetsSince(String username, Integer lastSeenTotal) {
         int pageNum = 1;
         int pageSize = 50000000;
-        // 日期 key
-        String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
-        String indexKey = KeyUtil.genKey("INDEX", username, "realtime", date);
+        String indexKey = KeyUtil.genKey("INDEX", username, "realtime");
         RList<String> index = businessPlatformRedissonClient.getList(indexKey);
 
         int currentTotal = index.size();
@@ -162,14 +145,11 @@ public class BetService {
     public PageResult<SweepwaterBetDTO> getRealTimeBets(
             String username, String teamName, Integer pageNum, Integer pageSize) {
 
-        // 当前日期
-        String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
-
         if (pageNum == null || pageNum < 1) pageNum = 1;
         if (pageSize == null || pageSize < 1) pageSize = 10;
 
         // 实时索引 key
-        String indexKey = KeyUtil.genKey("INDEX", username, "realtime", date);
+        String indexKey = KeyUtil.genKey("INDEX", username, "realtime");
         RList<String> index = businessPlatformRedissonClient.getList(indexKey);
 
         int total = index.size();
@@ -422,22 +402,22 @@ public class BetService {
             if (isUnilateral) {
                 if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1
                         && dto.getLastOddsTimeA()
-                        && limitDTO.getWebsiteLimit().contains(dto.getWebsiteIdA())) {
+                        && limitDTO.getWebsiteLimit().equals(dto.getWebsiteIdA())) {
                     // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
                     continue;
                 } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2
                         && !dto.getLastOddsTimeA()
-                        && limitDTO.getWebsiteLimit().contains(dto.getWebsiteIdA())) {
+                        && limitDTO.getWebsiteLimit().equals(dto.getWebsiteIdA())) {
                     // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
                     continue;
                 } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1
                         && dto.getLastOddsTimeB()
-                        && limitDTO.getWebsiteLimit().contains(dto.getWebsiteIdB())) {
+                        && limitDTO.getWebsiteLimit().equals(dto.getWebsiteIdB())) {
                     // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
                     continue;
                 } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2
                         && !dto.getLastOddsTimeB()
-                        && limitDTO.getWebsiteLimit().contains(dto.getWebsiteIdB())) {
+                        && limitDTO.getWebsiteLimit().equals(dto.getWebsiteIdB())) {
                     // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
                     continue;
                 }
@@ -445,22 +425,22 @@ public class BetService {
                 // 双边投注
                 if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 1
                         && dto.getLastOddsTimeA()
-                        && limitDTO.getWebsiteLimit().contains(dto.getWebsiteIdA())) {
+                        && limitDTO.getWebsiteLimit().equals(dto.getWebsiteIdA())) {
                     // 双边旧投注,当前网站赔率是最新的，直接跳出不投注
                     continue;
                 } else if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 2
                         && !dto.getLastOddsTimeA()
-                        && limitDTO.getWebsiteLimit().contains(dto.getWebsiteIdA())) {
+                        && limitDTO.getWebsiteLimit().equals(dto.getWebsiteIdA())) {
                     // 双边新投注,当前网站赔率不是最新的，直接跳出不投注
                     continue;
                 } else if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 1
                         && dto.getLastOddsTimeB()
-                        && limitDTO.getWebsiteLimit().contains(dto.getWebsiteIdB())) {
+                        && limitDTO.getWebsiteLimit().equals(dto.getWebsiteIdB())) {
                     // 双边旧投注,当前网站赔率是最新的，直接跳出不投注
                     continue;
                 } else if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 2
                         && !dto.getLastOddsTimeB()
-                        && limitDTO.getWebsiteLimit().contains(dto.getWebsiteIdB())) {
+                        && limitDTO.getWebsiteLimit().equals(dto.getWebsiteIdB())) {
                     // 双边新投注,当前网站赔率不是最新的，直接跳出不投注
                     continue;
                 }
@@ -550,7 +530,7 @@ public class BetService {
             if (!valid) {
                 log.info("赛事预览水位不足，A={}, B={}, 总和={}，不投注", oddsA, oddsB, water);
 
-                dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
                 dto.setBetSuccessA(false);
                 dto.setBetSuccessB(false);
                 dto.setBetInfoA(betPreviewA.getJSONObject("betInfo"));
@@ -580,13 +560,11 @@ public class BetService {
                         RedisConstants.PLATFORM_BET_PREFIX,
                         username,
                         "realtime",
-                        date,
                         dto.getId()
                 );
                 businessPlatformRedissonClient.getBucket(realTimeKey).set(json);
                 // 实时索引
-                String realTimeIndexKey = KeyUtil.genKey("INDEX", username, "realtime",
-                        date);
+                String realTimeIndexKey = KeyUtil.genKey("INDEX", username, "realtime");
                 businessPlatformRedissonClient.getList(realTimeIndexKey).add(realTimeKey);
 
                 continue; // 直接跳过
@@ -644,7 +622,7 @@ public class BetService {
                     // 两个都失败不显示
                     continue;
                 }*/
-                dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
                 // 设置扫水已投注
                 sweepwaterService.setIsBet(username, sweepwaterDTO.getId());
 
@@ -669,13 +647,11 @@ public class BetService {
                         RedisConstants.PLATFORM_BET_PREFIX,
                         username,
                         "realtime",
-                        date,
                         dto.getId()
                 );
                 businessPlatformRedissonClient.getBucket(realTimeKey).set(json);
                 // 实时索引
-                String realTimeIndexKey = KeyUtil.genKey("INDEX", username, "realtime",
-                        date);
+                String realTimeIndexKey = KeyUtil.genKey("INDEX", username, "realtime");
                 businessPlatformRedissonClient.getList(realTimeIndexKey).add(realTimeKey);
             }
         }
@@ -746,13 +722,6 @@ public class BetService {
                            JSONObject betPreviewOpt, String intervalKey, String limitKey) {
         JSONObject result = new JSONObject();
 
-        if (!limitDTO.getWebsiteLimit().contains(websiteId)) {
-            // 当前网站不是所指定的网站，直接跳出不投注
-            result.putOpt("isBet", false);
-            result.putOpt("success", false);
-            return result;
-        }
-
         if (dto.getLastOddsTimeA() == dto.getLastOddsTimeB()) {
             // 如果两个都是旧或者新,则不进行投注,不需要在前端显示
             result.putOpt("isBet", false);
@@ -800,13 +769,15 @@ public class BetService {
                 if (simulateBet == 1) {
                     // 模拟投注
                     if (isUnilateral) {
-                        if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1 && lastOddsTime) {
+                        if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 1
+                                && lastOddsTime) {
                             // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
                             result.putOpt("isBet", false);
                             result.putOpt("success", false);
                             // 回滚投注次数
                             limitManager.rollbackReservation(limitKey, reservationId);
-                        } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2 && !lastOddsTime) {
+                        } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2
+                                && !lastOddsTime) {
                             // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
                             result.putOpt("isBet", false);
                             result.putOpt("success", false);
@@ -832,35 +803,21 @@ public class BetService {
                         }
                     } else {
                         // 双边投注
-                        if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 1 && lastOddsTime) {
-                            // 双边旧投注,当前网站赔率是最新的，直接跳出不投注
-                            result.putOpt("isBet", false);
-                            result.putOpt("success", false);
-                            // 回滚投注次数
-                            limitManager.rollbackReservation(limitKey, reservationId);
-                        } else if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 2 && !lastOddsTime) {
-                            // 双边新投注,当前网站赔率不是最新的，直接跳出不投注
-                            result.putOpt("isBet", false);
-                            result.putOpt("success", false);
-                            // 回滚投注次数
-                            limitManager.rollbackReservation(limitKey, reservationId);
+                        if (isA) {
+                            dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                         } else {
-                            if (isA) {
-                                dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
-                            } else {
-                                dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
-                            }
-                            result.putOpt("isBet", true);
-                            result.putOpt("success", true);
-                            // 记录投注成功到限流管理器（关键步骤）
-                            try {
-                                limitManager.confirmSuccess(limitKey, reservationId);
-                                log.info("用户 {}, 网站:{} 成功记录投注限制", username, WebsiteType.getById(websiteId).getDescription());
-                            } catch (Exception e) {
-                                log.info("用户 {}, 网站:{} 记录投注限制异常: {}",
-                                        username, WebsiteType.getById(websiteId).getDescription(), e.getMessage());
-                                // 即使记录失败，投注已真实成功，继续后续逻辑
-                            }
+                            dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                        }
+                        result.putOpt("isBet", true);
+                        result.putOpt("success", true);
+                        // 记录投注成功到限流管理器（关键步骤）
+                        try {
+                            limitManager.confirmSuccess(limitKey, reservationId);
+                            log.info("用户 {}, 网站:{} 成功记录投注限制", username, WebsiteType.getById(websiteId).getDescription());
+                        } catch (Exception e) {
+                            log.info("用户 {}, 网站:{} 记录投注限制异常: {}",
+                                    username, WebsiteType.getById(websiteId).getDescription(), e.getMessage());
+                            // 即使记录失败，投注已真实成功，继续后续逻辑
                         }
                     }
                     return result;
@@ -901,25 +858,6 @@ public class BetService {
                                 return result;
                             }
                         }
-                    }
-                } else {
-                    // 双边投注
-                    if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 1 && lastOddsTime) {
-                        // 双边旧投注,当前网站赔率是最新的，直接跳出不投注
-                        result.putOpt("isBet", false);
-                        result.putOpt("success", false);
-                        // 回滚投注次数
-                        limitManager.rollbackReservation(limitKey, reservationId);
-                        log.info("不满足双边投注旧， 网站:{}", WebsiteType.getById(websiteId).getDescription());
-                        return result;
-                    } else if (limitDTO.getBothSideOption() != null && limitDTO.getBothSideOption() == 2 && !lastOddsTime) {
-                        // 双边新投注,当前网站赔率不是最新的，直接跳出不投注
-                        result.putOpt("isBet", false);
-                        result.putOpt("success", false);
-                        // 回滚投注次数
-                        limitManager.rollbackReservation(limitKey, reservationId);
-                        log.info("不满足双边投注新， 网站:{}", WebsiteType.getById(websiteId).getDescription());
-                        return result;
                     }
                 }
 
@@ -1612,7 +1550,6 @@ public class BetService {
                             RedisConstants.PLATFORM_BET_PREFIX,
                             username,
                             "realtime",
-                            LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN),
                             bet.getId()
                     );
                 }
