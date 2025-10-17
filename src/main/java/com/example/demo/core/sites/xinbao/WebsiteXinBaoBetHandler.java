@@ -178,9 +178,10 @@ public class WebsiteXinBaoBetHandler implements ApiHandler {
         // 发送请求
         OkHttpProxyDispatcher.HttpResult resultHttp;
         try {
+            log.info("[新2][投注参数]fullUrl:{}=====requestBody:{}", fullUrl, requestBody);
             resultHttp = dispatcher.executeFull("POST", fullUrl, requestBody, requestHeaders, userConfig);
         } catch (Exception e) {
-            log.error("请求异常，用户:{}, 账号:{}, 参数:{}, 错误:{}", username, userConfig.getAccount(), requestBody, e.getMessage(), e);
+            log.error("[新2][投注请求异常]，用户:{}, 账号:{}, 参数:{}, 错误:{}", username, userConfig.getAccount(), requestBody, e.getMessage(), e);
             throw new BusinessException(SystemError.SYS_400);
         }
         // 解析响应并返回

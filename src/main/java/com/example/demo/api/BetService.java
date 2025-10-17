@@ -458,43 +458,8 @@ public class BetService {
                     .findFirst()
                     .orElse(0);
 
-            int simulateBetA = websites.stream()
-                    .filter(w -> w.getId().equals(dto.getWebsiteIdA()))
-                    .map(WebsiteVO::getSimulateBet)
-                    .findFirst()
-                    .orElse(0);
-
-            int simulateBetB = websites.stream()
-                    .filter(w -> w.getId().equals(dto.getWebsiteIdB()))
-                    .map(WebsiteVO::getSimulateBet)
-                    .findFirst()
-                    .orElse(0);
-
-            // 是否模拟投注
-            int simulateA;
-            if (admin.getSimulateBet() == 1) {
-                simulateA = 1;
-            } else {
-                if (simulateBetA == 1) {
-                    simulateA = 1;
-                } else {
-                    simulateA = 0;
-                }
-            }
-
-            // 是否模拟投注
-            int simulateB;
-            if (admin.getSimulateBet() == 1) {
-                simulateB = 1;
-            } else {
-                if (simulateBetB == 1) {
-                    simulateB = 1;
-                } else {
-                    simulateB = 0;
-                }
-            }
-            dto.setSimulateBetA(simulateA);
-            dto.setSimulateBetB(simulateB);
+            dto.setSimulateBetA(admin.getSimulateBet());
+            dto.setSimulateBetB(admin.getSimulateBet());
             // 并行获取 A/B 投注预览
             CompletableFuture<JSONObject> previewA = CompletableFuture.supplyAsync(() ->
                             buildBetInfo(username, dto.getTeamA(), dto.getWebsiteIdA(), buildBetParams(dto, amountDTO, true), dto),
@@ -574,24 +539,35 @@ public class BetService {
             JSONObject successB = new JSONObject();
 
             // 校验投注间隔key
-            String intervalKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, String.valueOf(simulateA), dto.getEventIdA(), dto.getEventIdB());
+            String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, String.valueOf(admin.getSimulateBet()), dto.getEventIdA(), dto.getEventIdB());
             // 投注次数限制key
-            String limitKeyA = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, String.valueOf(simulateA), dto.getEventIdA(), dto.getEventIdB());
+            String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, String.valueOf(admin.getSimulateBet()), dto.getEventIdA(), dto.getEventIdB());
 
-            // 校验投注间隔key
-            String intervalKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, String.valueOf(simulateB), dto.getEventIdA(), dto.getEventIdB());
-            // 投注次数限制key
-            String limitKeyB = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, String.valueOf(simulateB), dto.getEventIdA(), dto.getEventIdB());
+            // 这里是校验间隔时间
+            long intervalMillis = intervalDTO.getBetSuccessSec() * 1000L;
+
+            // 1. 强制预检查
+            SuccessBasedLimitManager.EnforcementResult checkResult = limitManager.preCheckAndReserve(
+                    limitKey, intervalKey, dto.getScoreA(), limitDTO, intervalMillis);
+
+            // 快速检查：如果明显不满足条件，直接返回
+            if (!checkResult.isSuccess()) {
+                log.info("快速检查不满足: 用户 {}, 联赛:{}, 比分 {}, 原因: {}",
+                        username, dto.getLeague(), dto.getScoreA(), checkResult.getFailReason());
+                continue;
+            }
+            // 保存reservationId，用于后续确认或回滚
+            String reservationId = checkResult.getReservationId();
 
             try {
                 if (rollingOrderA == rollingOrderB) {
                     // 并行执行
                     CompletableFuture<JSONObject> betA = CompletableFuture.supplyAsync(() ->
-                                    tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, simulateA, betPreviewA, intervalKeyA, limitKeyA),
+                                    tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA),
                             betExecutor
                     );
                     CompletableFuture<JSONObject> betB = CompletableFuture.supplyAsync(() ->
-                                    tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, simulateB, betPreviewB, intervalKeyB, limitKeyB),
+                                    tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB),
                             betExecutor
                     );
                     CompletableFuture.allOf(betA, betB).join();
@@ -599,18 +575,20 @@ public class BetService {
                     successB = betB.join();
                 } else if (rollingOrderA < rollingOrderB) {
                     // A 优先
-                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, simulateA, betPreviewA, intervalKeyA, limitKeyA);
+                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA);
                     if (successA.getBool("success")) {
-                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, simulateB, betPreviewB, intervalKeyB, limitKeyB);
+                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB);
                     }
                 } else {
                     // B 优先
-                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, simulateB, betPreviewB, intervalKeyB, limitKeyB);
+                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB);
                     if (successB.getBool("success")) {
-                        successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, simulateA, betPreviewA, intervalKeyA, limitKeyA);
+                        successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA);
                     }
                 }
             } catch (Exception e) {
+                // 回滚投注次数
+                limitManager.rollbackReservation(limitKey, reservationId);
                 log.error("sweepwater={} 投注异常", dto.getId(), e);
             }
 
@@ -618,10 +596,8 @@ public class BetService {
             dto.setBetSuccessB(successB.getBool("success"));
             // 有一个执行了投注则缓存
             if (successA.getBool("isBet") || successB.getBool("isBet")) {
-                /*if (!successA.getBool("success") && !successB.getBool("success")) {
-                    // 两个都失败不显示
-                    continue;
-                }*/
+                // 记录投注成功到限流管理器（关键步骤）
+                limitManager.confirmSuccess(limitKey, reservationId);
                 dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
                 // 设置扫水已投注
                 sweepwaterService.setIsBet(username, sweepwaterDTO.getId());
@@ -653,6 +629,9 @@ public class BetService {
                 // 实时索引
                 String realTimeIndexKey = KeyUtil.genKey("INDEX", username, "realtime");
                 businessPlatformRedissonClient.getList(realTimeIndexKey).add(realTimeKey);
+            } else {
+                // 没有一个成功就回滚投注次数
+                limitManager.rollbackReservation(limitKey, reservationId);
             }
         }
 
@@ -719,7 +698,7 @@ public class BetService {
                            BetAmountDTO amountDTO,
                            OptimizingDTO optimizing,
                            Integer simulateBet,
-                           JSONObject betPreviewOpt, String intervalKey, String limitKey) {
+                           JSONObject betPreviewOpt) {
         JSONObject result = new JSONObject();
 
         if (dto.getLastOddsTimeA() == dto.getLastOddsTimeB()) {
@@ -748,24 +727,6 @@ public class BetService {
             try {
                 boolean lastOddsTime = isA ? dto.getLastOddsTimeA() : dto.getLastOddsTimeB();
 
-                // 这里是校验间隔时间
-                long intervalMillis = intervalDTO.getBetSuccessSec() * 1000L;
-
-                // 1. 强制预检查
-                SuccessBasedLimitManager.EnforcementResult checkResult = limitManager.preCheckAndReserve(
-                        limitKey, intervalKey, score, limitDTO, intervalMillis);
-
-                // 快速检查：如果明显不满足条件，直接返回
-                if (!checkResult.isSuccess()) {
-                    log.info("快速检查不满足: 用户 {}, 网站:{}, 比分 {}, 原因: {}",
-                            username, WebsiteType.getById(websiteId).getDescription(), score, checkResult.getFailReason());
-                    result.putOpt("isBet", false);
-                    result.putOpt("success", false);
-                    return result;
-                }
-
-                // 保存reservationId，用于后续确认或回滚
-                String reservationId = checkResult.getReservationId();
                 if (simulateBet == 1) {
                     // 模拟投注
                     if (isUnilateral) {
@@ -774,15 +735,11 @@ public class BetService {
                             // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
                             result.putOpt("isBet", false);
                             result.putOpt("success", false);
-                            // 回滚投注次数
-                            limitManager.rollbackReservation(limitKey, reservationId);
                         } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2
                                 && !lastOddsTime) {
                             // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
                             result.putOpt("isBet", false);
                             result.putOpt("success", false);
-                            // 回滚投注次数
-                            limitManager.rollbackReservation(limitKey, reservationId);
                         } else {
                             if (isA) {
                                 dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
@@ -791,15 +748,6 @@ public class BetService {
                             }
                             result.putOpt("isBet", true);
                             result.putOpt("success", true);
-                            // 记录投注成功到限流管理器（关键步骤）
-                            try {
-                                limitManager.confirmSuccess(limitKey, reservationId);
-                                log.info("用户 {}, 网站:{} 成功记录投注限制", username, WebsiteType.getById(websiteId).getDescription());
-                            } catch (Exception e) {
-                                log.info("用户 {}, 网站:{} 记录投注限制异常: {}",
-                                        username, WebsiteType.getById(websiteId).getDescription(), e.getMessage());
-                                // 即使记录失败，投注已真实成功，继续后续逻辑
-                            }
                         }
                     } else {
                         // 双边投注
@@ -810,15 +758,6 @@ public class BetService {
                         }
                         result.putOpt("isBet", true);
                         result.putOpt("success", true);
-                        // 记录投注成功到限流管理器（关键步骤）
-                        try {
-                            limitManager.confirmSuccess(limitKey, reservationId);
-                            log.info("用户 {}, 网站:{} 成功记录投注限制", username, WebsiteType.getById(websiteId).getDescription());
-                        } catch (Exception e) {
-                            log.info("用户 {}, 网站:{} 记录投注限制异常: {}",
-                                    username, WebsiteType.getById(websiteId).getDescription(), e.getMessage());
-                            // 即使记录失败，投注已真实成功，继续后续逻辑
-                        }
                     }
                     return result;
                 }
@@ -827,16 +766,12 @@ public class BetService {
                         // 单边旧投注,当前网站赔率是最新的，直接跳出不投注
                         result.putOpt("isBet", false);
                         result.putOpt("success", false);
-                        // 回滚投注次数
-                        limitManager.rollbackReservation(limitKey, reservationId);
                         log.info("不满足单边投注旧， 网站:{}", WebsiteType.getById(websiteId).getDescription());
                         return result;
                     } else if (limitDTO.getUnilateralBetType() != null && limitDTO.getUnilateralBetType() == 2 && !lastOddsTime) {
                         // 单边新投注,当前网站赔率不是最新的，直接跳出不投注
                         result.putOpt("isBet", false);
                         result.putOpt("success", false);
-                        // 回滚投注次数
-                        limitManager.rollbackReservation(limitKey, reservationId);
                         log.info("不满足单边投注新， 网站:{}", WebsiteType.getById(websiteId).getDescription());
                         return result;
                     } else {
@@ -853,8 +788,6 @@ public class BetService {
                                 // 必须投注同一支队伍
                                 result.putOpt("isBet", false);
                                 result.putOpt("success", false);
-                                // 回滚投注次数
-                                limitManager.rollbackReservation(limitKey, reservationId);
                                 return result;
                             }
                         }
@@ -893,23 +826,13 @@ public class BetService {
                 // 投注
                 log.info("用户 {}, 网站:{} 开始投注，eventId={}, isA={}, 投注参数={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, params);
                 Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betInfo"), betPreview.getJSONObject("betPreview"));
+                if (isA) {
+                    dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                } else {
+                    dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
+                }
                 log.info("用户 {}, 网站:{} 开始投注，eventId={}, isA={}, 投注结果={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, betResult);
                 if (betResult != null && parseBetSuccess(betResult, dto, isA)) {
-                    if (isA) {
-                        dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
-                    } else {
-                        dto.setBetTimeB(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
-                    }
-                    // 1. 记录到限流管理器（关键步骤）
-                    try {
-                        limitManager.confirmSuccess(limitKey, reservationId);
-                        log.info("用户 {}, 网站:{} 成功记录投注限制", username, WebsiteType.getById(websiteId).getDescription());
-                    } catch (Exception e) {
-                        log.info("用户 {}, 网站:{} 记录投注限制异常: {}",
-                                username, WebsiteType.getById(websiteId).getDescription(), e.getMessage());
-                        // 即使记录失败，投注已真实成功，继续后续逻辑
-                    }
-
                     // 异步写入 Redis 列表
                     CompletableFuture.runAsync(() -> {
                         try {
@@ -943,14 +866,10 @@ public class BetService {
                     result.putOpt("isBet", true);
                     result.putOpt("success", false);
                     result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
-                    // 回滚投注次数
-                    limitManager.rollbackReservation(limitKey, reservationId);
                 } else {
                     result.putOpt("isBet", true);
                     result.putOpt("success", false);
                     result.putOpt("betInfo", null);
-                    // 回滚投注次数
-                    limitManager.rollbackReservation(limitKey, reservationId);
                 }
             } catch (Exception e) {
                 log.info("用户 {}, 网站:{}, 投注尝试第 {} 次失败：{}", username, WebsiteType.getById(websiteId).getDescription(), attempt, e.getMessage(), e);

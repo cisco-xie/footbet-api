@@ -96,6 +96,9 @@ public class AutoLoginTask {
                             // 内层串行处理账号列表
                             for (ConfigAccountVO userConfig : userList) {
                                 log.info("检查账户登录情况,网站:{},账户:{}", type.getDescription(), userConfig.getAccount());
+                                if (userConfig.getEnable() == 0) {
+                                    continue;
+                                }
                                 try {
                                     boolean isValid = true;
                                     userConfig = accountService.getAccountById(adminUser.getUsername(), type.getId(), userConfig.getId());

@@ -334,9 +334,9 @@ public class OkHttpProxyDispatcher {
 
                     // 检查是否是有效内容
                     if (html.contains("<!DOCTYPE html") || html.contains("<html")) {
-                        log.info("成功获取 HTML 内容");
+                        // log.info("成功获取 HTML 内容");
                     } else {
-                        log.info("响应可能不是 HTML: {}", html.substring(0, Math.min(100, html.length())));
+                        // log.info("响应可能不是 HTML: {}", html.substring(0, Math.min(100, html.length())));
                     }
 
                     // 5. 返回结果（包含响应头、状态码等）

@@ -126,14 +126,24 @@ public class HandicapApi {
             return;
         }
 
+        // 仅保留 enable = 1 的账号
+        List<ConfigAccountVO> enabledAccounts = accounts.stream()
+                .filter(account -> account.getEnable() != null && account.getEnable() == 1)
+                .toList();
+
+        if (enabledAccounts.isEmpty()) {
+            log.info("【登录】没有启用的账号，username={}, websiteId={}", username, websiteId);
+            return;
+        }
+
         // ✅ 定义本地内存的 retryMap，仅在当前方法内生效（不持久）
         ConcurrentHashMap<String, Integer> retryMap = new ConcurrentHashMap<>();
 
         int cpuCoreCount = Runtime.getRuntime().availableProcessors();
-        int threadPoolUserSize = Math.min(accounts.size(), cpuCoreCount * 2);
+        int threadPoolUserSize = Math.min(enabledAccounts.size(), cpuCoreCount * 2);
         ExecutorService executorLoginService = new ThreadPoolExecutor(
                 threadPoolUserSize, // 核心线程数
-                accounts.size(), // 最大线程数
+                enabledAccounts.size(), // 最大线程数
                 0L, TimeUnit.SECONDS, // 空闲线程超时时间
                 new LinkedBlockingQueue<>(10), // 队列大小
                 new ThreadFactoryBuilder().setNameFormat("loginByWebsite-pool-%d").build(),
@@ -141,7 +151,7 @@ public class HandicapApi {
         );
 
         try {
-            List<CompletableFuture<Void>> futures = accounts.stream()
+            List<CompletableFuture<Void>> futures = enabledAccounts.stream()
                     .map(account -> CompletableFuture.runAsync(() ->
                             // ✅ 将 retryMap 传入 processAccountLogin 方法
                             processAccountLogin(account, username, websiteId, retryMap),
@@ -1514,8 +1524,8 @@ public class HandicapApi {
                 }
             }
 
-            // ================== 失败补投逻辑 ==================
-            if (!failedSplits.isEmpty()) {
+            // ================== 失败补投逻辑 只有拆分投注的才进行补单 ==================
+            if (betAmount.compareTo(maxBet) > 0 && !failedSplits.isEmpty()) {
                 log.info("网站:{} 账号 {} 投注失败，开始补投，失败次数 {}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), failedSplits.size());
                 for (JSONObject failedParam : failedSplits) {
                     boolean retried = false;
@@ -1532,6 +1542,7 @@ public class HandicapApi {
                             retryResult.putOpt("accountId", otherAcc.getId());
                             splitResults.add(retryResult);
                             retried = true;
+                            log.info("网站:{} 投注补单成功，仍未成功，参数={}", WebsiteType.getById(websiteId).getDescription(), failedParam);
                             break;
                         }
                     }
@@ -1543,7 +1554,10 @@ public class HandicapApi {
 
             // ================== 返回处理 ==================
             if (splitResults.isEmpty()) {
-                continue; // 尝试下一个账号
+                log.info("网站:{} 账号 {} 投注失败，延迟1秒尝试下一个账号投注", WebsiteType.getById(websiteId).getDescription(), account.getAccount());
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ignored) {}
             } else if (splitResults.size() == 1) {
                 return splitResults.get(0);
             } else {
