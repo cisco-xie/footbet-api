@@ -72,7 +72,7 @@ public class WebsiteXinBaoBetSettledHandler implements ApiHandler {
         // 构造请求体
         return String.format("p=history_switch&uid=%s&langx=zh-cn&LS=c&today_gmt=%s&gtype=ALL&tmp_flag=Y",
                 params.getStr("uid"),
-                LocalDateTimeUtil.format(LocalDate.now(), DatePattern.NORM_DATE_PATTERN)
+                params.getStr("date")
         );
     }
 
@@ -94,7 +94,7 @@ public class WebsiteXinBaoBetSettledHandler implements ApiHandler {
         // 解析响应
         JSONArray result = new JSONArray();
         JSONObject responseJson = new JSONObject(response.getBody());
-        JSONArray wagers = responseJson.getJSONArray("wagers");
+        JSONArray wagers = responseJson.getJSONObject("serverresponse").getJSONArray("wagers");
         if (wagers == null || wagers.isEmpty()) {
             responseJson.putOpt("success", true);
             responseJson.putOpt("data", null);
@@ -142,7 +142,7 @@ public class WebsiteXinBaoBetSettledHandler implements ApiHandler {
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
         String baseUrl = websiteService.getWebsiteBaseUrl(username, siteId);
-        String apiUrl = apiUrlService.getApiUrl(siteId, "unsettled");
+        String apiUrl = apiUrlService.getApiUrl(siteId, "settled");
         // 构建请求
         Map<String, String> requestHeaders = buildHeaders(params);
         String requestBody = buildRequest(params);

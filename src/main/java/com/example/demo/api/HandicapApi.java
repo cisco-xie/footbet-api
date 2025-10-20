@@ -21,6 +21,7 @@ import com.example.demo.model.vo.*;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.*;
 import org.springframework.stereotype.Component;
 
@@ -1033,7 +1034,7 @@ public class HandicapApi {
      * @param websiteId
      * @return
      */
-    public Object settled(String username, String websiteId, String accountId) {
+    public Object settled(String username, String websiteId, String accountId, String date) {
         ConfigAccountVO account = accountService.getAccountById(username, websiteId, accountId);
         if (account.getIsTokenValid() == 0) {
             // 未登录直接跳过
@@ -1045,6 +1046,9 @@ public class HandicapApi {
         if (apiHandler == null) {
             return null;
         }
+        if (StringUtils.isBlank(date)) {
+            date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
+        }
         JSONObject params = new JSONObject();
         params.putOpt("adminUsername", username);
         params.putOpt("websiteId", websiteId);
@@ -1054,6 +1058,7 @@ public class HandicapApi {
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+            params.putOpt("date", date);
             params.putAll(account.getToken().getJSONObject("serverresponse"));
         } else if (WebsiteType.SBO.getId().equals(websiteId)) {
             params.putOpt("cookie", account.getToken().getJSONObject("token").getStr("cookie"));
