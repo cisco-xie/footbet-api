@@ -16,6 +16,7 @@ public interface WebsiteApiFactory {
     ApiHandler getEventsOddsHandler();      // 赛事列表-带相关赔率
     ApiHandler getStatementsHandler();      // 账目列表
     ApiHandler getBetUnsettledHandler();    // 投注列表-未结算
+    ApiHandler getBetSettledHandler();      // 投注列表-已结算
     ApiHandler preferences();               // 偏好设置
     ApiHandler bet();                       // 投注
     ApiHandler betPreview();                // 投注预览

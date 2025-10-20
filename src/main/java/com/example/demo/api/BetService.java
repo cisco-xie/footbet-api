@@ -30,8 +30,10 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -482,8 +484,21 @@ public class BetService {
             BigDecimal oddsA = betPreviewA.getJSONObject("betInfo").getBigDecimal("oddsValue");
             BigDecimal oddsB = betPreviewB.getJSONObject("betInfo").getBigDecimal("oddsValue");
 
-            // 水位相加完再加2
-            BigDecimal water = oddsA.add(oddsB).add(BigDecimal.valueOf(2));
+            // 计算初始水位（两边相加）
+            BigDecimal water = oddsA.add(oddsB);
+
+            // 一方赔率为负数，则在结果上加 2,如果两个都是负数，就等于加4
+            if (oddsA.compareTo(BigDecimal.ZERO) < 0) {
+                water = water.add(BigDecimal.valueOf(2));
+            }
+            if (oddsB.compareTo(BigDecimal.ZERO) < 0) {
+                water = water.add(BigDecimal.valueOf(2));
+            }
+            // ✅ 仅保留 3 位小数（不四舍五入）
+            water = water.setScale(3, RoundingMode.DOWN);
+            dto.setOddsA(oddsA);
+            dto.setOddsB(oddsB);
+            dto.setWater(String.valueOf(water));
 
             boolean valid = false;
             if ("letBall".equals(dto.getHandicapType())) {
@@ -493,7 +508,7 @@ public class BetService {
             }
 
             if (!valid) {
-                log.info("赛事预览水位不足，A={}, B={}, 总和={}，不投注", oddsA, oddsB, water);
+                log.info("赛事预览水位不足，id={}，A={}, B={}, 总和={}，不投注", dto.getId(), oddsA, oddsB, water);
 
                 dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
                 dto.setBetSuccessA(false);
@@ -534,7 +549,8 @@ public class BetService {
 
                 continue; // 直接跳过
             }
-
+            log.info("【水位调试】id={}, 赔率A={}, 赔率B={}, 计算水位(截断3位)={}, profit.rollingLetBall={}, profit.rollingSize={}",
+                    dto.getId(), oddsA, oddsB, water, profit.getRollingLetBall(), profit.getRollingSize());
             JSONObject successA = new JSONObject();
             JSONObject successB = new JSONObject();
 
@@ -592,10 +608,27 @@ public class BetService {
                 log.error("sweepwater={} 投注异常", dto.getId(), e);
             }
 
-            dto.setBetSuccessA(successA.getBool("success"));
-            dto.setBetSuccessB(successB.getBool("success"));
+            dto.setBetSuccessA(successA.getBool("success", false));
+            dto.setBetSuccessB(successB.getBool("success", false));
+
+            // 计算初始水位（两边相加）
+            BigDecimal finalWater = dto.getOddsA().add(dto.getOddsB());
+
+            // 一方赔率为负数，则在结果上加 2,如果两个都是负数，就等于加4
+            if (dto.getOddsA().compareTo(BigDecimal.ZERO) < 0) {
+                finalWater = finalWater.add(BigDecimal.valueOf(2));
+            }
+            if (dto.getOddsB().compareTo(BigDecimal.ZERO) < 0) {
+                finalWater = finalWater.add(BigDecimal.valueOf(2));
+            }
+            // ✅ 仅保留 3 位小数（不四舍五入）
+            finalWater = finalWater.setScale(3, RoundingMode.DOWN);
+            // 更新最终水位
+            dto.setWater(String.valueOf(finalWater));
+            log.info("id:{} 赔率a:{} 赔率b：{} 最终水位: {}", dto.getId(), dto.getOddsA(), dto.getOddsB(), finalWater);
+
             // 有一个执行了投注则缓存
-            if (successA.getBool("isBet") || successB.getBool("isBet")) {
+            if (successA.getBool("isBet", false) || successB.getBool("isBet", false)) {
                 // 记录投注成功到限流管理器（关键步骤）
                 limitManager.confirmSuccess(limitKey, reservationId);
                 dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
@@ -641,6 +674,24 @@ public class BetService {
         log.info("投注结束，总花费:{}毫秒", timerTotal.interval());
     }
 
+    public static void main(String[] args) {
+        BigDecimal oddsA = BigDecimal.valueOf(-0.95);
+        BigDecimal oddsB = BigDecimal.valueOf(0.869);
+        BigDecimal water = oddsA.add(oddsB);
+
+        // 一方赔率为负数，则在结果上加 2,如果两个都是负数，就等于加4
+        if (oddsA.compareTo(BigDecimal.ZERO) < 0) {
+            water = water.add(BigDecimal.valueOf(2));
+        }
+        if (oddsB.compareTo(BigDecimal.ZERO) < 0) {
+            water = water.add(BigDecimal.valueOf(2));
+        }
+        // ✅ 仅保留 3 位小数（不四舍五入）
+        water = water.setScale(3, RoundingMode.DOWN);
+
+        double ball = 1.96;
+        System.out.println(water.compareTo(BigDecimal.valueOf(ball)) >= 0);
+    }
     @FunctionalInterface
     public interface RetryableTask {
         boolean execute() throws Exception;
@@ -823,6 +874,14 @@ public class BetService {
                     betPreview = betPreviewOpt;
                 }
 
+                // 更新赔率
+                BigDecimal odds = betPreview.getJSONObject("betInfo").getBigDecimal("oddsValue");
+                if (isA) {
+                    dto.setOddsA(odds);
+                } else {
+                    dto.setOddsB(odds);
+                }
+
                 // 投注
                 log.info("用户 {}, 网站:{} 开始投注，eventId={}, isA={}, 投注参数={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, params);
                 Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betInfo"), betPreview.getJSONObject("betPreview"));
@@ -989,7 +1048,7 @@ public class BetService {
                 betInfo.putOpt("team", objJson.getStr("homeTeam") + " -vs- " + objJson.getStr("awayTeam"));
                 betInfo.putOpt("marketTypeName", "");
                 betInfo.putOpt("marketName", objJson.getStr("selection"));
-                betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap") + " @ " + objJson.getStr("odds"));
+                betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap"));
                 betInfo.putOpt("oddsValue", objJson.getStr("odds"));
                 betInfo.putOpt("handicap", objJson.getStr("handicap"));
                 betInfo.putOpt("amount", params.getStr("stake"));
@@ -1004,7 +1063,7 @@ public class BetService {
             betInfo.putOpt("team", data.getStr("eventName"));
             betInfo.putOpt("marketTypeName", data.getStr("marketTypeName"));
             betInfo.putOpt("marketName", data.getStr("name"));
-            betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap") + " @ " + betTicket.getStr("odds"));
+            betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap"));
             betInfo.putOpt("oddsValue", betTicket.getStr("odds"));
             betInfo.putOpt("handicap", data.getStr("handicap"));
             betInfo.putOpt("amount", params.getStr("stake"));
@@ -1031,7 +1090,7 @@ public class BetService {
             betInfo.putOpt("team", serverresponse.getStr("team_name_h") + " -vs- " + serverresponse.getStr("team_name_c"));
             betInfo.putOpt("marketTypeName", marketTypeName);
             betInfo.putOpt("marketName", marketName);
-            betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread") + " @ " + serverresponse.getStr("ioratio"));
+            betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread"));
             betInfo.putOpt("oddsValue", serverresponse.getStr("ioratio"));
             betInfo.putOpt("handicap", serverresponse.getStr("spread"));
             betInfo.putOpt("amount", params.getStr("golds"));
@@ -1069,7 +1128,7 @@ public class BetService {
             betInfo.putOpt("team", teamH + " -vs- " + teamA);
             betInfo.putOpt("marketTypeName", marketTypeName);
             betInfo.putOpt("marketName", marketName);
-            betInfo.putOpt("odds", marketName + " " + odd.getStr("point") + " @ " + odd.getStr("price"));
+            betInfo.putOpt("odds", marketName + " " + odd.getStr("point"));
             betInfo.putOpt("oddsValue", odd.getStr("price"));
             betInfo.putOpt("handicap", odd.getStr("point"));
             betInfo.putOpt("amount", params.getStr("stake"));
@@ -1229,7 +1288,7 @@ public class BetService {
             params.putOpt("ioratio", isA ? sweepwaterDTO.getOddsA() : sweepwaterDTO.getOddsB());
             params.putOpt("con", isA ? sweepwaterDTO.getConA() : sweepwaterDTO.getConB());
             params.putOpt("ratio", isA ? sweepwaterDTO.getRatioA() : sweepwaterDTO.getRatioB());
-            params.putOpt("autoOdd", "Y");
+            params.putOpt("autoOdd", "N");  // 是否接受更好的赔率
         } else if (WebsiteType.SBO.getId().equals(websiteId)) {
             params.putOpt("stake", amount.getAmountSbo());
             params.putOpt("league", isA ? sweepwaterDTO.getLeagueNameA() : sweepwaterDTO.getLeagueNameB());

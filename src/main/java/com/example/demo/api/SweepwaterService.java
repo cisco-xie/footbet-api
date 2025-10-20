@@ -1462,9 +1462,20 @@ public class SweepwaterService {
                                     // updateOddsCache(username, valueAJson.getStr("id"), valueA);
                                     // 记录网站B的赔率
                                     // updateOddsCache(username, valueBJson.getStr("id"), valueB);
-                                    BigDecimal value = valueA.add(valueB).add(BigDecimal.valueOf(2));
-                                    BigDecimal result = value.setScale(3, RoundingMode.HALF_UP);
-                                    double finalValue = result.doubleValue();
+
+                                    // 计算初始水位（两边相加）
+                                    BigDecimal water = valueA.add(valueB);
+
+                                    // 一方赔率为负数，则在结果上加 2,如果两个都是负数，就等于加4
+                                    if (valueA.compareTo(BigDecimal.ZERO) < 0) {
+                                        water = water.add(BigDecimal.valueOf(2));
+                                    }
+                                    if (valueB.compareTo(BigDecimal.ZERO) < 0) {
+                                        water = water.add(BigDecimal.valueOf(2));
+                                    }
+                                    // ✅ 仅保留 3 位小数（不四舍五入）
+                                    water = water.setScale(3, RoundingMode.DOWN);
+                                    double finalValue = water.doubleValue();
                                     String decimalOddsB = valueBJson.containsKey("decimalOdds") ? valueBJson.getStr("decimalOdds") : null;
                                     // 判断赔率是否在指定区间内
                                     if (oddsScan.getWaterLevelFrom() <= finalValue && finalValue <= oddsScan.getWaterLevelTo()) {
@@ -1584,9 +1595,19 @@ public class SweepwaterService {
                                     // 记录网站B的赔率
                                     // updateOddsCache(username, valueBJson.getStr("id"), valueB);
 
-                                    BigDecimal value = valueA.add(valueB).add(BigDecimal.valueOf(2));
-                                    BigDecimal result = value.setScale(3, RoundingMode.HALF_UP);
-                                    double finalValue = result.doubleValue();
+                                    // 计算初始水位（两边相加）
+                                    BigDecimal water = valueA.add(valueB);
+
+                                    // 一方赔率为负数，则在结果上加 2,如果两个都是负数，就等于加4
+                                    if (valueA.compareTo(BigDecimal.ZERO) < 0) {
+                                        water = water.add(BigDecimal.valueOf(2));
+                                    }
+                                    if (valueB.compareTo(BigDecimal.ZERO) < 0) {
+                                        water = water.add(BigDecimal.valueOf(2));
+                                    }
+                                    // ✅ 仅保留 3 位小数（不四舍五入）
+                                    water = water.setScale(3, RoundingMode.DOWN);
+                                    double finalValue = water.doubleValue();
                                     String decimalOddsB = valueBJson.containsKey("decimalOdds") ? valueBJson.getStr("decimalOdds") : null;
                                     // 判断赔率水位是否在指定区间内
                                     if (oddsScan.getWaterLevelFrom() <= finalValue && finalValue <= oddsScan.getWaterLevelTo()) {
@@ -1718,7 +1739,7 @@ public class SweepwaterService {
             betInfo.putOpt("team", homeTeam.getStr("name") + " -vs- " + awayTeam.getStr("name"));
             betInfo.putOpt("marketTypeName", "");
             betInfo.putOpt("marketName", marketName);
-            betInfo.putOpt("odds", marketName + " " + handicap + " @ " + oddsJson.getStr("odds"));
+            betInfo.putOpt("odds", marketName + " " + handicap);
             betInfo.putOpt("handicap", handicap);
             betInfo.putOpt("amount", amount.getAmountPingBo());
             betInfo.putOpt("betTeamName", betTeamName);
@@ -1760,7 +1781,7 @@ public class SweepwaterService {
             betInfo.putOpt("team", homeTeam.getStr("name") + " -vs- " + awayTeam.getStr("name"));
             betInfo.putOpt("marketTypeName", "");
             betInfo.putOpt("marketName", marketName);
-            betInfo.putOpt("odds", marketName + " " + handicap + " @ " + oddsJson.getStr("odds"));
+            betInfo.putOpt("odds", marketName + " " + handicap);
             betInfo.putOpt("handicap", handicap);
             betInfo.putOpt("amount", amount.getAmountZhiBo());
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
@@ -1806,7 +1827,7 @@ public class SweepwaterService {
             betInfo.putOpt("team", homeTeam.getStr("name") + " -vs- " + awayTeam.getStr("name"));
             betInfo.putOpt("marketTypeName", "");
             betInfo.putOpt("marketName", marketName);
-            betInfo.putOpt("odds", marketName + " " + handicap + " @ " + oddsJson.getStr("odds"));
+            betInfo.putOpt("odds", marketName + " " + handicap);
             betInfo.putOpt("handicap", handicap);
             betInfo.putOpt("amount", amount.getAmountXinEr());
             betInfo.putOpt("betTeamName", betTeamName);
@@ -1855,7 +1876,7 @@ public class SweepwaterService {
             betInfo.putOpt("teamVSA", awayTeam.getStr("name"));
             betInfo.putOpt("marketTypeName", "");
             betInfo.putOpt("marketName", marketName);
-            betInfo.putOpt("odds", marketName + " " + handicap + " @ " + oddsJson.getStr("odds"));
+            betInfo.putOpt("odds", marketName + " " + handicap);
             betInfo.putOpt("handicap", handicap);
             betInfo.putOpt("amount", amount.getAmountSbo());
             betInfo.putOpt("betTeamName", betTeamName);

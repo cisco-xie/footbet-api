@@ -113,12 +113,12 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
         // 解析响应
         // Document docResult = XmlUtil.readXML(new StringReader(response.getBody()));
         JSONObject responseJson = new JSONObject(response.getBody());
-        if (responseJson.getJSONObject("serverresponse").getInt("ltype") == 3) {
-            JSONObject res = new JSONObject();
-            res.putOpt("success", false);
-            res.putOpt("msg", "账户被限制，只能查看交易状况以及帐户历史");
-            return res;
-        }
+//        if (responseJson.getJSONObject("serverresponse").getInt("ltype") == 3) {
+//            JSONObject res = new JSONObject();
+//            res.putOpt("success", false);
+//            res.putOpt("msg", "账户被限制，只能查看交易状况以及帐户历史");
+//            return res;
+//        }
         if (!"100".equals(responseJson.getJSONObject("serverresponse").getStr("msg"))) {
             responseJson.putOpt("success", false);
             responseJson.putOpt("msg", responseJson.getJSONObject("serverresponse").getStr("code_message"));

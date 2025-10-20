@@ -768,7 +768,6 @@ public class HandicapApi {
      */
     public Object eventsOdds(String username, String websiteId, String lid, String ecid) {
         log.info("执行eventsOdds方法-获取赛事列表,平台用户:{},网站:{}", username, WebsiteType.getById(websiteId).getDescription());
-        TimeInterval timer = DateUtil.timer();
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
@@ -883,6 +882,7 @@ public class HandicapApi {
             } catch (Exception e) {
                 continue;
             }
+            long durationMs = 0;
             try {
                 JSONObject result = apiHandler.execute(account, params);
                 log.info("获取赛事列表,平台用户:{},网站:{}, 账号:{}, code:{}, success:{}", username, WebsiteType.getById(websiteId).getDescription(), accountName, result.get("code"), result.getBool("success"));
@@ -898,11 +898,12 @@ public class HandicapApi {
                         Thread.sleep(500);
                     }
                 }
+                durationMs = result.containsKey("durationMs") ? result.getLong("durationMs") : 0;
                 log.info("获取赛事列表,平台用户:{},网站:{}, 账号:{}, lid:{}, ecid:{}, 获取赛事失败,获取结果:{}", username, WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid, result);
             } catch (Exception e) {
                 log.error("获取赛事列表,平台用户:{},网站:{}, 账号 {} 获取赛事异常", username, WebsiteType.getById(websiteId).getDescription(), accountName, e);
             } finally {
-                log.info("获取赛事列表,平台用户:{},网站:{}, 账号:{}, lid:{}, ecid:{} 赔率 耗时: {}", username, WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid, timer.interval());
+                log.info("获取赛事列表,平台用户:{},网站:{}, 账号:{}, lid:{}, ecid:{} 赔率 耗时: {}ms", username, WebsiteType.getById(websiteId).getDescription(), accountName, lid, ecid, durationMs);
             }
         }
         return null;
@@ -1002,6 +1003,45 @@ public class HandicapApi {
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
 
         ApiHandler apiHandler = factory.getBetUnsettledHandler();
+        if (apiHandler == null) {
+            return null;
+        }
+        JSONObject params = new JSONObject();
+        params.putOpt("adminUsername", username);
+        params.putOpt("websiteId", websiteId);
+        // 根据不同站点传入不同的参数
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            params.putAll(account.getToken().getJSONObject("tokens"));
+        } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+            params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+            params.putAll(account.getToken().getJSONObject("serverresponse"));
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            params.putOpt("cookie", account.getToken().getJSONObject("token").getStr("cookie"));
+        }
+        JSONObject result = apiHandler.execute(account, params);
+
+        if (result.getBool("success")) {
+            return result.get("data");
+        }
+        return null;
+    }
+
+    /**
+     * 指定网站和账户获取账户已结算投注
+     * @param username
+     * @param websiteId
+     * @return
+     */
+    public Object settled(String username, String websiteId, String accountId) {
+        ConfigAccountVO account = accountService.getAccountById(username, websiteId, accountId);
+        if (account.getIsTokenValid() == 0) {
+            // 未登录直接跳过
+            return null;
+        }
+        WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+
+        ApiHandler apiHandler = factory.getBetSettledHandler();
         if (apiHandler == null) {
             return null;
         }
@@ -1323,7 +1363,7 @@ public class HandicapApi {
                         betInfo.putOpt("team", objJson.getStr("homeTeam") + " -vs- " + objJson.getStr("awayTeam"));
                         betInfo.putOpt("marketTypeName", "");
                         betInfo.putOpt("marketName", objJson.getStr("selection"));
-                        betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap") + " @ " + objJson.getStr("odds"));
+                        betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap"));
                         betInfo.putOpt("handicap", objJson.getStr("handicap"));
                         betInfo.putOpt("amount", odds.getStr("stake"));
                         betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));
@@ -1357,7 +1397,7 @@ public class HandicapApi {
                     betInfo.putOpt("team", data.getStr("eventName"));
                     betInfo.putOpt("marketTypeName", data.getStr("marketTypeName"));
                     betInfo.putOpt("marketName", data.getStr("name"));
-                    betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap") + " @ " + betTicket.getStr("odds"));
+                    betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap"));
                     betInfo.putOpt("handicap", data.getStr("handicap"));
                     betInfo.putOpt("amount", betAmount);
                     params.putOpt("betInfo", betInfo);
@@ -1405,7 +1445,7 @@ public class HandicapApi {
                     betInfo.putOpt("team", serverresponse.getStr("team_name_h") + " -vs- " + serverresponse.getStr("team_name_c"));
                     betInfo.putOpt("marketTypeName", marketTypeName);
                     betInfo.putOpt("marketName", marketName);
-                    betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread") + " @ " + serverresponse.getStr("ioratio"));
+                    betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread"));
                     betInfo.putOpt("handicap", serverresponse.getStr("spread"));
                     betInfo.putOpt("amount", betAmount);
                     betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));

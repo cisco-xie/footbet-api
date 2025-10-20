@@ -50,7 +50,7 @@ public class StatementController extends BaseController {
         return Result.success(handicapApi.statement(admin.getUsername(), websiteId, accountId));
     }
 
-    @Operation(summary = "获取账目列表")
+    @Operation(summary = "获取未结算账目列表")
     @GetMapping("/bet/unsettled/{websiteId}/{accountId}")
     public Result unsettled(@PathVariable String websiteId, @PathVariable String accountId) {
         if ("undefined".equals(websiteId) || "undefined".equals(accountId)) {
@@ -60,4 +60,16 @@ public class StatementController extends BaseController {
         // 调用服务层方法获取网站列表
         return Result.success(handicapApi.unsettled(admin.getUsername(), websiteId, accountId));
     }
+
+    @Operation(summary = "获取已结算账目列表")
+    @GetMapping("/bet/settled/{websiteId}/{accountId}")
+    public Result settled(@PathVariable String websiteId, @PathVariable String accountId) {
+        if ("undefined".equals(websiteId) || "undefined".equals(accountId)) {
+            return Result.success();
+        }
+        AdminLoginDTO admin = getUser();
+        // 调用服务层方法获取网站列表
+        return Result.success(handicapApi.settled(admin.getUsername(), websiteId, accountId));
+    }
+
 }

@@ -90,6 +90,11 @@ public class WebsiteZhiBoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler getBetSettledHandler() {
+        return null;
+    }
+
+    @Override
     public ApiHandler preferences() {
         return null;
 //        return new WebsiteZhiBoPreferencesHandler(websiteService, apiUrlService);   // 智博网站进行偏好设置

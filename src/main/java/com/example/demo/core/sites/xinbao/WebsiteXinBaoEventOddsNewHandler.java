@@ -267,6 +267,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
 
         JSONArray finalResult = mergeTeamsByTeamId(data);
 
+        responseJson.putOpt("durationMs", response.getDurationMs());
         responseJson.putOpt("success", true);
         responseJson.putOpt("code", 0);
         responseJson.putOpt("msg", "成功");
@@ -299,11 +300,22 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
         String keyAwayOddsFirstOverSize = "IOR_HROUH";  // 滚球类型获取赔率字段key中有R字符
         // ========== 全场让球 ==========
         if (gameJson.containsKey(keyHomeOddsFullLetBall) && StringUtils.isNotBlank(gameJson.getStr(keyHomeOddsFullLetBall))) {
+
+            // <STRONG> 全场让球方 若为 H 表示主队让球；若为 C 表示客队让球
             String homeHandicap = "";
+            String awayHandicap = "";
             if ("0".equals(gameJson.getStr(ratioFull))) {
                 homeHandicap = gameJson.getStr(ratioFull);
-            } else {
+                awayHandicap = gameJson.getStr(ratioFull);
+            } else if ("H".equals(gameJson.getStr("STRONG"))) {
                 homeHandicap = "-" + gameJson.getStr(ratioFull);
+                awayHandicap = gameJson.getStr(ratioFull);
+            } else if ("C".equals(gameJson.getStr("STRONG"))) {
+                homeHandicap = gameJson.getStr(ratioFull);
+                awayHandicap = "-" + gameJson.getStr(ratioFull);
+            } else {
+                homeHandicap = gameJson.getStr(ratioFull);
+                awayHandicap = gameJson.getStr(ratioFull);
             }
             String key = isHome ? keyHomeOddsFullLetBall : keyAwayOddsFullLetBall;
             String odds = calculateOddsValue(oddsFormatType, gameJson.getDouble(key));
@@ -320,7 +332,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             item.putOpt("choseTeam", isHome ? "H" : "C");
             item.putOpt("con", isHome ? getMiddleValue(homeHandicap) : -Math.abs(getMiddleValue(homeHandicap)));
             item.putOpt("ratio", isHome ? getRatio(ratioFull, "主队") : -getRatio(ratioFull, "客队"));
-            item.putOpt("handicap", isHome ? homeHandicap : gameJson.getStr(ratioFull));
+            item.putOpt("handicap", isHome ? homeHandicap : awayHandicap);
             item.putOpt("wall", isHome ? "hanging" : "foot");
 
             letBall.putOpt(getHandicapRange(homeHandicap), item);
@@ -351,12 +363,21 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
 
         // ========== 半场让球 ==========
         if (gameJson.containsKey(keyHomeOddsFirstLetBall) && StringUtils.isNotBlank(gameJson.getStr(keyHomeOddsFirstLetBall))) {
-
+            // <HSTRONG> 上半场让球方 若为 H 表示主队让球；若为 C 表示客队让球
             String homeHandicap = "";
+            String awayHandicap = "";
             if ("0".equals(gameJson.getStr(ratioFirst))) {
                 homeHandicap = gameJson.getStr(ratioFirst);
-            } else {
+                awayHandicap = gameJson.getStr(ratioFirst);
+            } else if ("H".equals(gameJson.getStr("HSTRONG"))) {
                 homeHandicap = "-" + gameJson.getStr(ratioFirst);
+                awayHandicap = gameJson.getStr(ratioFirst);
+            } else if ("C".equals(gameJson.getStr("HSTRONG"))) {
+                homeHandicap = gameJson.getStr(ratioFirst);
+                awayHandicap = "-" + gameJson.getStr(ratioFirst);
+            } else {
+                homeHandicap = gameJson.getStr(ratioFirst);
+                awayHandicap = gameJson.getStr(ratioFirst);
             }
             String key = isHome ? keyHomeOddsFirstLetBall : keyAwayOddsFirstLetBall;
             String odds = calculateOddsValue(oddsFormatType, gameJson.getDouble(key));
@@ -373,7 +394,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             item.putOpt("choseTeam", isHome ? "H" : "C");
             item.putOpt("con", isHome ? getMiddleValue(gameJson.getStr(ratioFirst)) : -Math.abs(getMiddleValue(gameJson.getStr(ratioFirst))));
             item.putOpt("ratio", isHome ? getRatio(gameJson.getStr(ratioFirst), "主队") : -getRatio(gameJson.getStr(ratioFirst), "客队"));
-            item.putOpt("handicap", isHome ? homeHandicap : gameJson.getStr(ratioFirst));
+            item.putOpt("handicap", isHome ? homeHandicap : awayHandicap);
             item.putOpt("wall", isHome ? "hanging" : "foot");
 
             letBall.putOpt(getHandicapRange(homeHandicap), item);

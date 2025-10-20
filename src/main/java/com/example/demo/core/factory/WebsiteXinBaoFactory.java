@@ -84,6 +84,11 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler getBetSettledHandler() {
+        return new WebsiteXinBaoBetSettledHandler(dispatcher, websiteService, apiUrlService); // 返回具体的已结算投注列表处理类
+    }
+
+    @Override
     public ApiHandler preferences() {
         return new WebsiteXinBaoPreferencesHandler(dispatcher, websiteService, apiUrlService); // 返回具体的偏好设置处理类
     }

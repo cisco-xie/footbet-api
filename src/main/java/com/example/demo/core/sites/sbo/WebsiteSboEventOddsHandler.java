@@ -1,6 +1,8 @@
 package com.example.demo.core.sites.sbo;
 
+import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.date.LocalDateTimeUtil;
+import cn.hutool.core.date.TimeInterval;
 import cn.hutool.core.net.URLEncodeUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
@@ -134,6 +136,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
     public JSONObject execute(ConfigAccountVO userConfig, JSONObject params) {
         String username = params.getStr("adminUsername");
         String siteId = params.getStr("websiteId");
+        TimeInterval timer = DateUtil.timer();
         Map<String, String> requestHeaders = buildHeaders(params);
 
         JSONObject finalResult = new JSONObject();
@@ -201,6 +204,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
             league.putOpt("events", eventsArray);
             oddsArray.add(league);
             // --- 构建最终成功的响应 ---
+            finalResult.putOpt("durationMs", timer.interval());
             finalResult.putOpt("success", true);
             finalResult.putOpt("code", 200);
             finalResult.putOpt("msg", "获取赛事赔率数据成功");

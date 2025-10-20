@@ -86,6 +86,11 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler getBetSettledHandler() {
+        return null;
+    }
+
+    @Override
     public ApiHandler preferences() {
         return null;         // 平博网站暂不用进行偏好设置
     }

@@ -83,6 +83,11 @@ public class WebsiteSboFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler getBetSettledHandler() {
+        return null;
+    }
+
+    @Override
     public ApiHandler preferences() {
         return null; // 返回具体的偏好设置处理类
     }
