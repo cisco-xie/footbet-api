@@ -99,4 +99,8 @@ public class RedisConstants {
      * 投注前扫水的赔率 前缀
      */
     public static final String PLATFORM_BET_ODDS_PREFIX = "platform:bet:odds";
+    /**
+     * 已结算非正常投注记录弹窗 前缀
+     */
+    public static final String PLATFORM_SETTLED_NORMAL_PREFIX = "platform:settled:normal";
 }

@@ -1599,10 +1599,10 @@ public class HandicapApi {
 
             // ================== 返回处理 ==================
             if (splitResults.isEmpty()) {
-                log.info("网站:{} 账号 {} 投注失败，延迟1秒尝试下一个账号投注", WebsiteType.getById(websiteId).getDescription(), account.getAccount());
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ignored) {}
+                log.info("网站:{} 账号 {} 投注失败，直接尝试下一个账号投注", WebsiteType.getById(websiteId).getDescription(), account.getAccount());
+                /*try {
+                    Thread.sleep(100);
+                } catch (InterruptedException ignored) {}*/
             } else if (splitResults.size() == 1) {
                 return splitResults.get(0);
             } else {

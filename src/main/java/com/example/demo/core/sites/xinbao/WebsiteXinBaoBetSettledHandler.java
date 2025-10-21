@@ -101,7 +101,6 @@ public class WebsiteXinBaoBetSettledHandler implements ApiHandler {
             responseJson.putOpt("msg", "获取账户投注历史成功");
             return responseJson;
         }
-        log.info("原始结单列表数据:{}", responseJson);
         wagers.forEach(json -> {
             JSONObject wager = new JSONObject();
             JSONObject wagerJson = (JSONObject) json;

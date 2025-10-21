@@ -16,6 +16,7 @@
 
 package com.example.demo.controller;
 
+import com.example.demo.api.AbnormalService;
 import com.example.demo.api.HandicapApi;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
@@ -35,6 +36,8 @@ public class StatementController extends BaseController {
 
     @Resource
     private HandicapApi handicapApi;
+    @Resource
+    private AbnormalService abnormalService;
 
     @Operation(summary = "获取账目列表")
     @GetMapping("/statements/{websiteId}/{accountId}")
@@ -69,4 +72,21 @@ public class StatementController extends BaseController {
         return Result.success(handicapApi.settled(admin.getUsername(), websiteId, accountId, date));
     }
 
+    /**
+     * 根据 username 查询未读的非正常投注记录
+     */
+    @GetMapping("/abnormal/unread")
+    public Result getUnread() {
+        AdminLoginDTO admin = getUser();
+        return Result.success(abnormalService.getUnReadAbnormal(admin.getUsername()));
+    }
+
+    /**
+     * 根据 username 将非正常投注记录标记为已读
+     */
+    @PostMapping("/abnormal/read")
+    public Result markAsRead() {
+        AdminLoginDTO admin = getUser();
+        return Result.success(abnormalService.markAbnormalAsRead(admin.getUsername()));
+    }
 }

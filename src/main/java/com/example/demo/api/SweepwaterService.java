@@ -638,7 +638,6 @@ public class SweepwaterService {
                                 }
                             }
                             if (StringUtils.isBlank(bindNameB)) { continue; }
-                            log.info("联赛扫水，球队A:{}，交叉对应球队B:{}", event.getNameA(), bindNameB);
                             eventFutures.add(handleEventAsync(username, sweepwaterUsername, bindLeagueVO, event, bindNameB,
                                     oddsScan, profit, interval, limit, oddsRanges, timeFrames, typeFilter,
                                     websiteMap, roundId, ecidFetchFutures, eventExecutor));
@@ -745,10 +744,6 @@ public class SweepwaterService {
                 return ;
             }
 
-            log.info("获取赛事数据,平台用户:{},网站A:{},网站B:{}", username,
-                    WebsiteType.getById(websiteIdA).getDescription(),
-                    WebsiteType.getById(websiteIdB).getDescription());
-
             TimeInterval getEventsTimer = DateUtil.timer();
             CompletableFuture<JSONArray> futureA = getEventsForEcidAsync(
                     ecidFetchFutures,
@@ -804,14 +799,6 @@ public class SweepwaterService {
             // 平台绑定球队赛事对应获取盘口赛事列表
             JSONObject eventAJson = findEventByLeagueName(leagueMapA, bindLeagueVO.getLeagueIdA(), nameAs);
             if (eventAJson == null) {
-                log.info("扫水, 平台用户: {}, 网站A: {}, 在盘口赛事中未找到对应联绑定的赛事id:{},名称:{},球队id:{},名称:{}, 退出",
-                        username,
-                        WebsiteType.getById(websiteIdA).getDescription(),
-                        bindLeagueVO.getLeagueIdA(),
-                        bindLeagueVO.getLeagueNameA(),
-                        event.getIdA(),
-                        event.getNameA()
-                );
                 return;
             }
 
@@ -823,14 +810,6 @@ public class SweepwaterService {
             Map<String, JSONObject> leagueMapB = buildLeagueMap(eventsB);
             JSONObject eventBJson = findEventByLeagueName(leagueMapB, bindLeagueVO.getLeagueIdB(), nameBs);
             if (eventBJson == null) {
-                log.info("扫水, 平台用户: {}, 网站B: {}, 在盘口赛事中未找到对应联绑定的赛事id:{},名称:{},球队id:{},名称:{}, 退出",
-                        username,
-                        WebsiteType.getById(websiteIdB).getDescription(),
-                        bindLeagueVO.getLeagueIdB(),
-                        bindLeagueVO.getLeagueNameB(),
-                        event.getIdB(),
-                        event.getNameB()
-                );
                 return;
             }
 
@@ -942,27 +921,17 @@ public class SweepwaterService {
             cacheKey = roundId + "-" + websiteId;
         }
 
-        if (ecidFetchFutures.containsKey(cacheKey)) {
-            log.info("从缓存中获取赔率: 平台用户={}, 网站={}, key={}, 联赛={}, ecid={}",
-                    username, website.getDescription(), cacheKey, leagueId, id);
-        }
-
         long now = System.currentTimeMillis();
         OddsCacheEntry entry = ecidFetchFutures.get(cacheKey);
 
         // 命中缓存且未过期（3秒）
         if (entry != null && (now - entry.timestamp) < 3000) {
-            log.info("从缓存中获取赔率: 用户={}, 网站={}, key={}, 联赛={}, ecid={}",
-                    username, website.getDescription(), cacheKey, leagueId, id);
             return entry.future;
         }
 
-        // 新建 Future
+        // 新建 Future 拉取最新赔率
         CompletableFuture<JSONArray> newFuture = CompletableFuture.supplyAsync(() -> {
             try {
-                log.info("拉取最新赔率: 用户={}, 网站={}, key={}, 联赛={}, ecid={}",
-                        username, website.getDescription(), cacheKey, leagueId, id);
-
                 JSONArray events;
                 if (website == WebsiteType.SBO) {
                     // 盛帆：单赛事拉取
@@ -1014,6 +983,7 @@ public class SweepwaterService {
         }
         return leagueMap;
     }
+
     /**
      * 根据联赛id匹配对应联赛，再根据球队名称匹配对应球队
      * @param leagueMap
@@ -1029,7 +999,6 @@ public class SweepwaterService {
         }
 
         JSONArray eventArray = eventJson.getJSONArray("events");
-        log.info("匹配对应球队eventArray:{},绑定的球队名称列表:{}",eventArray, String.join(", ", names));
         if (eventArray != null && !eventArray.isEmpty()) {
             // names 转为 HashSet，加速 contains 查询
             Set<String> nameSet = new HashSet<>(names);
@@ -1143,9 +1112,7 @@ public class SweepwaterService {
                 if (processedEventA.getTeamName().equals(bindTeamNameA) &&
                     processedEventB.getTeamName().equals(bindTeamNameB)
                 ) {
-                    log.info("扫水,网站A:{}-赛事:{}-队伍:{},网站B:{}-赛事:{}-队伍:{},队伍组合符合设置的对立队伍", WebsiteType.getById(websiteIdA).getDescription(), eventAJson.getStr("league"), processedEventA.getTeamName(), WebsiteType.getById(websiteIdB).getDescription(), eventBJson.getStr("league"), processedEventB.getTeamName());
                     log.info("准备进入扫水对比, eventA:{}======================================eventB:{}", eventA, eventB);
-                    log.info("准备进入扫水对比, processedEventA:{}======================================processedEventB:{}", JSONUtil.parseObj(processedEventA), JSONUtil.parseObj(processedEventB));
                     // 处理全场赔率
                     processFullCourtOdds(
                             username, sweepwaterUsername, getOddsTime, oddsScan, profit, interval, limit, oddsRanges,
@@ -1171,17 +1138,6 @@ public class SweepwaterService {
                             eventIdA, eventIdB, results,
                             processedEventA.getScore(), processedEventB.getScore()
                     );
-                } else {
-                    log.info("扫水,网站A:{}-赛事:{}-队伍:{},网站B:{}-赛事:{}-队伍:{},队伍组合不符合设置的对立队伍,跳过", WebsiteType.getById(websiteIdA).getDescription(), eventAJson.getStr("league"), processedEventA.getTeamName(), WebsiteType.getById(websiteIdB).getDescription(), eventBJson.getStr("league"), processedEventB.getTeamName());
-                    log.info("扫水,队伍组合不符合设置的对立队伍,跳过, {}, {}, {}, {}, {}, {}, {}, {}",
-                            processedEventA.getTeamName(),
-                            processedEventB.getTeamName(),
-                            bindTeamNameA,
-                            bindTeamNameB,
-                            processedEventA.getId(),
-                            processedEventB.getId(),
-                            bindIdA,
-                            bindIdB);
                 }
             }
         }
@@ -1549,7 +1505,6 @@ public class SweepwaterService {
                     }
                 } else {
                     // 处理让球盘和大小盘类型
-                    log.info("处理让球盘和大小盘类型");
                     JSONObject letBallA = fullCourtA.getJSONObject(key);
                     JSONObject letBallB = fullCourtB.getJSONObject(key);
                     for (String subKey : letBallA.keySet()) {
@@ -1696,7 +1651,6 @@ public class SweepwaterService {
      */
     public JSONObject buildBetInfo(String websiteId, JSONArray teams, JSONObject teamsOdds, String leagueName, String key, JSONObject oddsJson, boolean isHome, BetAmountDTO amount) {
         JSONObject betInfo = new JSONObject();
-        log.info("[手动设置投注信息][网站:{}][teams={}][teamsOdds={}][leagueName={}][key={}][oddsJson={}][isHome={}]", WebsiteType.getById(websiteId).getDescription(), teams, teamsOdds, leagueName, key, oddsJson, isHome);
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
             // eg.平博赔率的id是1611238334|0|2|1|1|-1.0，截取第一个赛事id=1611238334
             String[] parts = oddsJson.getStr("id").split("\\|");  // 按 | 分割
