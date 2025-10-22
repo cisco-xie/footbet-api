@@ -87,7 +87,7 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler getBetSettledHandler() {
-        return null;
+        return new WebsitePingBoBetUnsettledHandler(dispatcher, websiteService, apiUrlService); // 返回具体的已结算投注列表处理类
     }
 
     @Override

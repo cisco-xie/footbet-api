@@ -4,6 +4,7 @@ import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.example.demo.api.ApiUrlService;
 import com.example.demo.api.WebsiteService;
 import com.example.demo.common.constants.Constants;
@@ -94,8 +95,37 @@ public class WebsiteXinBaoBetSettledHandler implements ApiHandler {
         // 解析响应
         JSONArray result = new JSONArray();
         JSONObject responseJson = new JSONObject(response.getBody());
-        JSONArray wagers = responseJson.getJSONObject("serverresponse").getJSONArray("wagers");
-        if (wagers == null || wagers.isEmpty()) {
+        log.info("原始已结单列表数据:{}", responseJson);
+        JSONObject serverResponse = responseJson.getJSONObject("serverresponse");
+        // 先安全获取原始值（可能为 JSONArray / JSONObject / String / null）
+        Object wagersObj = serverResponse == null ? null : serverResponse.get("wagers");
+        JSONArray wagers;
+        if (wagersObj instanceof JSONArray) {
+            // 正常数组
+            wagers = (JSONArray) wagersObj;
+        } else if (wagersObj instanceof JSONObject) {
+            // 单个对象，包装成数组处理
+            wagers = new JSONArray();
+            wagers.add(wagersObj);
+        } else if (wagersObj instanceof String) {
+            // 有些接口会把 JSON 当字符串返回，尝试解析
+            String s = (String) wagersObj;
+            s = s.trim();
+            if (s.startsWith("[")) {
+                wagers = JSONUtil.parseArray(s);
+            } else if (s.startsWith("{")) {
+                wagers = new JSONArray();
+                wagers.add(JSONUtil.parseObj(s));
+            } else {
+                // 既不是数组也不是对象的字符串，置空数组
+                wagers = new JSONArray();
+            }
+        } else {
+            // null 或未知类型 -> 视为空数组
+            wagers = new JSONArray();
+        }
+        log.info("原始已结单列表wagers数据:{}", wagers);
+        if (wagers.isEmpty()) {
             responseJson.putOpt("success", true);
             responseJson.putOpt("data", null);
             responseJson.putOpt("msg", "获取账户投注历史成功");
@@ -111,7 +141,7 @@ public class WebsiteXinBaoBetSettledHandler implements ApiHandler {
             wager.putOpt("odds", wagerJson.getStr("result") + " @ " + wagerJson.getStr("ioratio"));  // 投注选项 + 赔率
             wager.putOpt("oddsValue", wagerJson.getStr("ioratio"));  // 赔率
             wager.putOpt("oddsTypeName", wagerJson.getStr("oddf_type")); // 盘口类型（如：香港盘）
-            wager.putOpt("detail", wagerJson.getStr("league") + " - " + wagerJson.getStr("team_h_show") + " v "+wagerJson.getStr("team_c_show"));   // 详情
+            wager.putOpt("detail", wagerJson.getStr("league") + " - " + wagerJson.getStr("team_h_show") + " vs "+wagerJson.getStr("team_c_show"));   // 详情
             wager.putOpt("result", wagerJson.getStr("result")); // 投注选项（例如 大 2.5、小盘、韩国）
             wager.putOpt("amount", wagerJson.getStr("gold"));   // 投注金额
             wager.putOpt("win", wagerJson.getStr("win_gold")); // 可赢金额

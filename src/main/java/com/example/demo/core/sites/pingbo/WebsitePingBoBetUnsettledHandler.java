@@ -13,6 +13,7 @@ import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.model.vo.ConfigAccountVO;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -139,12 +140,18 @@ public class WebsitePingBoBetUnsettledHandler implements ApiHandler {
 
         String s = "OPEN";  // 未结算
 //        String s = "SETTLED";  // 已结算
+        String f = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN + " 00:00:00");
+        String t = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN + " 00:00:00");
+        if (params.containsKey("date")) {
+            f = params.getStr("date") + " 00:00:00";
+            t = params.getStr("date") + " 00:00:00";
+        }
         // 构造请求体
         return String.format("f=%s&t=%s&d=-1&s=%s&sd=false&type=%s&product=SB&timezone=GMT-4&sportId=&leagueId=",
-                LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN + " 00:00:00"),
-                LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN + " 00:00:00"),
-                s,
-                type
+                f,
+                t,
+                params.getStr("s"),
+                params.getStr("type")
         );
     }
 
@@ -170,33 +177,61 @@ public class WebsitePingBoBetUnsettledHandler implements ApiHandler {
         // 解析响应
         JSONObject result = new JSONObject();
         JSONArray responseJsonList = new JSONArray();
-        JSONArray responseJson = new JSONArray(response.getBody());
-        log.info("原始未结单列表数据:{}", responseJson);
+        log.info("原始未结单列表数据:{}", response.getBody());
+        // 如果是null值也保存，不然下标会乱跳
+        JSONArray responseJson = new JSONArray(response.getBody(), false);
+        int betIdIndex = 7;
+        int leagueIndex = 28;
+        int teamIndex = 9;
+        int amountIndex = 29;
+        int winIndex = 0;
+        int statusIndex = 18;
+        int betTimeIndex = 14;
+        int matchTimeIndex = 15;
+        int homeTeamIndex = 20;
+        int awayTeamIndex = 21;
+        int scoreIndex = 36;
+        int handicapIndex = 24;
+        int oddsValueIndex = 16;
+        int betOptionIndex = 22;
+        int homeTeamENIndex = 91;
+        int matchNatureIndex = 95;
+        int oddsTypeIdIndex = 26;
+        int letTypeIndex = 23;
+        int betTeamIndex = 22;
         DecimalFormat df = new DecimalFormat("###.00");
         responseJson.forEach(json -> {
             JSONArray jsonArray = (JSONArray) json;
             JSONObject jsonObject = new JSONObject();
 
-            jsonObject.putOpt("betId", jsonArray.getStr(4));                // 注单编号
+            String status = jsonArray.getStr(statusIndex);
+            if (StringUtils.equals(status, "OPEN")) {
+                status = "进行中";
+            } else if (StringUtils.equals(status, "SETTLED")) {
+                status = "已结算";
+            } else if (StringUtils.equals(status, "CANCELLED")) {
+                status = "已取消";
+            }
+            jsonObject.putOpt("betId", jsonArray.getStr(betIdIndex));                // 注单编号
             jsonObject.putOpt("product", "体育博彩");                         // 固定产品类型
-            jsonObject.putOpt("league", jsonArray.getStr(22));              // 联赛名称
-            jsonObject.putOpt("team", jsonArray.getStr(6));                // 比赛对阵信息
-            jsonObject.putOpt("odds", jsonArray.getStr(16) + " " + jsonArray.getStr(18) + " @ " + jsonArray.getStr(10));  // 投注内容+盘口+赔率
-            jsonObject.putOpt("amount", df.format(jsonArray.getBigDecimal(23))); // 投注金额
-            jsonObject.putOpt("win", df.format(jsonArray.getBigDecimal(35)));    // 可赢金额
-            jsonObject.putOpt("status", "OPEN".equals(jsonArray.getStr(12)) ? "进行中" : "已结算"); // 注单状态
-            jsonObject.putOpt("betTime", jsonArray.getStr(8));              // 投注时间
-            jsonObject.putOpt("matchTime", jsonArray.getStr(61));           // 比赛开赛时间
-            jsonObject.putOpt("homeTeam", jsonArray.getStr(14));            // 主队中文名
-            jsonObject.putOpt("awayTeam", jsonArray.getStr(15));            // 客队中文名
-            jsonObject.putOpt("score", jsonArray.getStr(30));               // 实时比分
-            jsonObject.putOpt("handicap", jsonArray.getStr(18));            // 盘口数值
-            jsonObject.putOpt("oddsValue", jsonArray.getStr(10));           // 赔率数值
-            jsonObject.putOpt("betOption", jsonArray.getStr(16));           // 投注选项（如：大盘、英格兰）
-            jsonObject.putOpt("homeTeamEN", jsonArray.getStr(68));          // 主队英文名
-            jsonObject.putOpt("matchNature", jsonArray.getStr(69));         // 比赛性质（如：Regular）
+            jsonObject.putOpt("league", jsonArray.getStr(leagueIndex));              // 联赛名称
+            jsonObject.putOpt("team", jsonArray.getStr(teamIndex));                // 比赛对阵信息
+            jsonObject.putOpt("odds", jsonArray.getStr(betOptionIndex) + " " + jsonArray.getStr(handicapIndex) + " @ " + jsonArray.getStr(oddsValueIndex));  // 投注内容+盘口+赔率
+            jsonObject.putOpt("amount", jsonArray.getBigDecimal(amountIndex)); // 投注金额
+            jsonObject.putOpt("win", jsonArray.getBigDecimal(winIndex));    // 可赢金额
+            jsonObject.putOpt("status", status); // 注单状态
+            jsonObject.putOpt("betTime", jsonArray.getStr(betTimeIndex));              // 投注时间
+            jsonObject.putOpt("matchTime", jsonArray.getStr(matchTimeIndex));           // 比赛开赛时间
+            jsonObject.putOpt("homeTeam", jsonArray.getStr(homeTeamIndex));            // 主队中文名
+            jsonObject.putOpt("awayTeam", jsonArray.getStr(awayTeamIndex));            // 客队中文名
+            jsonObject.putOpt("score", jsonArray.getStr(scoreIndex));               // 实时比分
+            jsonObject.putOpt("handicap", jsonArray.getStr(handicapIndex));            // 盘口数值
+            jsonObject.putOpt("oddsValue", jsonArray.getStr(oddsValueIndex));           // 赔率数值
+            jsonObject.putOpt("betOption", jsonArray.getStr(betOptionIndex));           // 投注选项（如：大盘、英格兰）
+            jsonObject.putOpt("homeTeamEN", jsonArray.getStr(homeTeamENIndex));          // 主队英文名
+            jsonObject.putOpt("matchNature", jsonArray.getStr(matchNatureIndex));         // 比赛性质（如：Regular）
             // 赔率类型判断（index 26）
-            int oddsTypeId = jsonArray.getInt(20); // 赔率类型 ID
+            int oddsTypeId = jsonArray.getInt(oddsTypeIdIndex); // 赔率类型 ID
             PingBoOddsFormatType oddsFormat = PingBoOddsFormatType.getById(oddsTypeId);
             String oddsType = oddsFormat != null ? oddsFormat.name() : "UNKNOWN"; // 例如 RM 表示马来盘
             String oddsTypeDesc = oddsFormat != null ? oddsFormat.getDescription() : "未知盘口";
@@ -204,8 +239,8 @@ public class WebsitePingBoBetUnsettledHandler implements ApiHandler {
             jsonObject.putOpt("oddsType", oddsType);       // 如 RM、HKC 等
             jsonObject.putOpt("oddsTypeName", oddsTypeDesc); // 如 "马来盘"
 
-            int letType = jsonArray.getInt(17);  // 让球方字段
-            String betTeam = jsonArray.getStr(16); // 投注队伍字段
+            int letType = jsonArray.getInt(letTypeIndex);  // 让球方字段
+            String betTeam = jsonArray.getStr(betTeamIndex); // 投注队伍字段
             String handicapType;
             if (letType == 3 || "大盘".equals(betTeam) || "小盘".equals(betTeam)) {
                 handicapType = "overSize"; // 大小盘

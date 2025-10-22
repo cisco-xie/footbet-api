@@ -1012,6 +1012,8 @@ public class HandicapApi {
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            params.putOpt("s", "OPEN");     // 未结算
+            params.putOpt("type", "EVENT"); // 未结算
             params.putAll(account.getToken().getJSONObject("tokens"));
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
@@ -1054,6 +1056,9 @@ public class HandicapApi {
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            params.putOpt("date", date);
+            params.putOpt("s", "SETTLED");  // 已结算
+            params.putOpt("type", "WAGER"); // 已结算
             params.putAll(account.getToken().getJSONObject("tokens"));
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
