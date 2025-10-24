@@ -125,7 +125,9 @@ public class CheckAbnormalTask {
                                             if (StringUtils.isNotBlank(status) && status.contains("非正常投注")) {
                                                 // 出现非正常投注
                                                 betIds.add(jsonObject.getStr("betId"));
-                                                accounts.add(userConfig.getAccount());
+                                                if (!accounts.contains(userConfig.getAccount())) {
+                                                    accounts.add(userConfig.getAccount());
+                                                }
                                             }
                                         }
                                         if (!betIds.isEmpty()) {
