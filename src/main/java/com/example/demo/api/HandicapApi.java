@@ -951,6 +951,64 @@ public class HandicapApi {
     }
 
     /**
+     * 根据用户和网站获取指定赛事赔率详情
+     * @param username
+     * @param websiteId
+     * @return
+     */
+    public Object oddsInfo(String username, String websiteId, String lid, String ecid) {
+        List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
+        WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
+        Integer oddsType = websiteVO.getOddsType();
+        for (ConfigAccountVO account : accounts) {
+            if (account.getIsTokenValid() == 0) {
+                // 未登录直接跳过
+                continue;
+            }
+            WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+
+            ApiHandler apiHandler = factory.getEventsOddsInfoHandler();
+            if (apiHandler == null) {
+                continue;
+            }
+            JSONObject params = new JSONObject();
+            params.putOpt("adminUsername", username);
+            params.putOpt("websiteId", websiteId);
+            // 根据不同站点传入不同的参数
+            if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("tokens"));
+                params.putOpt("me", "");
+            } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+                params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+            } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+                params.putAll(account.getToken().getJSONObject("serverresponse"));
+                params.putOpt("lid", lid);
+                params.putOpt("ecid", ecid);
+                // 转换赔率类型
+                String oddsFormatType = "";
+                if (oddsType == 1) {
+                    // 平台设置的马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                } else if (oddsType == 2) {
+                    // 平台设置的香港盘
+                    oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
+                } else {
+                    // 默认马来盘
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                }
+                params.putOpt("oddsFormatType", oddsFormatType);
+                params.putOpt("showType", ZhiBoSchedulesType.LIVESCHEDULE.getId());
+            }
+            JSONObject result = apiHandler.execute(account, params);
+
+            if (result.getBool("success")) {
+                return result.get("leagues");
+            }
+        }
+        return null;
+    }
+
+    /**
      * 指定网站和账户获取账户账目
      * @param username
      * @param websiteId
@@ -1308,9 +1366,14 @@ public class HandicapApi {
         // 使用随机起点初始化轮询索引,避免每次都从0开始，防止短时间内让多个用户请求打在同一个账号上
         AtomicInteger indexRef = accountIndexMap.computeIfAbsent(key, k -> new AtomicInteger(RandomUtil.randomInt(size)));
 
+        String targeAccount = betPreviewJson.getStr("account");
         for (int i = 0; i < size; i++) {
             int idx = Math.abs(indexRef.getAndIncrement() % size);
             ConfigAccountVO account = accounts.get(idx);
+            if (!account.getAccount().equals(targeAccount)) {
+                log.info("投注操作,网站:{},idx:{},账号:{}不是投注预览账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, account.getAccount(), betPreviewJson.getStr("account"));
+                continue;
+            }
             log.info("投注操作,网站:{},idx:{},账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, account.getAccount());
 
             if (account.getEnable() == 0 || account.getIsTokenValid() == 0) {

@@ -78,6 +78,11 @@ public class WebsiteZhiBoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler getEventsOddsInfoHandler() {
+        return null;
+    }
+
+    @Override
     public ApiHandler getStatementsHandler() {
         return null;
 //        return new WebsiteZhiBoStatementHandler(websiteService, apiUrlService); // 返回具体的账目列表处理类

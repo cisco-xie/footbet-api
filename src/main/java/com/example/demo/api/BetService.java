@@ -510,11 +510,14 @@ public class BetService {
             if (!valid) {
                 log.info("赛事预览水位不足，id={}，A={}, B={}, 总和={}，不投注", dto.getId(), oddsA, oddsB, water);
 
+                String betTime = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN);
                 dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
                 dto.setBetSuccessA(false);
                 dto.setBetSuccessB(false);
                 dto.setBetInfoA(betPreviewA.getJSONObject("betInfo"));
                 dto.setBetInfoB(betPreviewB.getJSONObject("betInfo"));
+                dto.setBetTimeA(betTime);
+                dto.setBetTimeB(betTime);
 
                 // 设置扫水已投注
                 sweepwaterService.setIsBet(username, sweepwaterDTO.getId());
@@ -674,24 +677,6 @@ public class BetService {
         log.info("投注结束，总花费:{}毫秒", timerTotal.interval());
     }
 
-    public static void main(String[] args) {
-        BigDecimal oddsA = BigDecimal.valueOf(-0.95);
-        BigDecimal oddsB = BigDecimal.valueOf(0.869);
-        BigDecimal water = oddsA.add(oddsB);
-
-        // 一方赔率为负数，则在结果上加 2,如果两个都是负数，就等于加4
-        if (oddsA.compareTo(BigDecimal.ZERO) < 0) {
-            water = water.add(BigDecimal.valueOf(2));
-        }
-        if (oddsB.compareTo(BigDecimal.ZERO) < 0) {
-            water = water.add(BigDecimal.valueOf(2));
-        }
-        // ✅ 仅保留 3 位小数（不四舍五入）
-        water = water.setScale(3, RoundingMode.DOWN);
-
-        double ball = 1.96;
-        System.out.println(water.compareTo(BigDecimal.valueOf(ball)) >= 0);
-    }
     @FunctionalInterface
     public interface RetryableTask {
         boolean execute() throws Exception;
@@ -882,6 +867,48 @@ public class BetService {
                     dto.setOddsB(odds);
                 }
 
+                // 新二投注前获取一下赔率列表,为了确认需要投注的分数盘还存在
+                if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+                    String oddsId = isA ? dto.getOddsIdA() : dto.getOddsIdB();
+                    String leagueId = isA ? dto.getLeagueIdA() : dto.getLeagueIdB();
+                    String teamName = isA ? dto.getTeamA() : dto.getTeamB();
+                    String handicap = isA ? getHandicapRange(dto.getHandicapA()) : getHandicapRange(dto.getHandicapB());
+                    // 新二：一次拉整个联赛赔率
+                    JSONArray leagues = (JSONArray) handicapApi.eventsOdds(username, websiteId, leagueId, eventId);
+                    if (leagues == null || leagues.isEmpty()) {
+                        log.info("投注前, 用户 {}, 网站:{} 获取赔率列表失败，leagueId={}, eventId={}", username, websiteId, leagueId, eventId);
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        return result;
+                    }
+                    JSONObject teamEvent = findEventByLeagueId(leagues, leagueId, teamName);
+                    if (teamEvent == null || teamEvent.isEmpty()) {
+                        log.info("投注前, 用户 {}, 网站:{} 获取指定赔率信息失败，leagueId={}, eventId={}", username, websiteId, leagueId, eventId);
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        return result;
+                    }
+                    JSONObject typeJson = teamEvent.getJSONObject(dto.getType());
+                    if (typeJson == null || typeJson.isEmpty()) {
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        return result;
+                    }
+                    JSONObject handicapOdds = typeJson.getJSONObject(dto.getHandicapType());
+                    if (!handicapOdds.containsKey(handicap)) {
+                        log.info("投注前, 用户 {}, 网站:{} 获取指定赔率信息检查需要投注的盘:{}不存在，leagueId={}, eventId={}", username, websiteId, handicap, leagueId, eventId);
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        return result;
+                    }
+                    if (!oddsId.equals(handicapOdds.getJSONObject(handicap).getStr("id"))) {
+                        log.info("投注前, 用户 {}, 网站:{} 获取指定赔率信息检查需要投注的盘:{}存在,但是oddsId不一致,投注的oddsId:{},检测的oddsId:{},leagueId={}, eventId={}", username, websiteId, handicap, oddsId, handicapOdds.getJSONObject(handicap).getStr("id"), leagueId, eventId);
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        return result;
+                    }
+                }
+
                 // 投注
                 log.info("用户 {}, 网站:{} 开始投注，eventId={}, isA={}, 投注参数={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, params);
                 Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betInfo"), betPreview.getJSONObject("betPreview"));
@@ -942,6 +969,54 @@ public class BetService {
             }
         }
         return result;
+    }
+
+    /**
+     * 替换handicap符号
+     * @param handicap
+     * @return
+     */
+    public static String getHandicapRange(String handicap) {
+        // 先移除负号
+        String withoutNegative = handicap.replace("-", "");
+        // 再替换斜杠
+        return withoutNegative.replaceAll(" / ", "-");
+    }
+
+    /**
+     * 根据联赛id匹配对应联赛，再根据球队赛事id匹配对应球队赛事
+     * @param leagueList
+     * @param leagueId
+     * @param teamName
+     * @return
+     */
+    private JSONObject findEventByLeagueId(JSONArray leagueList, String leagueId, String teamName) {
+
+        for (Object eventObj : leagueList) {
+            JSONObject event = (JSONObject) eventObj;
+
+            // 1) 先定位到目标联赛
+            if (!leagueId.equals(event.getStr("id"))) {
+                continue;
+            }
+
+            // 2) 在联赛 events 中找到对应球队
+            JSONArray eventArray = event.getJSONArray("events");
+            if (eventArray == null || eventArray.isEmpty()) {
+                return null;
+            }
+
+            for (Object obj : eventArray) {
+                JSONObject teamEvent = (JSONObject) obj;
+                if (teamName.equals(teamEvent.getStr("name"))) {
+                    return teamEvent; // ✅ 直接返回匹配球队的 event
+                }
+            }
+
+            return null; // 找到联赛但没匹配球队
+        }
+
+        return null; // 没找到联赛
     }
 
     /**

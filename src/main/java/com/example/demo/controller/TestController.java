@@ -70,9 +70,16 @@ public class TestController extends BaseController {
 
     @Operation(summary = "获取网站联赛相关赔率")
     @GetMapping("/odds")
-    public Result eventsOdds(@RequestParam String websiteId, @RequestParam(value = "lid", required = false) String lid, @RequestParam(value = "ecid", required = false) String ecid) {
+    public Result eventsOddsList(@RequestParam String websiteId, @RequestParam(value = "lid", required = false) String lid, @RequestParam(value = "ecid", required = false) String ecid) {
         AdminLoginDTO admin = getUser();
         return Result.success(api.eventsOdds(admin.getUsername(), websiteId, lid, ecid));
+    }
+
+    @Operation(summary = "获取网站联赛相关赔率")
+    @GetMapping("/odds/info")
+    public Result eventsOddsInfo(@RequestParam String websiteId, @RequestParam(value = "lid", required = false) String lid, @RequestParam(value = "ecid", required = false) String ecid) {
+        AdminLoginDTO admin = getUser();
+        return Result.success(api.oddsInfo(admin.getUsername(), websiteId, lid, ecid));
     }
 
     @Operation(summary = "扫水")

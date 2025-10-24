@@ -153,6 +153,9 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
         for (String t : tests) {
             System.out.printf("%-12s -> %s%n", t, extractMatchMinute(t));
         }
+
+        System.out.println(getMiddleValue("3/3.5"));
+        System.out.println(getRatio("3/3.5", "主队"));
     }
 
     /**
@@ -185,7 +188,8 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             JSONObject gameJson = JSONUtil.parseObj(entry.getValue());
 
             String lid = gameJson.getStr("LID");
-            String gid = gameJson.getStr("GID");
+            String gid = gameJson.getStr("GID");    // 全场投注盘id
+            String hgid = gameJson.getStr("HGID");  // 上半场投注盘id
             String ecid = gameJson.getStr("ECID");
             String leagueName = gameJson.getStr("LEAGUE");
             String homeTeamId = gameJson.getStr("TEAM_H_ID");
@@ -252,7 +256,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             // ============= 盘口组装逻辑（全场 / 半场 / 子盘口） =============
             BiConsumer<JSONObject, Boolean> processOdds = (team, isHome) -> {
                 // 处理盘口（全场 + 半场）
-                parseOddsBlock(gameJson, gid, oddsFormatType, team, isHome);
+                parseOddsBlock(gameJson, gid, hgid, oddsFormatType, team, isHome);
             };
 
             processOdds.accept(homeTeam, true);
@@ -278,7 +282,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
     /**
      * 公共盘口解析逻辑, 根据明确的字段名解析全场 / 半场的让球盘和大小盘
      */
-    private void parseOddsBlock(JSONObject gameJson, String gid, String oddsFormatType, JSONObject team, boolean isHome) {
+    private void parseOddsBlock(JSONObject gameJson, String gid, String hgid, String oddsFormatType, JSONObject team, boolean isHome) {
 
         // 全场让球key
         String ratioFull = "RATIO_RE";                  // 让球分
@@ -385,7 +389,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                     .computeIfAbsent("letBall", k -> new JSONObject());
 
             JSONObject item = new JSONObject();
-            item.putOpt("id", gid);
+            item.putOpt("id", hgid);
             item.putOpt("odds", odds);
             item.putOpt("oddFType", oddsFormatType);
             item.putOpt("gtype", gameJson.getStr("MT_GTYPE"));
@@ -409,7 +413,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                     .computeIfAbsent("overSize", k -> new JSONObject());
 
             JSONObject item = new JSONObject();
-            item.putOpt("id", gid);
+            item.putOpt("id", hgid);
             item.putOpt("odds", odds);
             item.putOpt("oddFType", oddsFormatType);
             item.putOpt("gtype", gameJson.getStr("MT_GTYPE"));

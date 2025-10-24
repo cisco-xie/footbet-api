@@ -134,6 +134,14 @@ public class WebsiteXinBaoBetSettledHandler implements ApiHandler {
         wagers.forEach(json -> {
             JSONObject wager = new JSONObject();
             JSONObject wagerJson = (JSONObject) json;
+            String ratio = "";
+            /*if ("(滚球) 让球".equals(wagerJson.getStr("wtype"))) {
+                if (wagerJson.getStr("result").equals(wagerJson.getStr("team_h_show"))) {
+                    ratio = wagerJson.getStr("team_h_ratio");
+                } else {
+                    ratio = wagerJson.getStr("team_c_ratio");
+                }
+            }*/
             wager.putOpt("betId", wagerJson.getStr("w_id"));    // 注单ID
             wager.putOpt("product", wagerJson.getStr("gtype")+wagerJson.getStr("wtype")+"("+wagerJson.getStr("score")+")");  // 体育+盘口类型+比分
             wager.putOpt("league", wagerJson.getStr("league")); // 联赛名称

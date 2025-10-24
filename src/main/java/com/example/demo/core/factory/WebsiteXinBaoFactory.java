@@ -69,8 +69,12 @@ public class WebsiteXinBaoFactory implements WebsiteApiFactory {
 
     @Override
     public ApiHandler getEventsOddsHandler() {
-        // return new WebsiteXinBaoEventsOddsHandler(websiteService, apiUrlService); // 返回具体的赛事赔率详情处理类
         return new WebsiteXinBaoEventOddsNewHandler(dispatcher, websiteService, apiUrlService); // 返回具体的赛事赔率详情处理类
+    }
+
+    @Override
+    public ApiHandler getEventsOddsInfoHandler() {
+        return new WebsiteXinBaoEventsOddsHandler(dispatcher, websiteService, apiUrlService); // 返回具体的赛事赔率详情处理类
     }
 
     @Override

@@ -74,7 +74,7 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
 //        String showType = "today";  // 今日赛事
 
         // 构造请求体
-        return String.format("p=get_game_more&uid=%s&ver=%s&langx=zh-cn&gtype=ft&showtype=%s&ltype=3&isRB=Y&lid=%s&specialClick=&mode=NORMAL&filter=Main&ecid=%s&ts=%s",
+        return String.format("p=get_game_more&uid=%s&ver=%s&langx=zh-cn&gtype=ft&showtype=%s&ltype=3&isRB=Y&lid=%s&specialClick=&mode=NORMAL&from=game_more&filter=Main&ecid=%s&ts=%s",
                 params.getStr("uid"),
                 Constants.VER,
                 showType,
@@ -564,34 +564,6 @@ public class WebsiteXinBaoEventsOddsHandler implements ApiHandler {
                 sum += num;
             }
             return (int) Math.round(sum / numbers.length);
-        }
-    }
-
-    public static void main(String[] args) {
-        String[][] testCases = {
-                {"-0.5", "主队", "100"},
-                {"0.5", "客队", "-100"},
-                {"-0/0.5", "主队", "-50"},
-                {"0/0.5", "客队", "50"},
-                {"-0.5/1", "主队", "-50"}, // 根据规则需调整逻辑
-                {"0.5/1", "客队", "-50"},
-                {"0", "主队", "0"},
-                {"0", "客队", "0"},
-                {"2.5/3", "大", "50"},
-                {"2.5/3", "小", "-100"},
-                {"2/2.5", "大", "-50"},
-                {"2/2.5", "小", "50"},
-                {"4.5", "大", "100"},
-                {"4.5", "小", "-100"}
-        };
-
-        for (String[] testCase : testCases) {
-            String handicap = testCase[0];
-            String type = testCase[1];
-            int expected = Integer.parseInt(testCase[2]);
-            int actual = getRatio(handicap, type);
-            System.out.printf("盘口: %-8s 类型: %-4s 预期: %4d 实际: %4d%n",
-                    handicap, type, expected, actual);
         }
     }
 

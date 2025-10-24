@@ -76,6 +76,11 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler getEventsOddsInfoHandler() {
+        return null;
+    }
+
+    @Override
     public ApiHandler getStatementsHandler() {
         return new WebsitePingBoStatementHandler(dispatcher, websiteService, apiUrlService); // 返回具体的账目列表处理类
     }

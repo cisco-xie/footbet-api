@@ -73,6 +73,11 @@ public class WebsiteSboFactory implements WebsiteApiFactory {
     }
 
     @Override
+    public ApiHandler getEventsOddsInfoHandler() {
+        return null;
+    }
+
+    @Override
     public ApiHandler getStatementsHandler() {
         return new WebsiteSboStatementHandler(dispatcher, websiteService, apiUrlService); // 返回具体的账目列表处理类
     }
