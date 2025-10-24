@@ -14,12 +14,14 @@ import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.model.vo.ConfigAccountVO;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 新二网站 - 投注历史 API具体实现
@@ -134,23 +136,33 @@ public class WebsiteXinBaoBetSettledHandler implements ApiHandler {
         wagers.forEach(json -> {
             JSONObject wager = new JSONObject();
             JSONObject wagerJson = (JSONObject) json;
+            String home = wagerJson.getStr("team_h_show");
+            String away = wagerJson.getStr("team_c_show");
+            String strong = wagerJson.getStr("strong"); // "Y" 主队让球, "N" 客队让球
+            String resultTeam = wagerJson.getStr("result"); // 用户投注/结果的队名
+            String rawHomeRatio = wagerJson.getStr("team_h_ratio");
+            String rawAwayRatio = wagerJson.getStr("team_c_ratio");
+            // 计算谁是让球方（Y = 显示为负号，N = 显示为正号）
+            boolean homeIsGiving = "Y".equalsIgnoreCase(strong); // Y: 负盘
+
+            String prefix = homeIsGiving ? "-" : "+";
             String ratio = "";
-            /*if ("(滚球) 让球".equals(wagerJson.getStr("wtype"))) {
-                if (wagerJson.getStr("result").equals(wagerJson.getStr("team_h_show"))) {
-                    ratio = wagerJson.getStr("team_h_ratio");
+            if ("(滚球) 让球".equals(wagerJson.getStr("wtype"))) {
+                if (StringUtils.isNotBlank(rawHomeRatio)) {
+                    ratio = prefix + rawHomeRatio + " ";
                 } else {
-                    ratio = wagerJson.getStr("team_c_ratio");
+                    ratio = prefix + rawAwayRatio + " ";
                 }
-            }*/
+            }
             wager.putOpt("betId", wagerJson.getStr("w_id"));    // 注单ID
             wager.putOpt("product", wagerJson.getStr("gtype")+wagerJson.getStr("wtype")+"("+wagerJson.getStr("score")+")");  // 体育+盘口类型+比分
             wager.putOpt("league", wagerJson.getStr("league")); // 联赛名称
-            wager.putOpt("team", wagerJson.getStr("team_h_show") + " -vs- "+wagerJson.getStr("team_c_show"));    // 主队 -vs- 客队
-            wager.putOpt("odds", wagerJson.getStr("result") + " @ " + wagerJson.getStr("ioratio"));  // 投注选项 + 赔率
+            wager.putOpt("team", home + " -vs- "+ away);    // 主队 -vs- 客队
+            wager.putOpt("odds", resultTeam + " " + ratio + "@ " + wagerJson.getStr("ioratio"));  // 投注选项 + 赔率
             wager.putOpt("oddsValue", wagerJson.getStr("ioratio"));  // 赔率
             wager.putOpt("oddsTypeName", wagerJson.getStr("oddf_type")); // 盘口类型（如：香港盘）
-            wager.putOpt("detail", wagerJson.getStr("league") + " - " + wagerJson.getStr("team_h_show") + " vs "+wagerJson.getStr("team_c_show"));   // 详情
-            wager.putOpt("result", wagerJson.getStr("result")); // 投注选项（例如 大 2.5、小盘、韩国）
+            wager.putOpt("detail", wagerJson.getStr("league") + " - " + home + " -vs- "+ away);   // 详情
+            wager.putOpt("result", resultTeam); // 投注选项（例如 大 2.5、小盘、韩国）
             wager.putOpt("amount", wagerJson.getStr("gold"));   // 投注金额
             wager.putOpt("win", wagerJson.getStr("win_gold")); // 可赢金额
             wager.putOpt("status", wagerJson.getStr("ball_act_ret")); // 状态（例如：确认）
