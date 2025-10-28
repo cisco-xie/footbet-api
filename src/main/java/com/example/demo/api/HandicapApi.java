@@ -758,8 +758,10 @@ public class HandicapApi {
     private final Map<String, Long> accountCooldownMap = new ConcurrentHashMap<>();
     // 冷却期，单位毫秒（如2秒内不重复调用同一账号）
     private final static long cooldownMillis = 2000;
-    // 类成员变量，可加 @Component 单例管理
+    // 类成员变量，可加 @Component 单例管理，随机轮询
     private final ConcurrentHashMap<String, AtomicInteger> accountIndexMap = new ConcurrentHashMap<>();
+    // 类成员变量，可加 @Component 单例管理，顺序轮询
+    private final ConcurrentHashMap<String, AtomicInteger> accountIndexSequenceMap = new ConcurrentHashMap<>();
 
     /**
      * 根据用户和网站获取赛事列表数据-带赔率
@@ -1231,16 +1233,19 @@ public class HandicapApi {
         // 账号数量
         int size = accounts.size();
         String key = username + ":" + websiteId;
-        // 使用随机起点初始化轮询索引,避免每次都从0开始，防止短时间内让多个用户请求打在同一个账号上
-        AtomicInteger indexRef = accountIndexMap.computeIfAbsent(key, k -> new AtomicInteger(RandomUtil.randomInt(size)));
+        // 顺序轮询索引
+        AtomicInteger indexRef = accountIndexSequenceMap.computeIfAbsent(key, k -> new AtomicInteger(0));
 
         for (int i = 0; i < size; i++) {
-            int idx = Math.abs(indexRef.getAndIncrement() % size);
+            // 获取当前索引，并将其原子地更新为 (n+1) % size，避免索引无限增大
+            int current = indexRef.getAndUpdate(n -> (n + 1) % size);
+            // 使用 floorMod 更稳健（虽然 current>=0，但这是个好习惯）
+            int idx = Math.floorMod(current, size);
             ConfigAccountVO account = accounts.get(idx);
             log.info("获取赛事列表,网站:{},idx:{},账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, account.getAccount());
 
             if (account.getIsTokenValid() == 0) {
-                // 未登录直接跳过
+                // 未登录直接跳过（不会重置 indexRef）
                 continue;
             }
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
