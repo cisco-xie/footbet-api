@@ -462,6 +462,28 @@ public class BetService {
 
             dto.setSimulateBetA(admin.getSimulateBet());
             dto.setSimulateBetB(admin.getSimulateBet());
+
+            // 校验投注间隔key
+            String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, String.valueOf(admin.getSimulateBet()), dto.getEventIdA(), dto.getEventIdB());
+            // 投注次数限制key
+            String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, String.valueOf(admin.getSimulateBet()), dto.getEventIdA(), dto.getEventIdB());
+
+            // 这里是校验间隔时间
+            long intervalMillis = intervalDTO.getBetSuccessSec() * 1000L;
+
+            // 1. 强制预检查
+            SuccessBasedLimitManager.EnforcementResult checkResult = limitManager.preCheckAndReserve(
+                    limitKey, intervalKey, dto.getScoreA(), limitDTO, intervalMillis);
+
+            // 快速检查：如果明显不满足条件，直接返回
+            if (!checkResult.isSuccess()) {
+                log.info("快速检查不满足: 用户 {}, 联赛:{}, 比分 {}, 原因: {}",
+                        username, dto.getLeague(), dto.getScoreA(), checkResult.getFailReason());
+                continue;
+            }
+            // 保存reservationId，用于后续确认或回滚
+            String reservationId = checkResult.getReservationId();
+
             // 并行获取 A/B 投注预览
             CompletableFuture<JSONObject> previewA = CompletableFuture.supplyAsync(() ->
                             buildBetInfo(username, dto.getTeamA(), dto.getWebsiteIdA(), buildBetParams(dto, amountDTO, true), dto),
@@ -476,6 +498,8 @@ public class BetService {
             JSONObject betPreviewB = previewB.join();
 
             if (betPreviewA == null || betPreviewB == null) {
+                // 回滚投注次数
+                limitManager.rollbackReservation(limitKey, reservationId);
                 log.info("用户 {} 赛事A={} 赛事B={} 投注预览失败，预览信息A={}, 预览信息B={}", username, dto.getLeagueNameA(), dto.getLeagueNameB(), betPreviewA, betPreviewB);
                 continue; // 跳过
             }
@@ -550,33 +574,14 @@ public class BetService {
                 String realTimeIndexKey = KeyUtil.genKey("INDEX", username, "realtime");
                 businessPlatformRedissonClient.getList(realTimeIndexKey).add(realTimeKey);
 
+                // 回滚投注次数
+                limitManager.rollbackReservation(limitKey, reservationId);
                 continue; // 直接跳过
             }
             log.info("【水位调试】id={}, 赔率A={}, 赔率B={}, 计算水位(截断3位)={}, profit.rollingLetBall={}, profit.rollingSize={}",
                     dto.getId(), oddsA, oddsB, water, profit.getRollingLetBall(), profit.getRollingSize());
             JSONObject successA = new JSONObject();
             JSONObject successB = new JSONObject();
-
-            // 校验投注间隔key
-            String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, username, String.valueOf(admin.getSimulateBet()), dto.getEventIdA(), dto.getEventIdB());
-            // 投注次数限制key
-            String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, username, String.valueOf(admin.getSimulateBet()), dto.getEventIdA(), dto.getEventIdB());
-
-            // 这里是校验间隔时间
-            long intervalMillis = intervalDTO.getBetSuccessSec() * 1000L;
-
-            // 1. 强制预检查
-            SuccessBasedLimitManager.EnforcementResult checkResult = limitManager.preCheckAndReserve(
-                    limitKey, intervalKey, dto.getScoreA(), limitDTO, intervalMillis);
-
-            // 快速检查：如果明显不满足条件，直接返回
-            if (!checkResult.isSuccess()) {
-                log.info("快速检查不满足: 用户 {}, 联赛:{}, 比分 {}, 原因: {}",
-                        username, dto.getLeague(), dto.getScoreA(), checkResult.getFailReason());
-                continue;
-            }
-            // 保存reservationId，用于后续确认或回滚
-            String reservationId = checkResult.getReservationId();
 
             try {
                 if (rollingOrderA == rollingOrderB) {
