@@ -863,9 +863,9 @@ public class BetService {
                 } catch (Exception e) {
                     betPreview = betPreviewOpt;
                 }
-
+                JSONObject betInfo = betPreview.getJSONObject("betInfo");
                 // 更新赔率
-                BigDecimal odds = betPreview.getJSONObject("betInfo").getBigDecimal("oddsValue");
+                BigDecimal odds = betInfo.getBigDecimal("oddsValue");
                 if (isA) {
                     dto.setOddsA(odds);
                 } else {
@@ -876,19 +876,26 @@ public class BetService {
                 if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                     String oddsId = isA ? dto.getOddsIdA() : dto.getOddsIdB();
                     String leagueId = isA ? dto.getLeagueIdA() : dto.getLeagueIdB();
+                    String league = isA ? dto.getLeagueNameA() : dto.getLeagueNameB();
                     String teamName = isA ? dto.getTeamA() : dto.getTeamB();
                     String handicap = isA ? getHandicapRange(dto.getHandicapA()) : getHandicapRange(dto.getHandicapB());
+                    if (!getHandicapRange(betInfo.getStr("handicap")).equals(handicap)) {
+                        log.info("投注前, 用户 {}, 网站:{} 投注预览的盘口分:{}和扫水时需要投注的盘口分:{}不匹配，联赛={}, 球队名={}", username, websiteId, getHandicapRange(betInfo.getStr("handicap")), handicap, league, teamName);
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        return result;
+                    }
                     // 新二：一次拉整个联赛赔率
                     JSONArray leagues = (JSONArray) handicapApi.eventsOdds(username, websiteId, leagueId, eventId);
                     if (leagues == null || leagues.isEmpty()) {
-                        log.info("投注前, 用户 {}, 网站:{} 获取赔率列表失败，leagueId={}, eventId={}", username, websiteId, leagueId, eventId);
+                        log.info("投注前, 用户 {}, 网站:{} 获取赔率列表失败，联赛={}, 球队名={}", username, websiteId, league, teamName);
                         result.putOpt("isBet", false);
                         result.putOpt("success", false);
                         return result;
                     }
                     JSONObject teamEvent = findEventByLeagueId(leagues, leagueId, teamName);
                     if (teamEvent == null || teamEvent.isEmpty()) {
-                        log.info("投注前, 用户 {}, 网站:{} 获取指定赔率信息失败，leagueId={}, eventId={}", username, websiteId, leagueId, eventId);
+                        log.info("投注前, 用户 {}, 网站:{} 获取指定赔率信息失败，联赛={}, 球队名={}", username, websiteId, league, teamName);
                         result.putOpt("isBet", false);
                         result.putOpt("success", false);
                         return result;
@@ -901,19 +908,24 @@ public class BetService {
                     }
                     JSONObject handicapOdds = typeJson.getJSONObject(dto.getHandicapType());
                     if (!handicapOdds.containsKey(handicap)) {
-                        log.info("投注前, 用户 {}, 网站:{} 获取指定赔率信息检查需要投注的盘:{}不存在，leagueId={}, eventId={}", username, websiteId, handicap, leagueId, eventId);
+                        log.info("投注前, 用户 {}, 网站:{} 获取指定赔率信息检查需要投注的盘:{}不存在，联赛={}, 球队名={}", username, websiteId, handicap, league, teamName);
                         result.putOpt("isBet", false);
                         result.putOpt("success", false);
                         return result;
                     }
                     if (!oddsId.equals(handicapOdds.getJSONObject(handicap).getStr("id"))) {
-                        log.info("投注前, 用户 {}, 网站:{} 获取指定赔率信息检查需要投注的盘:{}存在,但是oddsId不一致,投注的oddsId:{},检测的oddsId:{},leagueId={}, eventId={}", username, websiteId, handicap, oddsId, handicapOdds.getJSONObject(handicap).getStr("id"), leagueId, eventId);
+                        log.info("投注前, 用户 {}, 网站:{} 获取指定赔率信息检查需要投注的盘:{}存在,但是oddsId不一致,投注的oddsId:{},检测的oddsId:{},联赛={}, 球队名={}", username, websiteId, handicap, oddsId, handicapOdds.getJSONObject(handicap).getStr("id"), league, teamName);
                         result.putOpt("isBet", false);
                         result.putOpt("success", false);
                         return result;
                     }
                 }
 
+                if (isA) {
+                    dto.setBetInfoA(betInfo);
+                } else {
+                    dto.setBetInfoB(betInfo);
+                }
                 // 投注
                 log.info("用户 {}, 网站:{} 开始投注，eventId={}, isA={}, 投注参数={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, params);
                 Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betInfo"), betPreview.getJSONObject("betPreview"));
