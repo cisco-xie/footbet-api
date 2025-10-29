@@ -977,12 +977,12 @@ public class BetService {
             } catch (Exception e) {
                 log.info("用户 {}, 网站:{}, 投注尝试第 {} 次失败：{}", username, WebsiteType.getById(websiteId).getDescription(), attempt, e.getMessage(), e);
                 // 短暂等待再重试
-                try {
+                /*try {
                     Thread.sleep(300);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                     break;
-                }
+                }*/
             }
         }
         return result;
