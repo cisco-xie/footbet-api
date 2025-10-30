@@ -921,11 +921,6 @@ public class BetService {
                     }
                 }
 
-                if (isA) {
-                    dto.setBetInfoA(betInfo);
-                } else {
-                    dto.setBetInfoB(betInfo);
-                }
                 // 投注
                 log.info("用户 {}, 网站:{} 开始投注，eventId={}, isA={}, 投注参数={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, params);
                 Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betInfo"), betPreview.getJSONObject("betPreview"));
