@@ -1361,7 +1361,7 @@ public class HandicapApi {
      * @param websiteId
      * @return
      */
-    public Object bet(String username, String websiteId, JSONObject odds, JSONObject betPreviewInfo, JSONObject betPreviewJson) {
+    public Object bet(String username, String websiteId, JSONObject odds, JSONObject betPreviewInfo, JSONObject betPreviewJson, String handicapValue) {
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
@@ -1428,9 +1428,9 @@ public class HandicapApi {
                             .setScale(2, RoundingMode.HALF_UP);    // 保留两位小数，四舍五入
 
                     JSONArray selections = new JSONArray();
+                    JSONObject betInfo = new JSONObject();
                     for (Object obj : data) {
                         JSONObject objJson = JSONUtil.parseObj(obj);
-                        JSONObject betInfo = new JSONObject();
                         JSONObject selection = new JSONObject();
                         selection.putOpt("stake", betAmount);
                         selection.putOpt("odds", objJson.getStr("odds"));
@@ -1441,8 +1441,11 @@ public class HandicapApi {
                         betInfo.putOpt("team", objJson.getStr("homeTeam") + " -vs- " + objJson.getStr("awayTeam"));
                         betInfo.putOpt("marketTypeName", "");
                         betInfo.putOpt("marketName", objJson.getStr("selection"));
-                        betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap"));
-                        betInfo.putOpt("handicap", objJson.getStr("handicap"));
+                        // betInfo.putOpt("odds", objJson.getStr("selection") + " " + objJson.getStr("handicap"));
+                        // 用扫水时的盘口值，因为有负号
+                        betInfo.putOpt("odds", objJson.getStr("selection") + " " + handicapValue);
+                        // betInfo.putOpt("handicap", objJson.getStr("handicap"));
+                        betInfo.putOpt("handicap", handicapValue);
                         betInfo.putOpt("amount", odds.getStr("stake"));
                         betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));
                         selection.putOpt("betInfo", betInfo);
@@ -1450,6 +1453,7 @@ public class HandicapApi {
                         maxBet = objJson.getBigDecimal("maxStake");
                         minBet = objJson.getBigDecimal("minStake");
                     }
+                    params.putOpt("betInfo", betInfo);
                     params.putOpt("selections", selections);
                 } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                     params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
@@ -1523,8 +1527,10 @@ public class HandicapApi {
                     betInfo.putOpt("team", serverresponse.getStr("team_name_h") + " -vs- " + serverresponse.getStr("team_name_c"));
                     betInfo.putOpt("marketTypeName", marketTypeName);
                     betInfo.putOpt("marketName", marketName);
-                    betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread"));
+                    // betInfo.putOpt("odds", marketName + " " + serverresponse.getStr("spread"));
                     betInfo.putOpt("handicap", serverresponse.getStr("spread"));
+                    // 用扫水时的盘口值，因为有负号
+                    betInfo.putOpt("odds", marketName + " " + handicapValue);
                     betInfo.putOpt("amount", betAmount);
                     betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));
                     params.putOpt("betInfo", betInfo);

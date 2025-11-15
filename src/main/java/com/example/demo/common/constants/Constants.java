@@ -8,7 +8,7 @@ public class Constants {
     /**
      * 新二盘口请求版本
      */
-    public static final String VER = "2025-10-16-fix342_120";
+    public static final String VER = "2025-11-06-phPasscodeBug_121";
 
     /**
      * 请求浏览器

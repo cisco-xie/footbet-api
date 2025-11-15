@@ -158,16 +158,16 @@ public class WebsiteSboEventsHandler implements ApiHandler {
                 // 主队
                 JSONObject home = new JSONObject();
                 home.set("id", String.valueOf(event.getInt("id")));
-                home.set("name", getTeamName(event.getJSONObject("homeTeam"), "ZH_CN"));
+                home.set("name", getTeamName(event.getJSONObject("homeTeam"), "ZH_CN") + " -vs- " + getTeamName(event.getJSONObject("awayTeam"), "ZH_CN"));
                 home.set("isHome", true);
                 eventsArray.add(home);
 
                 // 客队
-                JSONObject away = new JSONObject();
-                away.set("id", String.valueOf(event.getInt("id")));
-                away.set("name", getTeamName(event.getJSONObject("awayTeam"), "ZH_CN"));
-                away.set("isHome", false);
-                eventsArray.add(away);
+//                JSONObject away = new JSONObject();
+//                away.set("id", String.valueOf(event.getInt("id")));
+//                away.set("name", getTeamName(event.getJSONObject("awayTeam"), "ZH_CN"));
+//                away.set("isHome", false);
+//                eventsArray.add(away);
             }
 
             // 收集结果

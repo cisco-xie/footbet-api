@@ -80,29 +80,38 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
             return res;
         }
         // 解析响应
-        JSONObject responseJson = new JSONObject(result.getBody());
-        log.info("平博登录结果: {}", responseJson);
-        // 如果响应中包含错误信息，抛出异常或者其他处理
-        if (responseJson.getInt("code") != 1) {
-            if (responseJson.getInt("code") == 2) {
-                // 首次登录需要修改密码
-                responseJson.putOpt("code", 106);
+        JSONObject responseJson;
+        try {
+            responseJson = new JSONObject(result.getBody());
+
+            log.info("平博登录结果: {}", responseJson);
+            // 如果响应中包含错误信息，抛出异常或者其他处理
+            if (responseJson.getInt("code") != 1) {
+                if (responseJson.getInt("code") == 2) {
+                    // 首次登录需要修改密码
+                    responseJson.putOpt("code", 106);
+                    responseJson.putOpt("success", false);
+                    responseJson.putOpt("msg", "首次登录需要修改密码");
+                    return responseJson;
+                } else if (responseJson.getInt("code") == 3) {
+                    // 需要同意协议
+                    responseJson.putOpt("code", 110);
+                    responseJson.putOpt("success", false);
+                    responseJson.putOpt("msg", "需接受账户协议");
+                    return responseJson;
+                } else if (responseJson.getInt("code") == -4) {
+                    // 需要同意协议
+                    responseJson.putOpt("code", -4);
+                    responseJson.putOpt("success", false);
+                    responseJson.putOpt("msg", "您的账户已被暂停使用，请联系您的上线寻求帮助。");
+                    return responseJson;
+                }
                 responseJson.putOpt("success", false);
-                responseJson.putOpt("msg", "首次登录需要修改密码");
-                return responseJson;
-            } else if (responseJson.getInt("code") == 3) {
-                // 需要同意协议
-                responseJson.putOpt("code", 110);
-                responseJson.putOpt("success", false);
-                responseJson.putOpt("msg", "需接受账户协议");
-                return responseJson;
-            } else if (responseJson.getInt("code") == -4) {
-                // 需要同意协议
-                responseJson.putOpt("code", -4);
-                responseJson.putOpt("success", false);
-                responseJson.putOpt("msg", "您的账户已被暂停使用，请联系您的上线寻求帮助。");
+                responseJson.putOpt("msg", "账户登录失败");
                 return responseJson;
             }
+        } catch (Exception e) {
+            responseJson = new JSONObject();
             responseJson.putOpt("success", false);
             responseJson.putOpt("msg", "账户登录失败");
             return responseJson;

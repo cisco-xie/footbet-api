@@ -8,7 +8,7 @@ public class SboCdnApiConstants {
     /**
      * 盛帆网站CDN请求API
      */
-    public static final String API = "https://price-asi-q01.speedysurfcdn.net/api";
+    public static final String API = "https://price-asi-r02.speedysurfcdn.net/api";
 
     /**
      * 请求操作的方法名

@@ -158,7 +158,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
             // --- 第一步：获取赛事基本列表 ---
             log.info("开始执行第一步：获取赛事基本列表");
             String variables_step1 = "{\"query\":{\"sport\":\"Soccer\",\"filter\":{\"presetFilter\":\""+presetFilter+"\",\"date\":\""+date+"\"},\"oddsCategory\":\"All\",\"eventIds\":[],\"tournamentIds\":[],\"tournamentNames\":[],\"timeZone\":\"UTC__4\"}}";
-            String extensions_step1 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"0576c8c29422ff37868b131240f644d4cfedb1be2151afbc1c57dbcb997fe9cb\"}}";
+            String extensions_step1 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"b960966dff2cbf9d4d7f2127a5e493bd5a3ab0ec98b216bb958c2c0b48f10488\"}}";
 
             String queryParams_step1 = String.format("operationName=%s&variables=%s&extensions=%s",
                     SboCdnApiConstants.OPERATION_NAME_EVENTS_QUERY,
@@ -197,9 +197,6 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                 // home
                 JSONObject home = convertOdds(basicEventInfo, true);
                 eventsArray.add(home);
-                // away
-                JSONObject away = convertOdds(basicEventInfo, false);
-                eventsArray.add(away);
             }
             league.putOpt("events", eventsArray);
             oddsArray.add(league);
@@ -265,10 +262,12 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
         String periodStartTimeStr = basicEventInfo.getJSONObject("mainMarketEventResult").getJSONObject("extraInfo").getStr("periodStartTime");
         LocalDateTime periodStartTime = LocalDateTimeUtil.parse(periodStartTimeStr);
         Duration between = LocalDateTimeUtil.between(periodStartTime.plusHours(12), LocalDateTime.now());
+        String home = getTeamName(basicEventInfo.getJSONObject("homeTeam"), "ZH_CN");
+        String away = getTeamName(basicEventInfo.getJSONObject("awayTeam"), "ZH_CN");
         team.putOpt("id", basicEventInfo.getLong("id"));
-        team.putOpt("name", isHome ? getTeamName(basicEventInfo.getJSONObject("homeTeam"), "ZH_CN") : getTeamName(basicEventInfo.getJSONObject("awayTeam"), "ZH_CN")); // 真实队名
-
-        team.putOpt("isHome", isHome);
+        team.putOpt("name", home + " -vs- " + away);
+        team.putOpt("homeTeam", home); // 真实队名
+        team.putOpt("awayTeam", away); // 真实队名
 
         // 获取比分和时间信息
         String score = "0-0";
@@ -292,10 +291,13 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
             reTime = 0;
         }
         JSONArray eventResult = basicEventInfo.getJSONArray("eventOdds");
+        String liveHandicapType = null;
         if (eventResult != null && !eventResult.isEmpty()) {
             int homeScore = eventResult.getJSONObject(0).getJSONObject("eventResult").getInt("liveHomeScore");
             int awayScore = eventResult.getJSONObject(0).getJSONObject("eventResult").getInt("liveAwayScore");
             score = homeScore + "-" + awayScore;
+            // 获取谁是上盘，home-主队上盘，away-客队上盘
+            liveHandicapType = eventResult.getJSONObject(0).getJSONObject("eventResult").getStr("liveHandicapType");
         }
         team.putOpt("session", session);
         team.putOpt("reTime", reTime);
@@ -305,10 +307,18 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
         JSONObject fullCourt = new JSONObject();
         JSONObject fullLetBall = new JSONObject();
         JSONObject fullOverSize = new JSONObject();
+        JSONObject up = new JSONObject();
+        JSONObject down = new JSONObject();
+        JSONObject big = new JSONObject();
+        JSONObject small = new JSONObject();
 
         JSONObject firstHalf = new JSONObject();
         JSONObject halfLetBall = new JSONObject();
         JSONObject halfOverSize = new JSONObject();
+        JSONObject halfUp = new JSONObject();
+        JSONObject halfDown = new JSONObject();
+        JSONObject halfBig = new JSONObject();
+        JSONObject halfSmall = new JSONObject();
 
         for (int i = 0; i < basicEventInfo.getJSONArray("eventOdds").size(); i++) {
             JSONObject o = basicEventInfo.getJSONArray("eventOdds").getJSONObject(i);
@@ -319,35 +329,85 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
             String normalizedType = isFirstHalf ? type.substring(3) : type;
 
             if ("Handicap".equals(normalizedType)) {
+                // 让球盘
                 for (int j = 0; j < o.getJSONArray("prices").size(); j++) {
                     JSONObject price = o.getJSONArray("prices").getJSONObject(j);
                     boolean homeSide = "h".equals(price.getStr("option"));
-                    if (homeSide == isHome) {
-                        JSONObject node = new JSONObject();
-                        node.putOpt("id", o.getLong("id"));
-                        node.putOpt("handicap", point);
-                        node.putOpt("odds", price.getBigDecimal("price"));
-                        node.putOpt("wall", isHome ? "hanging" : "foot");
-
-                        if (isFirstHalf) {
-                            halfLetBall.putOpt(getHandicapRange(point), node);
+                    JSONObject node = new JSONObject();
+                    node.putOpt("id", o.getLong("id"));
+                    node.putOpt("odds", price.getBigDecimal("price"));
+                    if (homeSide) {
+                        if (liveHandicapType != null && liveHandicapType.equals("Home")) {
+                            // 上盘负号开头
+                            node.putOpt("handicap", "0".equals(getHandicapRange(point)) ? getHandicapRange(point) : "-" + getHandicapRange(point));
+                            if (isFirstHalf) {
+                                halfUp.putOpt(getHandicapRange(point), node);
+                                halfLetBall.putOpt("up", halfUp);
+                            } else {
+                                up.putOpt(getHandicapRange(point), node);
+                                fullLetBall.putOpt("up", up);
+                            }
                         } else {
-                            fullLetBall.putOpt(getHandicapRange(point), node);
+                            // 下盘不需要负号开头
+                            node.putOpt("handicap", getHandicapRange(point));
+                            if (isFirstHalf) {
+                                halfDown.putOpt(getHandicapRange(point), node);
+                                halfLetBall.putOpt("down", halfDown);
+                            } else {
+                                down.putOpt(getHandicapRange(point), node);
+                                fullLetBall.putOpt("down", down);
+                            }
+                        }
+                    } else {
+                        if (liveHandicapType != null && liveHandicapType.equals("Away")) {
+                            // 上盘负号开头
+                            node.putOpt("handicap", "0".equals(getHandicapRange(point)) ? getHandicapRange(point) : "-" + getHandicapRange(point));
+                            if (isFirstHalf) {
+                                halfUp.putOpt(getHandicapRange(point), node);
+                                halfLetBall.putOpt("up", halfUp);
+                            } else {
+                                up.putOpt(getHandicapRange(point), node);
+                                fullLetBall.putOpt("up", up);
+                            }
+                        } else {
+                            // 下盘不需要负号开头
+                            node.putOpt("handicap", getHandicapRange(point));
+                            if (isFirstHalf) {
+                                halfDown.putOpt(getHandicapRange(point), node);
+                                halfLetBall.putOpt("down", halfDown);
+                            } else {
+                                down.putOpt(getHandicapRange(point), node);
+                                fullLetBall.putOpt("down", down);
+                            }
                         }
                     }
                 }
             } else if ("OverUnder".equals(normalizedType)) {
+                // 大小盘
                 for (int j = 0; j < o.getJSONArray("prices").size(); j++) {
                     JSONObject price = o.getJSONArray("prices").getJSONObject(j);
                     JSONObject node = new JSONObject();
                     node.putOpt("id", o.getLong("id"));
                     node.putOpt("handicap", getHandicapRange(point));
                     node.putOpt("odds", price.getBigDecimal("price"));
+                    boolean homeSide = "h".equals(price.getStr("option"));
 
-                    if (isFirstHalf) {
-                        halfOverSize.putOpt(getHandicapRange(point), node);
+                    if (homeSide) {
+                        if (isFirstHalf) {
+                            halfBig.putOpt(getHandicapRange(point), node);
+                            halfOverSize.putOpt("big", halfBig);
+                        } else {
+                            big.putOpt(getHandicapRange(point), node);
+                            fullOverSize.putOpt("big", big);
+                        }
                     } else {
-                        fullOverSize.putOpt(getHandicapRange(point), node);
+                        if (isFirstHalf) {
+                            halfSmall.putOpt(getHandicapRange(point), node);
+                            halfOverSize.putOpt("small", halfSmall);
+                        } else {
+                            small.putOpt(getHandicapRange(point), node);
+                            fullOverSize.putOpt("small", small);
+                        }
                     }
                 }
             }
@@ -383,7 +443,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
             // 如果不是 0.5 的倍数，返回一个范围
             double lowerBound = handicap - 0.25;
             double upperBound = handicap + 0.25;
-            String lowerBoundStr = 0.0 == lowerBound ? "0" : String.valueOf(handicap);
+            String lowerBoundStr = 0.0 == lowerBound ? "0" : String.valueOf(lowerBound);
             String upperBoundStr = 0.0 == upperBound ? "0" : String.valueOf(upperBound);
             return lowerBoundStr + "-" + upperBoundStr;
         }

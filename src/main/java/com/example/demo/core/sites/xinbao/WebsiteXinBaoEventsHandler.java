@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 import org.w3c.dom.Document;
 
 import javax.xml.xpath.XPathConstants;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -121,47 +122,39 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
         JSONArray result = new JSONArray();
         JSONObject originalJson = JSONUtil.parseObj(original);
 
-        originalJson.forEach(json -> {
-            JSONObject gameJson = JSONUtil.parseObj(json.getValue());
-            String lid = gameJson.getStr("LID");        // 联赛LID
-            String gid = gameJson.getStr("GID");        // 比赛队伍GID
-            String ecid = gameJson.getStr("ECID");      // 联赛ECID
-            String league = gameJson.getStr("LEAGUE");  // 联赛名称
-            String PTYPE = gameJson.getStr("PTYPE");   // 队名别称类型，如果有则不显示此队伍
-            if (StringUtils.isNotBlank(PTYPE)) {
-                return;
-            }
-            // 查找是否已经存在相同的 lid（赛事）
-            JSONObject leagueJson = leagueMap.get(lid);
-            if (leagueJson == null) {
-                // 如果是新的联赛，创建一个新的 JSONObject
-                leagueJson = new JSONObject();
-                leagueJson.putOpt("id", lid);
-                leagueJson.putOpt("league", league);
-                leagueJson.putOpt("events", new JSONArray());
-                leagueMap.put(lid, leagueJson);
-            }
+        originalJson.entrySet().stream()
+            .sorted(Comparator.comparing(Map.Entry::getKey)) // 按 key 升序
+            .forEach(json -> {
+                JSONObject gameJson = JSONUtil.parseObj(json.getValue());
+                String lid = gameJson.getStr("LID");        // 联赛LID
+                String gid = gameJson.getStr("GID");        // 比赛队伍GID
+                String ecid = gameJson.getStr("ECID");      // 联赛ECID
+                String league = gameJson.getStr("LEAGUE");  // 联赛名称
+                String PTYPE = gameJson.getStr("PTYPE");   // 队名别称类型，如果有则不显示此队伍
+                if (StringUtils.isNotBlank(PTYPE)) {
+                    return;
+                }
+                // 查找是否已经存在相同的 lid（赛事）
+                JSONObject leagueJson = leagueMap.get(lid);
+                if (leagueJson == null) {
+                    // 如果是新的联赛，创建一个新的 JSONObject
+                    leagueJson = new JSONObject();
+                    leagueJson.putOpt("id", lid);
+                    leagueJson.putOpt("league", league);
+                    leagueJson.putOpt("events", new JSONArray());
+                    leagueMap.put(lid, leagueJson);
+                }
 
-            // 处理队伍信息
-            JSONObject eventCJson = new JSONObject();
-            JSONObject eventHJson = new JSONObject();
-            // H是主队C是客队
-            // eventHJson.putOpt("id", gameJson.getStr("GNUM_H"));
-            eventHJson.putOpt("id", gid);
-            eventHJson.putOpt("name", gameJson.getStr("TEAM_H"));
-            eventHJson.putOpt("isHome", true);
-            eventHJson.putOpt("ecid", ecid);
-            // eventCJson.putOpt("id", gameJson.getStr("GNUM_C"));
-            eventCJson.putOpt("id", gid);
-            eventCJson.putOpt("name", gameJson.getStr("TEAM_C"));
-            eventCJson.putOpt("isHome", false);
-            eventCJson.putOpt("ecid", ecid);
+                // 处理队伍信息
+                JSONObject eventHJson = new JSONObject();
+                // H是主队C是客队
+                eventHJson.putOpt("id", ecid);
+                eventHJson.putOpt("name", gameJson.getStr("TEAM_H") + " -vs- " + gameJson.getStr("TEAM_C"));
 
-            // 将队伍信息添加到当前联赛的 events 中
-            JSONArray events = leagueJson.getJSONArray("events");
-            events.put(eventHJson);
-            events.put(eventCJson);
-        });
+                // 将队伍信息添加到当前联赛的 events 中
+                JSONArray events = leagueJson.getJSONArray("events");
+                events.put(eventHJson);
+            });
         // 将所有合并后的联赛放入 result 数组中
         result.addAll(leagueMap.values());
 

@@ -36,12 +36,16 @@ public class SweepWaterThreadPoolHolder {
     // 轻量配置线程池
     private final ExecutorService configExecutor;
 
+    // 投注线程池
+    private final ExecutorService betExecutor;
+
     private ThreadPoolMonitor orchestratorMonitor;
     private ThreadPoolMonitor userSweepMonitor;
     private ThreadPoolMonitor leagueMonitor;
     private ThreadPoolMonitor eventMonitor;
     private ThreadPoolMonitor oddsMonitor;
     private ThreadPoolMonitor configMonitor;
+    private ThreadPoolMonitor betMonitor;
 
     public SweepWaterThreadPoolHolder() {
         int cpuCoreCount = Math.min(Runtime.getRuntime().availableProcessors() * 4, 100);
@@ -100,6 +104,15 @@ public class SweepWaterThreadPoolHolder {
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
 
+        // 投注线程池
+        this.betExecutor = new ThreadPoolExecutor(
+                100, 200, // 核心50，最大100个线程
+                60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(200), // 队列容量200
+                new ThreadFactoryBuilder().setNameFormat("bet-pool-%d").build(),
+                new ThreadPoolExecutor.CallerRunsPolicy() // 重要：防止任务丢失
+        );
+
         // 监控器初始化
         orchestratorMonitor = new ThreadPoolMonitor("扫水定时任务线程", (ThreadPoolExecutor) sweepOrchestratorExecutor, 30);
         userSweepMonitor = new ThreadPoolMonitor("扫水平台用户线程", (ThreadPoolExecutor) userSweepExecutor, 30);
@@ -107,6 +120,7 @@ public class SweepWaterThreadPoolHolder {
         eventMonitor = new ThreadPoolMonitor("扫水赛事任务线程", (ThreadPoolExecutor) eventExecutor, 30);
         oddsMonitor = new ThreadPoolMonitor("扫水球队赔率线程", (ThreadPoolExecutor) teamOddsExecutor, 30);
         configMonitor = new ThreadPoolMonitor("扫水基础设置线程", (ThreadPoolExecutor) configExecutor, 30);
+        betMonitor = new ThreadPoolMonitor("投注线程", (ThreadPoolExecutor) betExecutor, 30);
 
         orchestratorMonitor.start();
         userSweepMonitor.start();
@@ -114,6 +128,7 @@ public class SweepWaterThreadPoolHolder {
         eventMonitor.start();
         oddsMonitor.start();
         configMonitor.start();
+        betMonitor.start();
     }
 
     public ExecutorService getSweepOrchestratorExecutor() {
@@ -140,6 +155,11 @@ public class SweepWaterThreadPoolHolder {
         return configExecutor;
     }
 
+    // 投注线程池getter
+    public ExecutorService getBetExecutor() {
+        return betExecutor;
+    }
+
     // 优雅关闭线程池示例方法（可在容器关闭时调用）
     @PreDestroy
     public void shutdown() {
@@ -151,6 +171,7 @@ public class SweepWaterThreadPoolHolder {
         eventMonitor.stop();
         oddsMonitor.stop();
         configMonitor.stop();
+        betMonitor.stop();
 
         // 关闭线程池
         shutdownExecutor(sweepOrchestratorExecutor);
@@ -159,6 +180,7 @@ public class SweepWaterThreadPoolHolder {
         shutdownExecutor(eventExecutor);
         shutdownExecutor(teamOddsExecutor);
         shutdownExecutor(configExecutor);
+        shutdownExecutor(betExecutor);
     }
 
     /**
