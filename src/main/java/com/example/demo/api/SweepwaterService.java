@@ -1458,11 +1458,11 @@ public class SweepwaterService {
                                     // 写入 Redis
                                     log.info("扫水匹配到数据-保存扫水数据");
                                     saveSweepwater(username, sweepwaterDTO);
-                                    // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                     if (sweepwaterDTO.getLastOddsTimeA() == sweepwaterDTO.getLastOddsTimeB()) {
                                         // 如果两个都是旧或者新,则不进行投注,不需要在前端显示
                                         continue; // 直接跳过
                                     }
+                                    // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                     if ("letBall".equals(key)) {
                                         if (finalValue >= profit.getRollingLetBall()) {
                                             // 满足利润设置的让球盘水位才进行投注

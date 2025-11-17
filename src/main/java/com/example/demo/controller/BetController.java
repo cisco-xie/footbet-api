@@ -58,6 +58,24 @@ public class BetController extends BaseController {
         return Result.success(betService.getRealTimeBets(admin.getUsername(), teamName, pageNum, pageSize));
     }
 
+    @Operation(summary = "获取实时进单列表-websocket增量版")
+    @GetMapping("/v2/bets/realtime")
+    public Result<PageResult<SweepwaterBetDTO>> getBetsReal(
+            @RequestParam(value = "teamName", required = false) String teamName,
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "500") Integer pageSize,
+            @RequestParam(required = false) Integer sinceIndex) {
+
+        AdminLoginDTO admin = getUser();
+        return Result.success(betService.getRealTimeBets(admin.getUsername(), teamName, pageNum, pageSize, sinceIndex));
+    }
+
+    @GetMapping("/bets/realtime/byKey")
+    public Result<SweepwaterBetDTO> getBetByKey(@RequestParam String key) {
+        SweepwaterBetDTO dto = betService.getRealTimeBetByKey(key);
+        return Result.success(dto);
+    }
+
     @Operation(summary = "获取历史进单列表")
     @GetMapping("/bets/history")
     public Result<PageResult<SweepwaterBetDTO>> getBetsHistory(@RequestParam(value = "teamName", required = false) String teamName,

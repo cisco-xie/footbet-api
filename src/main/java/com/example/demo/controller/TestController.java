@@ -17,6 +17,7 @@
 package com.example.demo.controller;
 
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.json.JSONObject;
 import com.example.demo.api.BetService;
 import com.example.demo.api.ConfigAccountService;
 import com.example.demo.api.HandicapApi;
@@ -28,6 +29,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
 
@@ -45,6 +47,8 @@ public class TestController extends BaseController {
     private BetService betService;
     @Resource
     private ConfigAccountService accountService;
+    @Resource
+    private SimpMessagingTemplate messagingTemplate;
 
     @Operation(summary = "登录所有盘口账号")
     @GetMapping("/login")
@@ -113,4 +117,13 @@ public class TestController extends BaseController {
         return Result.success();
     }
 
+    @GetMapping("/ws/debug/push")
+    public Result pushTest(@RequestParam String user) {
+        JSONObject msg = new JSONObject();
+        msg.set("debug", true);
+        msg.set("msg", "hello");
+        msg.set("betSuccessA", true);
+        messagingTemplate.convertAndSend("/topic/realtime/" + user, msg.toString());
+        return Result.success();
+    }
 }

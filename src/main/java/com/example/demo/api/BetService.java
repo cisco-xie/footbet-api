@@ -64,6 +64,8 @@ public class BetService {
     private SuccessBasedLimitManager limitManager;
     @Resource
     private SweepWaterThreadPoolHolder threadPoolHolder;
+    @Resource
+    private RealtimeIndexService realtimeIndexService;
 
     // 全局存储处理过的 ID
     private static final Set<String> processedIds = ConcurrentHashMap.newKeySet();
@@ -201,6 +203,92 @@ public class BetService {
         }
 
         return new PageResult<>(pageData, (long) total, pageNum, pageSize);
+    }
+
+    /**
+     * 获取实时投注记录-websocket增量版
+     * @param username
+     * @return
+     */
+    public PageResult<SweepwaterBetDTO> getRealTimeBets(
+            String username, String teamName, Integer pageNum, Integer pageSize, Integer sinceIndex) {
+
+        if (pageNum == null || pageNum < 1) pageNum = 1;
+        if (pageSize == null || pageSize < 1) pageSize = 10;
+
+        String indexKey = KeyUtil.genKey("INDEX", username, "realtime");
+        RList<String> index = businessPlatformRedissonClient.getList(indexKey);
+
+        int total = index.size();
+        if (total == 0) {
+            return new PageResult<>(Collections.emptyList(), 0L, pageNum, pageSize);
+        }
+
+        List<String> pageKeys;
+        if (sinceIndex != null && sinceIndex >= 0) {
+            // 增量拉取：从 sinceIndex 到 total-1（注意边界）
+            int start = sinceIndex;
+            if (start < 0) start = 0;
+            if (start >= total) {
+                return new PageResult<>(Collections.emptyList(), (long) total, pageNum, pageSize);
+            }
+            pageKeys = index.range(start, total - 1);
+            // 这里不需要分页，返回增量列表（倒序）
+            Collections.reverse(pageKeys);
+        } else {
+            // 旧的分页逻辑（倒序分页，最新在前）
+            int start = total - pageNum * pageSize;
+            if (start < 0) start = 0;
+            int end = total - (pageNum - 1) * pageSize - 1;
+            if (end < 0) {
+                return new PageResult<>(Collections.emptyList(), (long) total, pageNum, pageSize);
+            }
+            pageKeys = index.range(start, end);
+            Collections.reverse(pageKeys);
+        }
+
+        // 批量读取 bucket（同旧getRealTimeBets方法逻辑）
+        RBatch batch = businessPlatformRedissonClient.createBatch();
+        List<RFuture<Object>> futures = new ArrayList<>();
+        for (String key : pageKeys) {
+            futures.add(batch.getBucket(key).getAsync());
+        }
+        batch.execute();
+
+        List<SweepwaterBetDTO> pageData = new ArrayList<>();
+        for (RFuture<Object> future : futures) {
+            try {
+                Object json = future.toCompletableFuture().join();
+                if (json != null) {
+                    SweepwaterBetDTO dto = JSONUtil.toBean((String) json, SweepwaterBetDTO.class);
+                    if (StringUtils.isBlank(teamName) ||
+                            (dto.getTeam() != null && dto.getTeam().contains(teamName))) {
+                        pageData.add(dto);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("读取实时投注单缓存失败", e);
+            }
+        }
+
+        return new PageResult<>(pageData, (long) total, pageNum, pageSize);
+    }
+
+    /**
+     * 获取单条实时投注记录
+     * @param key
+     * @return
+     */
+    public SweepwaterBetDTO getRealTimeBetByKey(String key) {
+        try {
+            RBucket<String> bucket = businessPlatformRedissonClient.getBucket(key);
+            String json = bucket.get();
+            if (json == null) return null;
+            return JSONUtil.toBean(json, SweepwaterBetDTO.class);
+        } catch (Exception e) {
+            log.warn("getRealTimeBetByKey 失败 key={}", key, e);
+            return null;
+        }
     }
 
     /**
@@ -395,7 +483,6 @@ public class BetService {
                 continue; // 直接跳过
             }
 
-            processedIds.add(sweepwaterDTO.getId());
             SweepwaterBetDTO dto = new SweepwaterBetDTO();
             BeanUtils.copyProperties(sweepwaterDTO, dto);
             dto.setIsUnilateral(isUnilateral);
@@ -675,10 +762,7 @@ public class BetService {
                         "realtime",
                         dto.getId()
                 );
-                businessPlatformRedissonClient.getBucket(realTimeKey).set(json);
-                // 实时索引
-                String realTimeIndexKey = KeyUtil.genKey("INDEX", username, "realtime");
-                businessPlatformRedissonClient.getList(realTimeIndexKey).add(realTimeKey);
+                realtimeIndexService.pushRealtimeIndex(username, realTimeKey, json);
             } else {
                 // 没有一个成功就回滚投注次数
                 limitManager.rollbackReservation(limitKey, reservationId);
@@ -698,10 +782,6 @@ public class BetService {
      */
     public void betBySweepwater(String username, SweepwaterDTO sweepwaterDTO) {
         TimeInterval timerTotal = DateUtil.timer();
-        // 如果已经处理过，直接跳过
-        if (!processedIds.add(sweepwaterDTO.getId())) {
-            return;
-        }
 
         LimitDTO limitDTO = settingsBetService.getLimit(username);
         IntervalDTO intervalDTO = settingsBetService.getInterval(username);
@@ -1003,10 +1083,7 @@ public class BetService {
                     "realtime",
                     dto.getId()
             );
-            businessPlatformRedissonClient.getBucket(realTimeKey).set(json);
-            // 实时索引
-            String realTimeIndexKey = KeyUtil.genKey("INDEX", username, "realtime");
-            businessPlatformRedissonClient.getList(realTimeIndexKey).add(realTimeKey);
+            realtimeIndexService.pushRealtimeIndex(username, realTimeKey, json);
         } else {
             // 没有一个成功就回滚投注次数
             limitManager.rollbackReservation(limitKey, reservationId);
