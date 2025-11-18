@@ -63,7 +63,7 @@ public class AutoSweepwaterTask {
     private final LongAdder activeTasks = new LongAdder();
 
     // @Async("sweepTaskExecutor") // ✅ 独立线程池执行
-    @Scheduled(fixedRate = 300)
+    @Scheduled(fixedRate = 100)
     public void autoSweepwater() {
         // 非阻塞式尝试获取信号量，获取不到就跳过（不再执行新任务）
         if (!sweepPermits.tryAcquire()) {
@@ -94,10 +94,7 @@ public class AutoSweepwaterTask {
                 log.info("主动取消最老任务");
             }
         }*/
-        long submitTime = System.currentTimeMillis();
         threadPoolHolder.getSweepOrchestratorExecutor().submit(() -> {
-            long delay = System.currentTimeMillis() - submitTime;
-            log.info("本轮扫水-任务正式开始执行，延迟了: {}ms", delay);
             // 可中断
             if (Thread.currentThread().isInterrupted()) {
                 log.info("本轮扫水-任务还未开始就被中断，直接退出");
@@ -182,7 +179,7 @@ public class AutoSweepwaterTask {
         List<AdminLoginDTO> adminUsers = adminService.getUsers(null);
         adminUsers.removeIf(adminUser -> adminUser.getStatus() == 0);
         if (adminUsers.isEmpty()) {
-            log.info("没有开启投注的平台用户!!!");
+            // 没有开启投注的平台用户
             return;
         }
 
@@ -190,13 +187,13 @@ public class AutoSweepwaterTask {
                 .filter(adminUser -> adminUser.getRoles().contains("sweepwater"))
                 .toList();
         if (sweepwaterUsers.isEmpty()) {
-            log.info("没有扫水的平台用户!!!");
+            // 没有扫水的平台用户
             return;
         }
 
         adminUsers.removeIf(adminUser -> adminUser.getRoles().contains("sweepwater"));
         if (adminUsers.isEmpty()) {
-            log.info("没有开启投注的平台用户!!!");
+            // 没有开启投注的平台用户
             return;
         }
 
@@ -209,10 +206,9 @@ public class AutoSweepwaterTask {
                 .toList();
 
         if (myUsers.isEmpty()) {
-            log.info("当前服务器分片没有扫水用户，serverId={}", serverId);
+            // 当前服务器分片没有扫水用户
             return;
         }
-        log.info("当前服务器serverIndex:{}, 分片扫水用户:{}", serverIndex, myUsers);
 
         // 使用工作窃取线程池替代固定线程池
         ExecutorService executorAdminUserService = threadPoolHolder.getUserSweepExecutor();
@@ -221,18 +217,13 @@ public class AutoSweepwaterTask {
         try {
             List<CompletableFuture<Void>> adminFutures = myUsers.stream()
                     .map(adminUser -> {
-                        long submitTime = System.currentTimeMillis(); // 提交时记录
                         return CompletableFuture.runAsync(() -> {
                             if (Thread.currentThread().isInterrupted()) {
-                                log.info("子任务检测到中断，提前返回");
+                                // 子任务检测到中断，提前返回
                                 return;
                             }
-                            long startTime = System.currentTimeMillis(); // 正式开始执行时间
-                            long delay = startTime - submitTime; // 延迟时间
 
                             try {
-                                log.info("本轮扫水-用户:{},轮次id:{} 任务延迟启动: {}ms", adminUser.getUsername(), roundId, delay);
-
                                 long sweepStart = System.currentTimeMillis();
                                 sweepwaterService.sweepwater(adminUser.getUsername(), sweepwaterUsers, roundId);
                                 long cost = System.currentTimeMillis() - sweepStart;

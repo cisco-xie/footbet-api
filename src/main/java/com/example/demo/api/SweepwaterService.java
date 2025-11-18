@@ -528,7 +528,7 @@ public class SweepwaterService {
         List<List<BindLeagueVO>> bindLeagueVOList = bindDictService.getAllBindDict(username);
 
         if (CollUtil.isEmpty(bindLeagueVOList)) {
-            log.info("无球队绑定数据，平台用户:{}", username);
+            // 无球队绑定数据
             return;
         }
 
@@ -553,7 +553,7 @@ public class SweepwaterService {
                 .collect(Collectors.toList());
 
         if (CollUtil.isEmpty(filteredBindLeagueVOList)) {
-            log.info("无球队绑定数据，平台用户:{}", username);
+            // 无球队绑定数据
             return;
         }
 
@@ -570,12 +570,10 @@ public class SweepwaterService {
 
         ConcurrentHashMap<String, OddsCacheEntry> ecidFetchFutures = new ConcurrentHashMap<>();
         try {
-            TimeInterval configTimer = DateUtil.timer();
             CompletableFuture.allOf(
                     oddsScanFuture, profitFuture, intervalFuture, limitFuture,
                     typeFilterFuture, oddsRangesFuture, timeFramesFuture, websitesFuture
             ).get(1, TimeUnit.SECONDS); // 最多等1秒
-            log.info("sweepwater扫水-平台用户:{},获取配置项总耗时: {}ms", username, configTimer.interval());
 
             // 获取结果
             OddsScanDTO oddsScan = oddsScanFuture.get();
@@ -590,7 +588,7 @@ public class SweepwaterService {
             // 过滤掉未启用的网站
             websites.removeIf(website -> website.getEnable() == 0);
             if (CollUtil.isEmpty(websites)) {
-                log.info("无启用网站，平台用户:{}", username);
+                // 无启用网站
                 return;
             }
             // 转换为 Map<id, WebsiteVO>
@@ -600,14 +598,11 @@ public class SweepwaterService {
             // 用于记录已获取的 ecid 对应事件，避免重复请求远程 API
             // ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFuturesA = ecidFetchFutures;
             // ConcurrentHashMap<String, CompletableFuture<JSONArray>> ecidFetchFuturesB = ecidFetchFutures;
-            log.info("sweepwater 开始执行，平台用户:{}", username);
 
             // 联赛级线程池（外层）
             ExecutorService leagueExecutor = threadPoolHolder.getLeagueExecutor();
             // 赛事级线程池（内层）
             ExecutorService eventExecutor = threadPoolHolder.getEventExecutor();
-            // 球队赔率级线程池（内层）
-            ExecutorService teamOddsExecutor = threadPoolHolder.getTeamOddsExecutor();
 
             List<CompletableFuture<Void>> leagueFutures = new ArrayList<>();
 
@@ -620,12 +615,12 @@ public class SweepwaterService {
                         String websiteIdB = bindLeagueVO.getWebsiteIdB();
 
                         if (!websiteMap.containsKey(websiteIdA) || !websiteMap.containsKey(websiteIdB)) {
-                            log.info("扫水任务 - 网站idA[{}]idB[{}]存在未启用状态", websiteIdA, websiteIdB);
+                            // 网站存在未启用状态
                             return;
                         }
 
                         if (Thread.currentThread().isInterrupted()) {
-                            log.info("联赛任务检测到中断，提前返回");
+                            // 联赛任务检测到中断，提前返回
                             return;
                         }
                         List<CompletableFuture<Void>> eventFutures = new ArrayList<>();
@@ -719,7 +714,7 @@ public class SweepwaterService {
     ) {
         try {
             if (Thread.currentThread().isInterrupted()) {
-                log.info("球队任务检测到中断，提前返回");
+                // 球队任务检测到中断，提前返回
                 return;
             }
             String websiteIdA = bindLeagueVO.getWebsiteIdA();
@@ -1009,8 +1004,6 @@ public class SweepwaterService {
      * @param leagueIdB 联赛B ID
      * @param eventIdA 事件A ID
      * @param eventIdB 事件B ID
-     * @param isHomeA 是否主队A
-     * @param isHomeB 是否主队B
      * @return 扫水结果列表
      */
     public List<SweepwaterDTO> aggregateEventOdds(
@@ -1124,7 +1117,6 @@ public class SweepwaterService {
      *
      * @param eventJson 事件JSON数据
      * @param website 网站配置
-     * @param isHome 是否主队
      * @param typeFilter 类型过滤器
      * @param timeFrames 时间段配置列表
      * @return 处理过的事件数据
@@ -1223,7 +1215,6 @@ public class SweepwaterService {
      *
      * @param oddsData 赔率数据
      * @param website 网站配置
-     * @param isHome 是否主队
      * @param typeFilter 类型过滤器
      */
     private void cleanOddsData(
@@ -1456,7 +1447,6 @@ public class SweepwaterService {
                                     // 更新 lastTime
                                     updateLastTime(username, sweepwaterDTO, valueA, valueB);
                                     // 写入 Redis
-                                    log.info("扫水匹配到数据-保存扫水数据");
                                     saveSweepwater(username, sweepwaterDTO);
                                     if (sweepwaterDTO.getLastOddsTimeA() == sweepwaterDTO.getLastOddsTimeB()) {
                                         // 如果两个都是旧或者新,则不进行投注,不需要在前端显示
@@ -1524,7 +1514,6 @@ public class SweepwaterService {
      * @param leagueName    联赛名
      * @param key           letBall:让球盘，overSize:大小盘
      * @param oddsJson      投注的最终解析的赔率json
-     * @param isHome        是否是主队
      * @param amount        软件设置中的投注金额
      * @return
      */
