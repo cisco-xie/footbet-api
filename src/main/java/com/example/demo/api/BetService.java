@@ -307,7 +307,7 @@ public class BetService {
         if (pageNum == null || pageNum < 1) pageNum = 1;
         if (pageSize == null || pageSize < 1) pageSize = 10;
 
-        String indexKey = KeyUtil.genKey("INDEX", username, date);
+        String indexKey = KeyUtil.genKey("INDEX", username, "history", date);
         RList<String> index = businessPlatformRedissonClient.getList(indexKey);
         int totalIndex = index.size();
         if (totalIndex == 0) {
@@ -647,9 +647,7 @@ public class BetService {
                 );
                 businessPlatformRedissonClient.getBucket(key).set(json);
                 // 维护索引
-                String indexKey = KeyUtil.genKey("INDEX", username,
-                        date
-                );
+                String indexKey = KeyUtil.genKey("INDEX", username, "history", date);
                 businessPlatformRedissonClient.getList(indexKey).add(key);
 
                 // 保存投注信息作为实时记录
@@ -750,9 +748,7 @@ public class BetService {
                 );
                 businessPlatformRedissonClient.getBucket(key).set(json);
                 // 维护索引
-                String indexKey = KeyUtil.genKey("INDEX", username,
-                        date
-                        );
+                String indexKey = KeyUtil.genKey("INDEX", username, "history", date);
                 businessPlatformRedissonClient.getList(indexKey).add(key);
 
                 // 保存投注信息作为实时记录
@@ -968,9 +964,7 @@ public class BetService {
             );
             businessPlatformRedissonClient.getBucket(key).set(json);
             // 维护索引
-            String indexKey = KeyUtil.genKey("INDEX", username,
-                    date
-            );
+            String indexKey = KeyUtil.genKey("INDEX", username, "history", date);
             businessPlatformRedissonClient.getList(indexKey).add(key);
 
             // 保存投注信息作为实时记录
@@ -1071,9 +1065,7 @@ public class BetService {
             );
             businessPlatformRedissonClient.getBucket(key).set(json);
             // 维护索引
-            String indexKey = KeyUtil.genKey("INDEX", username,
-                    date
-            );
+            String indexKey = KeyUtil.genKey("INDEX", username, "history", date);
             businessPlatformRedissonClient.getList(indexKey).add(key);
 
             // 保存投注信息作为实时记录
@@ -1247,12 +1239,12 @@ public class BetService {
                 }
 
                 // 投注预览
-                JSONObject betPreview = new JSONObject();
+                /*JSONObject betPreview = new JSONObject();
                 try {
                     log.info("用户 {}, 网站:{} 进入最终投注预览", username, WebsiteType.getById(websiteId).getDescription());
                     betPreview = buildBetInfo(username, betTeamName, websiteId, params, isA, dto);
                     log.info("用户 {}, 网站:{} 进入最终投注预览，betPreview={}", username, WebsiteType.getById(websiteId).getDescription(), betPreview);
-                    if (betPreview == null || betPreview.isEmpty()) {
+                    if (betPreview == null || betPreview.isEmpty()) {*/
                     /*log.info("用户 {}, 网站:{} 投注预览失败，eventId={}", username, WebsiteType.getById(websiteId).getDescription(), eventId);
                     result.putOpt("isBet", false);
                     result.putOpt("success", false);
@@ -1261,8 +1253,8 @@ public class BetService {
                     // 撤销预占间隔
                     releaseIntervalKey(intervalKey);
                     return result;*/
-                        betPreview = betPreviewOpt;
-                    }
+                        /*betPreview = betPreviewOpt;
+                    }*/
                 /*else {
                     log.info("用户 {}, 网站:{} 投注预览成功，eventId={}, isA={}, 预览结果={}, 原本手动解析的betInfo={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, betPreview, isA ? dto.getBetInfoA() : dto.getBetInfoB());
                     if (isA) {
@@ -1271,10 +1263,10 @@ public class BetService {
                         dto.setBetInfoB(betPreview.getJSONObject("betInfo"));
                     }
                 }*/
-                } catch (Exception e) {
+                /*} catch (Exception e) {
                     betPreview = betPreviewOpt;
-                }
-                JSONObject betInfo = betPreview.getJSONObject("betInfo");
+                }*/
+                JSONObject betInfo = betPreviewOpt.getJSONObject("betInfo");
                 // 更新赔率
                 BigDecimal odds = betInfo.getBigDecimal("oddsValue");
                 if (isA) {
@@ -1339,7 +1331,7 @@ public class BetService {
 
                 // 投注
                 log.info("用户 {}, 网站:{} 开始投注，eventId={}, isA={}, 投注参数={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, params);
-                Object betResult = handicapApi.bet(username, websiteId, params, betPreview.getJSONObject("betInfo"), betPreview.getJSONObject("betPreview"), handicapValue);
+                Object betResult = handicapApi.bet(username, websiteId, params, betPreviewOpt.getJSONObject("betInfo"), betPreviewOpt.getJSONObject("betPreview"), handicapValue);
                 if (isA) {
                     dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                 } else {
@@ -1366,7 +1358,14 @@ public class BetService {
                             }
 
                             if (betInfoToStore != null) {
-                                businessPlatformRedissonClient.getList(successKey).add(betInfoToStore);
+                                RKeys rKeys = businessPlatformRedissonClient.getKeys();
+                                RList<JSONObject> successList = businessPlatformRedissonClient.getList(successKey);
+                                successList.add(betInfoToStore);
+                                // 只在 key 第一次出现或无 TTL 时设置 TTL（避免每次刷新）
+                                long remain = rKeys.remainTimeToLive(successKey); // 返回毫秒级别的剩余时间，若无TTL返回 -1，若key不存在返回 -2
+                                if (remain == -1 || remain == -2) {
+                                    rKeys.expire(successKey, 1, TimeUnit.DAYS);
+                                }
                             }
                         } catch (Exception e) {
                             log.info("异步记录投注成功失败:", e);
@@ -2048,4 +2047,56 @@ public class BetService {
         log.info("获取未结注单结束，总耗时 {} ms", timerTotal.interval());
     }
 
+    /**
+     * 删除用户所有历史注单（谨慎使用）
+     * @param username 用户名
+     */
+    public int deleteAllUserBetHistory(String username) {
+        int totalDeleted = 0;
+        try {
+            // 使用Redis的keys命令查找所有相关的索引key（注意：keys命令在生产环境要慎用）
+            String indexPattern = KeyUtil.genKey("INDEX", username, "history", "*");
+            Iterable<String> indexKeys = businessPlatformRedissonClient.getKeys().getKeysByPattern(indexPattern);
+
+            for (String indexKey : indexKeys) {
+                // 解析日期
+                String[] parts = indexKey.split(":");
+                if (parts.length >= 4) {
+                    String date = parts[parts.length - 1];
+                    totalDeleted += deleteBetHistoryByDateAndReturnCount(username, date);
+                }
+            }
+
+            log.warn("删除用户 {} 的所有历史注单，共删除 {} 天的数据", username, totalDeleted);
+        } catch (Exception e) {
+            log.error("删除用户 {} 所有历史注单失败", username, e);
+            throw new RuntimeException("删除所有注单历史失败", e);
+        }
+        return totalDeleted;
+    }
+
+    /**
+     * 删除指定日期的注单并返回删除数量
+     */
+    private int deleteBetHistoryByDateAndReturnCount(String username, String date) {
+        try {
+            String indexKey = KeyUtil.genKey("INDEX", username, "history", date);
+            RList<String> betKeys = businessPlatformRedissonClient.getList(indexKey);
+            List<String> keys = betKeys.readAll();
+
+            if (CollUtil.isNotEmpty(keys)) {
+                RBatch batch = businessPlatformRedissonClient.createBatch();
+                for (String key : keys) {
+                    batch.getBucket(key).deleteAsync();
+                }
+                batch.execute();
+            }
+
+            betKeys.delete();
+            return keys.size();
+        } catch (Exception e) {
+            log.error("删除用户 {} 在 {} 的注单失败", username, date, e);
+            return 0;
+        }
+    }
 }
