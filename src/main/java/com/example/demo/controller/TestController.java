@@ -117,6 +117,7 @@ public class TestController extends BaseController {
         return Result.success();
     }
 
+    @Operation(summary = "给websocket发一条通知,模拟出现了新注单")
     @GetMapping("/ws/debug/push")
     public Result pushTest(@RequestParam String user) {
         JSONObject msg = new JSONObject();
@@ -126,4 +127,12 @@ public class TestController extends BaseController {
         messagingTemplate.convertAndSend("/topic/realtime/" + user, msg.toString());
         return Result.success();
     }
+
+    @Operation(summary = "删除用户历史所有注单列表")
+    @DeleteMapping("/bet")
+    public Result delBet() {
+        AdminLoginDTO admin = getUser();
+        return Result.success(betService.deleteAllUserBetHistory(admin.getUsername()));
+    }
+
 }

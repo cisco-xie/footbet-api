@@ -42,7 +42,8 @@ public class RealtimeRedisSubscriber implements InitializingBean, DisposableBean
 
                 // 转发到 websocket topic，客户端订阅 /topic/realtime/{username}
                 log.info("转发到 /topic/realtime/{} 内容: {}", username, json);
-                messagingTemplate.convertAndSend("/topic/realtime/" + username, json.toString());
+                messagingTemplate.convertAndSend("/topic/realtime/list/" + username, json.toString());
+                messagingTemplate.convertAndSend("/topic/realtime/prompt/" + username, json.toString());
                 log.info("转发完成 -> /topic/realtime/{}", username);
             } catch (Exception e) {
                 log.info("转发 redis->ws 失败 msg={}", msg, e);
