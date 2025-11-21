@@ -610,9 +610,6 @@ public class BetService {
             }
             // ✅ 仅保留 3 位小数（不四舍五入）
             water = water.setScale(3, RoundingMode.DOWN);
-            dto.setOddsA(oddsA);
-            dto.setOddsB(oddsB);
-            dto.setWater(String.valueOf(water));
 
             boolean valid = false;
             if ("letBall".equals(dto.getHandicapType())) {
@@ -621,8 +618,13 @@ public class BetService {
                 valid = water.compareTo(BigDecimal.valueOf(profit.getRollingSize())) >= 0;
             }
 
-            if (!valid) {
-                log.info("赛事预览水位不足，id={}，A={}, B={}, 总和={}，不投注", dto.getId(), oddsA, oddsB, water);
+            if (!valid || !dto.getOddsA().equals(oddsA) || !dto.getOddsB().equals(oddsB)) {
+
+                log.info("赛事预览水位不足或赔率出现变动，id={}，扫水时的赔率A={}, B={}, 水位={}，校验时赔率A={}, B={}, 水位={}，不投注", dto.getId(), dto.getOddsA(), dto.getOddsB(), dto.getWater(), oddsA, oddsB, water);
+
+                dto.setOddsA(oddsA);
+                dto.setOddsB(oddsB);
+                dto.setWater(String.valueOf(water));
 
                 String betTime = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN);
                 dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
@@ -1358,14 +1360,10 @@ public class BetService {
                             }
 
                             if (betInfoToStore != null) {
-                                RKeys rKeys = businessPlatformRedissonClient.getKeys();
                                 RList<JSONObject> successList = businessPlatformRedissonClient.getList(successKey);
                                 successList.add(betInfoToStore);
-                                // 只在 key 第一次出现或无 TTL 时设置 TTL（避免每次刷新）
-                                long remain = rKeys.remainTimeToLive(successKey); // 返回毫秒级别的剩余时间，若无TTL返回 -1，若key不存在返回 -2
-                                if (remain == -1 || remain == -2) {
-                                    rKeys.expire(successKey, 1, TimeUnit.DAYS);
-                                }
+                                // 直接设置 TTL（无条件）
+                                businessPlatformRedissonClient.getKeys().expire(successKey, 1, TimeUnit.DAYS);
                             }
                         } catch (Exception e) {
                             log.info("异步记录投注成功失败:", e);
