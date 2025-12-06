@@ -16,6 +16,7 @@ import com.example.demo.core.exception.BusinessException;
 import com.example.demo.core.factory.ApiHandler;
 import com.example.demo.model.vo.ConfigAccountVO;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -64,6 +65,8 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
         headers.put("x-slid", slid);
         headers.put("x-u", params.getStr("X-U"));
         headers.put("cookie", cookie);
+        headers.put("v-hucode", params.getStr("hucode"));
+        headers.put("x-app-data", params.getStr("x-app-data"));
 
         return headers;
     }
@@ -102,7 +105,7 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
 
         // 1. 检查 HTTP 响应状态码
         if (status != 200) {
-            log.warn("[平博][投注预览][失败][状态码={}]", status);
+            log.warn("[平博][投注预览][失败][状态码={}][body={}][params={}]", status, response.getBody(), params);
 
             result.putOpt("code", status);
             result.putOpt("success", false);
@@ -206,6 +209,7 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
         // 拼接完整的 URL
         String fullUrl = String.format("%s%s?%s", baseUrl, apiUrl, queryParams);
 
+        buildCurlCommand(fullUrl, requestHeaders, requestBody);
         // 发送请求
         OkHttpProxyDispatcher.HttpResult resultHttp;
         try {
@@ -214,7 +218,45 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
             log.error("请求异常，用户:{}, 账号:{}, 参数:{}, 错误:{}", username, userConfig.getAccount(), requestBody, e.getMessage(), e);
             throw new BusinessException(SystemError.SYS_400);
         }
+        log.warn("[平博][请求详情][url={}][headers={}][body={}]", fullUrl, requestHeaders, requestBody);
+        log.warn("[平博][响应状态={}][响应头={}]", resultHttp.getStatus(), resultHttp.getHeaders());
+        log.warn("[平博][响应体（raw）]{}", resultHttp.getBody());
+
         // 解析响应并返回
         return parseResponse(params, resultHttp);
+    }
+
+    private void buildCurlCommand(String fullUrl, Map<String, String> requestHeaders, String requestBody) {
+        // ========== 生成 curl 请求命令（Java 可直接使用） ==========
+        try {
+            StringBuilder curl = new StringBuilder();
+            curl.append("curl -i -X POST ");
+            curl.append("  '").append(fullUrl).append("' ");
+
+            // 添加 Header
+            for (Map.Entry<String, String> entry : requestHeaders.entrySet()) {
+                String key = entry.getKey();
+                String value = entry.getValue();
+
+                // 可根据需要屏蔽敏感字段
+                // if ("Authorization".equalsIgnoreCase(key)) value = "***";
+
+                curl.append("  -H '")
+                        .append(key).append(": ").append(value)
+                        .append("' ");
+            }
+
+            // Escape Body（Linux / Mac / Windows 全兼容）
+            String escapedBody = requestBody
+                    .replace("\\", "\\\\")
+                    .replace("'", "'\"'\"'");
+
+            curl.append("  --data-raw '").append(escapedBody).append("'");
+
+            log.info("[DEBUG][复现 CURL]{}", curl);
+        } catch (Exception e) {
+            log.error("打印 curl 命令异常: {}", e.getMessage(), e);
+        }
+
     }
 }

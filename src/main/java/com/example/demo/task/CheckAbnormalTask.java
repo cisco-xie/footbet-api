@@ -60,7 +60,7 @@ public class CheckAbnormalTask {
     private int serverCount;
 
     // 上一次任务完成后再延迟 20 分钟后执行
-    @Scheduled(fixedDelay = 20 * 60 * 1000)
+    // @Scheduled(fixedDelay = 20 * 60 * 1000)
     public void check() {
         long startTime = System.currentTimeMillis();
         try {

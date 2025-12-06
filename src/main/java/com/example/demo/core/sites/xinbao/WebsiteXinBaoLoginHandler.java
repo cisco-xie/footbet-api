@@ -75,7 +75,7 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
     @Override
     public String buildRequest(JSONObject params) {
         // 构造请求体
-        return String.format("p=chk_login&langx=zh-cn&ver=%s&username=%s&password=%s&app=N&auto=CDDFZD&blackbox=%s&userAgent=%s",
+        return String.format("p=chk_login&langx=zh-cn&ver=%s&username=%s&password=%s&app=N&auto=GHDFID&blackbox=%s&userAgent=%s",
                 Constants.VER,
                 params.getStr("username"),
                 params.getStr("password"),
@@ -179,6 +179,9 @@ public class WebsiteXinBaoLoginHandler implements ApiHandler {
             log.error("请求异常，用户:{}, 账号:{}, 参数:{}, 错误:{}", username, userConfig.getAccount(), requestBody, e.getMessage(), e);
             throw new BusinessException(SystemError.SYS_400);
         }
+        log.warn("[新二][请求详情][url={}][headers={}][body={}]", fullUrl, requestHeaders, requestBody);
+        log.warn("[新二][响应状态={}][响应头={}]", resultHttp.getStatus(), resultHttp.getHeaders());
+        log.warn("[新二][响应体（raw）]{}", resultHttp.getBody());
         // 解析响应并返回
         return parseResponse(params, resultHttp);
     }

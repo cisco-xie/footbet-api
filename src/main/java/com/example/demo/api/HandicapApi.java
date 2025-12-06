@@ -357,14 +357,13 @@ public class HandicapApi {
 
     // 运行检测账户名工厂
     public void checkUsername(String username, ConfigAccountVO accountVO, String websiteId, String uid, String account, Map<String, Integer> retryMap) {
-        TimeInterval timer = DateUtil.timer();
         WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
         ApiHandler apiHandler = factory.checkUsername();
         if (apiHandler == null) {
             return;
         }
 
-        String chkName = account + "A"; // 初始尝试名
+        String chkName = account + RandomUtil.randomStringLower(4); // 初始尝试名
         JSONObject params = new JSONObject();
         params.putOpt("adminUsername", username);
         params.putOpt("websiteId", websiteId);
@@ -374,9 +373,9 @@ public class HandicapApi {
             return;
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + accountVO.getToken().getStr("token"));
-            String prefix = accountVO.getAccount().substring(0, 6);
+            String prefix = accountVO.getAccount().substring(0, 4);
             String suffix = RandomUtil.randomNumbers(3);
-            chkName = prefix + suffix + "A";
+            chkName = prefix + suffix + RandomUtil.randomStringLower(4);
             params.putOpt("loginName", chkName);
         } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putOpt("uid", uid);
@@ -391,7 +390,7 @@ public class HandicapApi {
             changeUsername(username, accountVO, websiteId, uid, account, chkName, retryMap);
         } else {
             // 检测失败，尝试使用新用户名重试
-            String randomSuffix = RandomUtil.randomNumbers(3);
+            String randomSuffix = RandomUtil.randomStringLower(4);
             String newChkName = account + randomSuffix;
             log.warn("首次检测用户名失败，尝试使用新用户名：{}", newChkName);
 
@@ -1261,6 +1260,7 @@ public class HandicapApi {
                 // 根据不同站点传入不同的参数
                 if (WebsiteType.PINGBO.getId().equals(websiteId)) {
                     params.putAll(account.getToken().getJSONObject("tokens"));
+                    params.putOpt("hucode", account.getHucode());
                     params.putOpt("oddsId", odds.getStr("oddsId"));
                     params.putOpt("selectionId", odds.getStr("selectionId"));
                     // 转换赔率类型

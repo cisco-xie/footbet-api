@@ -116,6 +116,8 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
             responseJson.putOpt("msg", "账户登录失败");
             return responseJson;
         }
+
+        responseJson.getJSONObject("tokens").putOpt("x-app-data", result.getHeaders().get("x-app-data").toString().replace("[", "").replace("]", ""));
         responseJson.putOpt("success", true);
         responseJson.putOpt("msg", "账户登录成功");
         return responseJson;

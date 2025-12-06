@@ -37,6 +37,8 @@ public class ConfigAccountVO {
     private String specifyWebsite;
     @Schema(description = "投注金额倍数 默认1")
     private double multiple = 1;
+    @NotBlank(message = "投注预览的验证code,暂时每个账户写死")
+    private String hucode;
     // 代理类型 1HTTP 2SOCKS
     private Integer proxyType;
     // 代理IP

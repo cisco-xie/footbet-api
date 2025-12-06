@@ -22,6 +22,7 @@ import com.example.demo.api.BetService;
 import com.example.demo.api.ConfigAccountService;
 import com.example.demo.api.HandicapApi;
 import com.example.demo.api.SweepwaterService;
+import com.example.demo.config.SuccessBasedLimitManager;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
@@ -49,6 +50,8 @@ public class TestController extends BaseController {
     private ConfigAccountService accountService;
     @Resource
     private SimpMessagingTemplate messagingTemplate;
+    @Resource
+    private SuccessBasedLimitManager limitManager;
 
     @Operation(summary = "登录所有盘口账号")
     @GetMapping("/login")
@@ -133,6 +136,19 @@ public class TestController extends BaseController {
     public Result delBet() {
         AdminLoginDTO admin = getUser();
         return Result.success(betService.deleteAllUserBetHistory(admin.getUsername()));
+    }
+
+    @Operation(summary = "投注次数间隔限制-手动触发状态打印")
+    @GetMapping("/limit/print")
+    public Result limitManager() {
+        limitManager.triggerManualPrint();
+        return Result.success();
+    }
+
+    @Operation(summary = "投注次数间隔限制-获取所有limitKey的列表")
+    @GetMapping("/limit/list")
+    public Result getAllLimitKeys() {
+        return Result.success(limitManager.getAllLimitKeys());
     }
 
 }

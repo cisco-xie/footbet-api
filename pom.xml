@@ -14,7 +14,7 @@
         <spring-boot.version>3.0.2</spring-boot.version>
         <tess4j.version>5.8.0</tess4j.version>
         <jsoup.version>1.18.1</jsoup.version>
-        <hutool.version>5.8.33</hutool.version>
+        <hutool.version>5.8.41</hutool.version>
         <knife4j.version>4.4.0</knife4j.version>
         <redisson.version>3.23.4</redisson.version>
         <selenium.version>4.12.1</selenium.version>
