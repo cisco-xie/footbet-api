@@ -16,6 +16,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -252,6 +253,9 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                 // 平手盘（0）
                                 JSONObject draw = new JSONObject();
 
+                                // 获取参考方向
+                                RefDirection zeroRefDirection = detectZeroRefDirection(letBallJson);
+
                                 int positionLetBall = 0;
                                 for (Object letBall : letBallJson) {
                                     JSONArray letBallJsonArr = (JSONArray) letBall;
@@ -279,7 +283,24 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                     homeOddsJson.putOpt("odds", letBallJsonArr.getBigDecimal(3));                    // 投注赔率
                                     double handicapHome = letBallJsonArr.getDouble(1);
                                     String letKey = "0.0".equals(letBallJsonArr.getStr(2)) ? "0" : letBallJsonArr.getStr(2);
-                                    if (handicapHome < 0) {
+                                    boolean isZero = BigDecimal.ZERO.compareTo(BigDecimal.valueOf(handicapHome)) == 0;
+
+                                    if (isZero) {
+                                        homeOddsJson.putOpt("isZero", true);
+                                        homeOddsJson.putOpt("refDirection", zeroRefDirection.name());
+                                        /*if (zeroRefDirection == RefDirection.GIVING) {
+                                            // 主队假装是让球方 → 上盘
+                                            up.putOpt("0", homeOddsJson);
+                                            homeOddsJson.putOpt("wall", "hanging");
+                                        } else if (zeroRefDirection == RefDirection.RECEIVING) {
+                                            // 主队假装是受让方 → 下盘
+                                            down.putOpt("0", homeOddsJson);
+                                            homeOddsJson.putOpt("wall", "foot");
+                                        }*/
+                                        // 平手盘强行主队是上盘
+                                        up.putOpt("0", homeOddsJson);
+                                        homeOddsJson.putOpt("wall", "hanging");
+                                    } else if (handicapHome < 0) {
                                         // 让球，上盘
                                         up.putOpt(letKey, homeOddsJson);
                                         wallAway.set("hanging");
@@ -287,9 +308,6 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                         // 被让球，下盘
                                         down.putOpt(letKey, homeOddsJson);
                                         wallAway.set("foot");
-                                    } else {
-                                        // 0 平手盘
-                                        // draw.putOpt(letKey, homeOddsJson);
                                     }
 
                                     JSONObject awayOddsJson = new JSONObject();
@@ -304,7 +322,24 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                     awayOddsJson.putOpt("handicap", letBallJsonArr.get(0));
                                     awayOddsJson.putOpt("odds", letBallJsonArr.getBigDecimal(4));                    // 投注赔率
                                     double handicapAway = letBallJsonArr.getDouble(0);
-                                    if (handicapAway < 0) {
+                                    boolean isZeroAway = BigDecimal.ZERO.compareTo(BigDecimal.valueOf(handicapAway)) == 0;
+
+                                    if (isZeroAway) {
+                                        awayOddsJson.putOpt("isZero", true);
+                                        awayOddsJson.putOpt("refDirection", zeroRefDirection.name());
+                                        /*if (zeroRefDirection == RefDirection.GIVING) {
+                                            // 主队让球 → 客队受让 → 下盘
+                                            down.putOpt("0", awayOddsJson);
+                                            awayOddsJson.putOpt("wall", "foot");
+                                        } else if (zeroRefDirection == RefDirection.RECEIVING) {
+                                            // 主队受让 → 客队让球 → 上盘
+                                            up.putOpt("0", awayOddsJson);
+                                            awayOddsJson.putOpt("wall", "hanging");
+                                        }*/
+                                        // 平手盘强客主队是下盘
+                                        down.putOpt("0", awayOddsJson);
+                                        homeOddsJson.putOpt("wall", "hanging");
+                                    } else if (handicapAway < 0) {
                                         // 让球，上盘
                                         up.putOpt(letKey, awayOddsJson);
                                         wallAway.set("hanging");
@@ -397,6 +432,8 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                 JSONObject up = new JSONObject();
                                 // 下盘（受让方）
                                 JSONObject down = new JSONObject();
+                                // 获取参考方向
+                                RefDirection zeroRefDirection = detectZeroRefDirection(firstHalfLetBallJson);
                                 int positionLetBall = 0;
                                 for(Object letBall : firstHalfLetBallJson) {
                                     JSONArray letBallJsonArr = (JSONArray) letBall;
@@ -425,7 +462,24 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                     homeOddsJson.putOpt("odds", letBallJsonArr.getBigDecimal(3)); // 投注赔率
                                     double handicapHome = letBallJsonArr.getDouble(1);
                                     String letKey = "0.0".equals(letBallJsonArr.getStr(2)) ? "0" : letBallJsonArr.getStr(2);
-                                    if (handicapHome < 0) {
+                                    boolean isZero = BigDecimal.ZERO.compareTo(BigDecimal.valueOf(handicapHome)) == 0;
+
+                                    if (isZero) {
+                                        homeOddsJson.putOpt("isZero", true);
+                                        homeOddsJson.putOpt("refDirection", zeroRefDirection.name());
+                                        /*if (zeroRefDirection == RefDirection.GIVING) {
+                                            // 主队让球 → 上盘
+                                            up.putOpt("0", homeOddsJson);
+                                            homeOddsJson.putOpt("wall", "hanging");
+                                        } else if (zeroRefDirection == RefDirection.RECEIVING) {
+                                            // 主队受让 → 下盘
+                                            down.putOpt("0", homeOddsJson);
+                                            homeOddsJson.putOpt("wall", "foot");
+                                        }*/
+                                        // 平手盘强行主队是上盘
+                                        up.putOpt("0", homeOddsJson);
+                                        homeOddsJson.putOpt("wall", "hanging");
+                                    } else if (handicapHome < 0) {
                                         // 让球，上盘
                                         up.putOpt(letKey, homeOddsJson);
                                         wallAway.set("hanging");
@@ -446,7 +500,24 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                     awayOddsJson.putOpt("handicap", letBallJsonArr.get(0));
                                     awayOddsJson.putOpt("odds", letBallJsonArr.getBigDecimal(4)); // 投注赔率
                                     double handicapAway = letBallJsonArr.getDouble(1);
-                                    if (handicapAway < 0) {
+                                    boolean isZeroAway = BigDecimal.ZERO.compareTo(BigDecimal.valueOf(handicapAway)) == 0;
+
+                                    if (isZeroAway) {
+                                        awayOddsJson.putOpt("isZero", true);
+                                        awayOddsJson.putOpt("refDirection", zeroRefDirection.name());
+                                        /*if (zeroRefDirection == RefDirection.GIVING) {
+                                            // 主队让球 → 客队受让 → 下盘
+                                            down.putOpt("0", awayOddsJson);
+                                            awayOddsJson.putOpt("wall", "foot");
+                                        } else if (zeroRefDirection == RefDirection.RECEIVING) {
+                                            // 主队受让 → 客队让球 → 上盘
+                                            up.putOpt("0", awayOddsJson);
+                                            awayOddsJson.putOpt("wall", "hanging");
+                                        }*/
+                                        // 平手盘强行客队是下盘
+                                        down.putOpt("0", awayOddsJson);
+                                        homeOddsJson.putOpt("wall", "hanging");
+                                    } else if (handicapAway < 0) {
                                         // 让球，上盘
                                         up.putOpt(letKey, awayOddsJson);
                                         wallAway.set("hanging");
@@ -555,6 +626,81 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
     }
 
     /**
+     * 参考方向枚举
+     */
+    public enum RefDirection {
+        GIVING,     // 让球方
+        RECEIVING,  // 受让方
+        UNKNOWN
+    }
+
+    private void putZeroLetBall(JSONObject up, JSONObject down,
+                                JSONObject homeOddsJson, JSONObject awayOddsJson,
+                                RefDirection zeroRefDirection) {
+        if (zeroRefDirection == RefDirection.GIVING) {
+            // 主队假装是让球方 → 上盘
+            homeOddsJson.putOpt("wall", "hanging");
+            awayOddsJson.putOpt("wall", "foot");
+            up.putOpt("0", homeOddsJson);
+            down.putOpt("0", awayOddsJson);
+        } else if (zeroRefDirection == RefDirection.RECEIVING) {
+            // 主队受让 → 下盘
+            homeOddsJson.putOpt("wall", "foot");
+            awayOddsJson.putOpt("wall", "hanging");
+            down.putOpt("0", homeOddsJson);
+            up.putOpt("0", awayOddsJson);
+        } else {
+            // 备用方案，默认主队上盘
+            homeOddsJson.putOpt("wall", "hanging");
+            awayOddsJson.putOpt("wall", "foot");
+            up.putOpt("0", homeOddsJson);
+            down.putOpt("0", awayOddsJson);
+        }
+    }
+
+
+    /**
+     * 平手盘参考方向探测方法
+     * 按“最接近 0 的非 0 盘口”判定方向
+     * @param letBallJson
+     * @return
+     */
+    private RefDirection detectZeroRefDirection(JSONArray letBallJson) {
+
+        BigDecimal minAbs = null;
+        RefDirection ref = RefDirection.UNKNOWN;
+
+        for (Object obj : letBallJson) {
+            JSONArray arr = (JSONArray) obj;
+
+            BigDecimal homeHandicap = arr.getBigDecimal(1);
+            if (homeHandicap == null) {
+                continue;
+            }
+
+            // 跳过 0 盘口
+            if (homeHandicap.compareTo(BigDecimal.ZERO) == 0) {
+                continue;
+            }
+
+            BigDecimal abs = homeHandicap.abs();
+
+            // 选“离 0 最近”的非 0 盘口
+            if (minAbs == null || abs.compareTo(minAbs) < 0) {
+                minAbs = abs;
+
+                if (homeHandicap.compareTo(BigDecimal.ZERO) < 0) {
+                    ref = RefDirection.GIVING;     // 主队让球
+                } else {
+                    ref = RefDirection.RECEIVING;  // 主队受让
+                }
+            }
+        }
+
+        return ref;
+    }
+
+    /**
      * 发送账户额度请求并返回结果
      * @param params 请求参数
      * @return 结果
@@ -616,4 +762,5 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
         // 解析响应并返回
         return parseResponse(params, resultHttp);
     }
+
 }

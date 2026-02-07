@@ -787,22 +787,22 @@ public class HandicapApi {
             // 防止 AtomicInteger 溢出
             int idx = indexRef.getAndUpdate(val -> (val + 1) % size);
             ConfigAccountVO account = accounts.get(idx);
+            if (account.getIsTokenValid() == 0) {
+                // 未登录直接跳过
+                continue;
+            }
             String accountName = account.getAccount();
             // 检查冷却时间
             long now = System.currentTimeMillis();
             long lastUsed = accountCooldownMap.getOrDefault(accountName, 0L);
-
-            if (now - lastUsed < cooldownMillis) {
-                log.info("获取赛事列表,平台用户:{},网站:{},账号 [{}] 正在冷却中，跳过", username, WebsiteType.getById(websiteId).getDescription(), accountName);
+            long lastUsedMill = now - lastUsed;
+            if (lastUsedMill < cooldownMillis) {
+                log.info("获取赛事列表,平台用户:{},网站:{},账号 [{}] 正在冷却中，跳过，剩余冷却时间[{}]毫秒, 当前accountCooldownMap大小为[{}]", username, WebsiteType.getById(websiteId).getDescription(), accountName, cooldownMillis - lastUsedMill, accountCooldownMap.size());
                 continue;
             }
 
             log.info("获取赛事列表,平台用户:{},网站:{},idx:{},账号:{}", username, WebsiteType.getById(websiteId).getDescription(), idx, accountName);
 
-            if (account.getIsTokenValid() == 0) {
-                // 未登录直接跳过
-                continue;
-            }
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
 
             ApiHandler apiHandler = factory.getEventsOddsHandler();
@@ -1369,11 +1369,16 @@ public class HandicapApi {
         int size = accounts.size();
         String key = username + ":" + websiteId;
         // 使用随机起点初始化轮询索引,避免每次都从0开始，防止短时间内让多个用户请求打在同一个账号上
-        AtomicInteger indexRef = accountIndexMap.computeIfAbsent(key, k -> new AtomicInteger(RandomUtil.randomInt(size)));
+        // AtomicInteger indexRef = accountIndexMap.computeIfAbsent(key, k -> new AtomicInteger(RandomUtil.randomInt(size)));
+        // 顺序轮询索引
+        AtomicInteger indexRef = accountIndexSequenceMap.computeIfAbsent(key, k -> new AtomicInteger(0));
 
         String targeAccount = betPreviewJson.getStr("account");
         for (int i = 0; i < size; i++) {
-            int idx = Math.abs(indexRef.getAndIncrement() % size);
+            // 获取当前索引，并将其原子地更新为 (n+1) % size，避免索引无限增大
+            int current = indexRef.getAndUpdate(n -> (n + 1) % size);
+            // 使用 floorMod 更稳健（虽然 current>=0，但这是个好习惯）
+            int idx = Math.floorMod(current, size);
             ConfigAccountVO account = accounts.get(idx);
             if (!account.getAccount().equals(targeAccount)) {
                 log.info("投注操作,网站:{},idx:{},账号:{}不是投注预览账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, account.getAccount(), betPreviewJson.getStr("account"));

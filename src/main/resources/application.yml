@@ -5,8 +5,8 @@ spring:
   # redis配置
   data:
     redis:
-      host: 192.168.1.11
-#      host: 127.0.0.1
+#      host: 192.168.1.11
+      host: 127.0.0.1
       port: 6379
       timeout: 5s
       database: 2
@@ -23,4 +23,4 @@ redis:
 # 扫水服务器数
 sweepwater:
   server:
-    count: 2
+    count: 1

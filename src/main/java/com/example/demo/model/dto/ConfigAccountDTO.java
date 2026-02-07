@@ -44,6 +44,8 @@ public class ConfigAccountDTO {
     private String proxyPassword;
     // 是否登录
     private Integer isTokenValid;
+    @NotBlank(message = "投注预览的验证code,暂时每个账户写死")
+    private String hucode;
     // 盘口token json
     private JSONObject token;
     @Schema(description = "执行信息")

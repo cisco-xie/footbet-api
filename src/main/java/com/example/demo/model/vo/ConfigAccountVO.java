@@ -84,8 +84,16 @@ public class ConfigAccountVO {
         if (proxyType == null || proxyType == 0) {
             return "no-proxy"; // ✅ 与默认客户端对应
         }
+        // 检查 host 和 port
+        if (proxyHost == null || proxyHost.isBlank() || proxyPort == null || proxyPort <= 0) {
+            return "no-proxy"; // 安全回退
+        }
+
+        // 自动获取代理（3）统一映射为 HTTP
+        int type = (proxyType == 3 ? 1 : proxyType);
+
         // 用 host:port + 类型 + 用户名 拼出一个唯一 key
-        return proxyType + "://" + proxyHost + ":" + proxyPort +
+        return type + "://" + proxyHost + ":" + proxyPort +
                 (hasAuth() ? "?auth=" + proxyUsername : "");
     }
 }

@@ -6,6 +6,14 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
+import okhttp3.ConnectionPool;
+import okhttp3.Credentials;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
@@ -61,8 +69,11 @@ public class OkHttpProxyDispatcher {
             return defaultClient();
         }
 
+        // 自动代理 3 映射成 HTTP
+        int type = (config.getProxyType() == 3 ? 1 : config.getProxyType());
+
         // ✅ SOCKS5 且带用户名密码认证：使用自定义 SocketFactory 生成 OkHttpClient
-        if (config.getProxyType() == 2 && config.hasAuth()) {
+        if (type == 2 && config.hasAuth()) {
             return clientMap.computeIfAbsent(key, k ->
                     Socks5ProxyClientBuilder.createSocks5Client(
                             config.getProxyHost(),
@@ -76,7 +87,7 @@ public class OkHttpProxyDispatcher {
         // ✅ 其他（HTTP代理、SOCKS5无认证）
         return clientMap.computeIfAbsent(key, k -> {
             Proxy proxy = new Proxy(
-                    config.getProxyType() == 1 ? Proxy.Type.HTTP : Proxy.Type.SOCKS,
+                    type == 1 ? Proxy.Type.HTTP : Proxy.Type.SOCKS,
                     new InetSocketAddress(config.getProxyHost(), config.getProxyPort())
             );
 
@@ -90,9 +101,8 @@ public class OkHttpProxyDispatcher {
                     //.connectionPool(new ConnectionPool(20, 5, TimeUnit.MINUTES)); // 🚀 高并发支持
                     .connectionPool(new ConnectionPool(0, 1, TimeUnit.SECONDS)); // 连接池大小为 0，避免复用
 
-
             // 仅 HTTP 代理认证支持
-            if (config.getProxyType() == 1 && config.hasAuth()) {
+            if (type == 1 && config.hasAuth()) {
                 builder.proxyAuthenticator((route, response) -> {
                     String credential = Credentials.basic(config.getProxyUsername(), config.getProxyPassword());
                     return response.request().newBuilder()
@@ -220,7 +230,7 @@ public class OkHttpProxyDispatcher {
                     //if (code >= 200 && code < 300) {
                         // 成功，重置失败计数
                         state.reset();
-                        log.info("[OkHttpProxyDispatcher] 请求成功，方法={}，URL={}，账户={}，代理={}[{}]，耗时={}m", method, url, config.getAccount(), key, config.getProxyType() == 1 ? "HTTP" : "SOCKS", cost);
+                        log.info("[OkHttpProxyDispatcher] 请求成功，方法={}，URL={}，账户={}，代理=[{}]，耗时={}m", method, url, config.getAccount(), proxyTypeStr, cost);
                         return new HttpResult(respBody, respHeaders, code, cookieToken, cost);
                     /*} else {
                         throw new IOException("响应失败，状态码：" + code + "，响应体：" + respBody);
@@ -229,7 +239,7 @@ public class OkHttpProxyDispatcher {
             } catch (Exception e) {
                 state.fail();
                 log.warn("[OkHttpProxyDispatcher] 请求失败，方法={}，URL={}，账户={}，代理={}[{}]，失败次数={}/{}, 错误：{}",
-                        method, url, config.getAccount(), key, config.getProxyType() == 1 ? "HTTP" : "SOCKS", state.getFailCount(), MAX_FAIL, e.getMessage());
+                        method, url, config.getAccount(), key, (config.getProxyType() == null || config.getProxyType() == 0) ? "无代理" : (config.getProxyType() == 1 ? "HTTP" : "SOCKS"), state.getFailCount(), MAX_FAIL, e.getMessage());
                 if (attempt == MAX_RETRY) {
                     throw new IOException("请求全部重试失败：" + e.getMessage(), e);
                 }

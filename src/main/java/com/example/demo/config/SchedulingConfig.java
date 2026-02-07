@@ -30,6 +30,17 @@ public class SchedulingConfig implements SchedulingConfigurer {
         return executor;
     }
 
+    @Bean("proxyTaskExecutor")
+    public Executor proxyTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(10);
+        executor.setMaxPoolSize(20);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("proxy-task-");
+        executor.initialize();
+        return executor;
+    }
+
     @Bean("sweepTaskExecutor")
     public Executor sweepTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

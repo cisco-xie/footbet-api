@@ -12,6 +12,7 @@ import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.utils.KeyUtil;
+import com.example.demo.config.OkHttpProxyDispatcher;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.config.SuccessBasedLimitManager;
 import com.example.demo.core.holder.SweepWaterThreadPoolHolder;
@@ -677,11 +678,11 @@ public class BetService {
                 if (rollingOrderA == rollingOrderB) {
                     // 并行执行
                     CompletableFuture<JSONObject> betA = CompletableFuture.supplyAsync(() ->
-                                    tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA),
+                                    tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA, profit, null),
                             betExecutor
                     );
                     CompletableFuture<JSONObject> betB = CompletableFuture.supplyAsync(() ->
-                                    tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB),
+                                    tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB, profit, null),
                             betExecutor
                     );
                     CompletableFuture.allOf(betA, betB).join();
@@ -689,15 +690,15 @@ public class BetService {
                     successB = betB.join();
                 } else if (rollingOrderA < rollingOrderB) {
                     // A 优先
-                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA);
+                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA, profit, null);
                     if (successA.getBool("success")) {
-                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB);
+                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB, profit, null);
                     }
                 } else {
                     // B 优先
-                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB);
+                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB, profit, null);
                     if (successB.getBool("success")) {
-                        successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA);
+                        successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA, profit, null);
                     }
                 }
             } catch (Exception e) {
@@ -994,11 +995,11 @@ public class BetService {
             if (rollingOrderA == rollingOrderB) {
                 // 并行执行
                 CompletableFuture<JSONObject> betA = CompletableFuture.supplyAsync(() ->
-                                tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA),
+                                tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA, null, null),
                         betExecutor
                 );
                 CompletableFuture<JSONObject> betB = CompletableFuture.supplyAsync(() ->
-                                tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB),
+                                tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB, null, null),
                         betExecutor
                 );
                 CompletableFuture.allOf(betA, betB).join();
@@ -1006,15 +1007,15 @@ public class BetService {
                 successB = betB.join();
             } else if (rollingOrderA < rollingOrderB) {
                 // A 优先
-                successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA);
+                successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA, null, null);
                 if (successA.getBool("success")) {
-                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB);
+                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB, profit, successA.getBigDecimal("higherOdds"));
                 }
             } else {
                 // B 优先
-                successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB);
+                successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB, null, null);
                 if (successB.getBool("success")) {
-                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA);
+                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA, profit, successB.getBigDecimal("higherOdds"));
                 }
             }
         } catch (Exception e) {
@@ -1130,6 +1131,7 @@ public class BetService {
      * @param intervalDTO
      * @param amountDTO
      * @param simulateBet   是否模拟投注
+     * @param higherOdds    上级赔率-如果两个盘口分级了，比如0级和1级，那么投注1极时需要用到0级的赔率再次校验水位是否满足
      * @return
      */
     private JSONObject tryBet(String username,
@@ -1143,7 +1145,9 @@ public class BetService {
                            BetAmountDTO amountDTO,
                            OptimizingDTO optimizing,
                            Integer simulateBet,
-                           JSONObject betPreviewOpt) {
+                           JSONObject betPreviewOpt,
+                           ProfitDTO profit,
+                           BigDecimal higherOdds) {
         JSONObject result = new JSONObject();
 
         if (dto.getLastOddsTimeA() == dto.getLastOddsTimeB()) {
@@ -1279,6 +1283,35 @@ public class BetService {
                     dto.setBetInfoB(betInfo);
                 }
 
+                // 如果上级赔率存在，则进行水位校验
+                if (higherOdds != null) {
+                    // 计算初始水位（两边相加）
+                    BigDecimal water = odds.add(higherOdds);
+
+                    // 一方赔率为负数，则在结果上加 2,如果两个都是负数，就等于加4
+                    if (odds.compareTo(BigDecimal.ZERO) < 0) {
+                        water = water.add(BigDecimal.valueOf(2));
+                    }
+                    if (higherOdds.compareTo(BigDecimal.ZERO) < 0) {
+                        water = water.add(BigDecimal.valueOf(2));
+                    }
+                    // ✅ 仅保留 3 位小数（不四舍五入）
+                    water = water.setScale(3, RoundingMode.DOWN);
+
+                    boolean valid = false;
+                    if ("letBall".equals(dto.getHandicapType())) {
+                        valid = water.compareTo(BigDecimal.valueOf(profit.getRollingLetBall())) >= 0;
+                    } else if ("overSize".equals(dto.getHandicapType())) {
+                        valid = water.compareTo(BigDecimal.valueOf(profit.getRollingSize())) >= 0;
+                    }
+
+                    if (!valid) {
+                        log.info("盘口分级后 赛事预览水位不足，id={}，本级水位={}, 上级水位={}, 总和={}，不投注", dto.getId(), odds, higherOdds, water);
+                        result.putOpt("isBet", false);
+                        result.putOpt("success", false);
+                        return result;
+                    }
+                }
                 // 新二投注前获取一下赔率列表,为了确认需要投注的分数盘还存在
                 if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                     String oddsId = isA ? dto.getOddsIdA() : dto.getOddsIdB();
@@ -1371,15 +1404,18 @@ public class BetService {
                     });
                     result.putOpt("isBet", true);
                     result.putOpt("success", true);
+                    result.putOpt("higherOdds", odds);
                     result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
                     success = true;
                 } else if (betResult != null) {
                     result.putOpt("isBet", true);
                     result.putOpt("success", false);
+                    result.putOpt("higherOdds", odds);
                     result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
                 } else {
                     result.putOpt("isBet", true);
                     result.putOpt("success", false);
+                    result.putOpt("higherOdds", odds);
                     result.putOpt("betInfo", null);
                 }
             } catch (Exception e) {

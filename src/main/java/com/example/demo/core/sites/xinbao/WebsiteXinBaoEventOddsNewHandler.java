@@ -353,12 +353,16 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
 
                 // wall：上盘/下盘的展示习惯（上盘用 hanging，下盘用 foot）
                 // 如果 homeHandicap 带 '-'，说明主队是上盘（让球方），放入 up；否则放入 down
-                if (homeHandicap.equals("0") && "H".equals(gameJson.getStr("STRONG"))) {
+                /*if (homeHandicap.equals("0") && "C".equals(gameJson.getStr("STRONG"))) {
                     item.putOpt("wall", "hanging");
                     up.putOpt(getHandicapRange(homeHandicap), item);
-                } if (homeHandicap.equals("0") && "C".equals(gameJson.getStr("STRONG"))) {
+                } else if (homeHandicap.equals("0") && "H".equals(gameJson.getStr("STRONG"))) {
                     item.putOpt("wall", "foot");
                     down.putOpt(getHandicapRange(homeHandicap), item);
+                }*/
+                if (homeHandicap.equals("0")) {
+                    item.putOpt("wall", "foot");
+                    up.putOpt(getHandicapRange(homeHandicap), item);
                 } else if (homeHandicap.startsWith("-")) {
                     item.putOpt("wall", "hanging");
                     up.putOpt(getHandicapRange(homeHandicap), item);
@@ -387,12 +391,16 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                 item.putOpt("handicap", awayHandicap);
 
                 // 如果 awayHandicap 带 '-'，说明客队是上盘（让球方），放入 up；否则放入 down
-                if (awayHandicap.equals("0") && "H".equals(gameJson.getStr("STRONG"))) {
+                /*if (awayHandicap.equals("0") && "C".equals(gameJson.getStr("STRONG"))) {
                     item.putOpt("wall", "foot");
                     down.putOpt(getHandicapRange(awayHandicap), item);
-                } if (awayHandicap.equals("0") && "C".equals(gameJson.getStr("STRONG"))) {
+                } else if (awayHandicap.equals("0") && "H".equals(gameJson.getStr("STRONG"))) {
                     item.putOpt("wall", "hanging");
                     up.putOpt(getHandicapRange(awayHandicap), item);
+                } */
+                if (homeHandicap.equals("0")) {
+                    item.putOpt("wall", "foot");
+                    down.putOpt(getHandicapRange(awayHandicap), item);
                 } else if (awayHandicap.startsWith("-")) {
                     item.putOpt("wall", "hanging");
                     up.putOpt(getHandicapRange(awayHandicap), item);
@@ -492,12 +500,16 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                 item.putOpt("ratio", getRatio(gameJson.getStr(ratioFirst), "主队"));
                 item.putOpt("handicap", homeHandicap);
 
-                if (homeHandicap.equals("0") && "H".equals(gameJson.getStr("STRONG"))) {
+                /*if (homeHandicap.equals("0") && "C".equals(gameJson.getStr("STRONG"))) {
                     item.putOpt("wall", "hanging");
                     up.putOpt(getHandicapRange(homeHandicap), item);
-                } if (homeHandicap.equals("0") && "C".equals(gameJson.getStr("STRONG"))) {
+                } else if (homeHandicap.equals("0") && "H".equals(gameJson.getStr("STRONG"))) {
                     item.putOpt("wall", "foot");
                     down.putOpt(getHandicapRange(homeHandicap), item);
+                }*/
+                if (homeHandicap.equals("0")) {
+                    item.putOpt("wall", "foot");
+                    up.putOpt(getHandicapRange(homeHandicap), item);
                 } else if (homeHandicap.startsWith("-")) {
                     item.putOpt("wall", "hanging");
                     up.putOpt(getHandicapRange(homeHandicap), item);
@@ -524,12 +536,16 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                 item.putOpt("ratio", getRatio(gameJson.getStr(ratioFirst), "客队"));
                 item.putOpt("handicap", awayHandicap);
 
-                if (awayHandicap.equals("0") && "H".equals(gameJson.getStr("STRONG"))) {
+                /*if (awayHandicap.equals("0") && "C".equals(gameJson.getStr("STRONG"))) {
                     item.putOpt("wall", "foot");
                     down.putOpt(getHandicapRange(awayHandicap), item);
-                } if (awayHandicap.equals("0") && "C".equals(gameJson.getStr("STRONG"))) {
+                } else if (awayHandicap.equals("0") && "H".equals(gameJson.getStr("STRONG"))) {
                     item.putOpt("wall", "hanging");
                     up.putOpt(getHandicapRange(awayHandicap), item);
+                }*/
+                if (homeHandicap.equals("0")) {
+                    item.putOpt("wall", "foot");
+                    down.putOpt(getHandicapRange(awayHandicap), item);
                 } else if (awayHandicap.startsWith("-")) {
                     item.putOpt("wall", "hanging");
                     up.putOpt(getHandicapRange(awayHandicap), item);
