@@ -12,6 +12,7 @@ import com.example.demo.core.exception.BusinessException;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.AdminLoginVO;
 import com.example.demo.model.vo.AdminUserBetVO;
+import com.example.demo.task.AutoProxyTask;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -33,6 +34,9 @@ public class AdminService {
 
     @Resource(name = "businessPlatformRedissonClient")
     private RedissonClient businessPlatformRedissonClient;
+
+    @Resource
+    private AutoProxyTask autoProxyTask;
 
     public AdminLoginDTO getAdmin(String username) {
         // Redis 键值
@@ -101,6 +105,8 @@ public class AdminService {
             adminLogin.setStopBet(adminBetVO.getStopBet());
             adminLogin.setSimulateBet(adminBetVO.getSimulateBet());
             businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(adminLogin));
+            // ✅ 投注开关变化，触发 AutoProxyTask 检查任务
+            autoProxyTask.handleUserBetChange(adminLogin);
         } else {
             throw new BusinessException(SystemError.USER_1004);
         }

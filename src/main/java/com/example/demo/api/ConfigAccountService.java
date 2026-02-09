@@ -7,8 +7,10 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.utils.KeyUtil;
+import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.ConfigAccountVO;
 import com.example.demo.model.vo.WebsiteVO;
+import com.example.demo.task.AutoProxyTask;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -20,7 +22,6 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -34,6 +35,12 @@ public class ConfigAccountService {
 
     @Resource
     private WebsiteService websiteService;
+
+    @Resource
+    private AutoProxyTask autoProxyTask;
+
+    @Resource
+    private AdminService adminService;
 
     /**
      * 获取网站账户列表
@@ -205,6 +212,11 @@ public class ConfigAccountService {
 
         } finally {
             lock.unlock();
+            // ✅ 调用 AutoProxyTask 更新调度
+            AdminLoginDTO adminLogin = adminService.getAdmin(username); // 你自己实现获取 adminLogin
+            if (adminLogin != null) {
+                autoProxyTask.updateAccountTask(configAccountVO, websiteId, adminLogin);
+            }
         }
     }
 

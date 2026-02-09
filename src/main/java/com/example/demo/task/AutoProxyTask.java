@@ -1,34 +1,22 @@
 package com.example.demo.task;
 
-import cn.hutool.json.JSONObject;
-import cn.hutool.json.JSONUtil;
-import com.example.demo.api.AdminService;
 import com.example.demo.api.ConfigAccountService;
-import com.example.demo.api.HandicapApi;
 import com.example.demo.common.constants.Constants;
 import com.example.demo.common.enmu.WebsiteType;
-import com.example.demo.common.enmu.ZhiBoSchedulesType;
-import com.example.demo.config.OkHttpProxyDispatcher;
-import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.ConfigAccountVO;
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.*;
-
 
 /**
  * @Description: 自动更新账号代理任务
@@ -41,147 +29,116 @@ import java.util.concurrent.*;
 public class AutoProxyTask {
 
     @Resource
-    private HandicapApi handicapApi;
-
-    @Resource
-    private AdminService adminService;
-
-    @Resource
+    @Lazy
     private ConfigAccountService accountService;
 
-    @Resource
-    private OkHttpProxyDispatcher dispatcher;
+    private ScheduledExecutorService proxyExecutor;
+    private final ConcurrentHashMap<String, ScheduledFuture<?>> accountTaskMap = new ConcurrentHashMap<>();
+    private final OkHttpClient client = new OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .callTimeout(10, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
+            .build();
 
-    @Value("${sweepwater.server.count}")
-    private int serverCount;
+    @PostConstruct
+    public void init() {
+        proxyExecutor = Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors() * 2);
+    }
 
-    @Async("proxyTaskExecutor") // ✅ 独立线程池执行
-    // 上一次任务完成后再延迟 5 分钟后执行
-    @Scheduled(fixedDelay = 5 * 60 * 1000)
-    public void autoLogin() {
-        long startTime = System.currentTimeMillis();
-        try {
-            log.info("开始执行 自动更新代理...");
+    public void updateAccountTask(ConfigAccountVO account, String websiteId, AdminLoginDTO adminLogin) {
+        String taskKey = getTaskKey(adminLogin.getUsername(), websiteId, account.getId());
 
-            List<AdminLoginDTO> adminUsers = adminService.getUsers(null);
-            int cpuCoreCount = Runtime.getRuntime().availableProcessors();
+        if (account.getEnable() != 1 || account.getProxyType() != 3 || adminLogin.getStopBet() == 1) {
+            cancelTask(taskKey);
+            return;
+        }
 
-            // 外层并发线程池 - 处理多个 adminUser
-            ExecutorService adminExecutor = Executors.newFixedThreadPool(Math.min(adminUsers.size(), cpuCoreCount));
+        // 已存在任务 → 不重复创建
+        if (accountTaskMap.containsKey(taskKey)) { return; }
 
-            ConcurrentHashMap<String, Integer> retryMap = new ConcurrentHashMap<>();
+        // 1小时更换一次
+        ScheduledFuture<?> future = proxyExecutor.schedule(
+                () -> fetchHttpProxy(adminLogin, websiteId, account),
+                60,
+                TimeUnit.MINUTES
+        );
 
-            List<CompletableFuture<Void>> adminFutures = new ArrayList<>();
+        accountTaskMap.put(taskKey, future);
+        log.info("调度账户代理拉取任务,账户={},网站={},用户名={}",
+                account.getId(), websiteId, adminLogin.getUsername());
+    }
 
-            // 获取本机标识（机器ID、IP、或自定义ID）
-            String serverId = System.getProperty("server.id", "0");
-            int serverIndex = Integer.parseInt(serverId); // 直接用数字索引
-
-            // 分配账户：比如通过 hash 或 Redis 列表分片
-            List<AdminLoginDTO> myUsers = adminUsers.stream()
-                    .filter(u -> Math.abs(u.getUsername().hashCode()) % serverCount == serverIndex)
-                    .toList();
-
-            if (myUsers.isEmpty()) {
-                log.info("当前服务器分片没有用户，serverId={}", serverId);
-                return;
-            }
-            log.info("当前服务器serverIndex:{}, 分片扫水用户:{}", serverIndex, myUsers);
-            OkHttpClient client = new OkHttpClient.Builder()
-                    .connectTimeout(10, TimeUnit.SECONDS)
-                    .readTimeout(10, TimeUnit.SECONDS)
-                    .callTimeout(10, TimeUnit.SECONDS)
-                    .retryOnConnectionFailure(false)
-                    .build();
-            Map<String, String> requestHeaders = new HashMap<>();
-            for (AdminLoginDTO adminUser : myUsers) {
-                CompletableFuture<Void> adminFuture = CompletableFuture.runAsync(() -> {
-
-                    // 中层并发线程池 - 处理当前 adminUser 下的多个网站并行
-                    ExecutorService websiteExecutor = Executors.newFixedThreadPool(Math.min(WebsiteType.values().length, cpuCoreCount));
-
-                    List<CompletableFuture<Void>> websiteFutures = new ArrayList<>();
-
-                    for (WebsiteType type : WebsiteType.values()) {
-                        CompletableFuture<Void> websiteFuture = CompletableFuture.runAsync(() -> {
-                            List<ConfigAccountVO> userList = accountService.getAccount(adminUser.getUsername(), type.getId());
-
-                            // 内层串行处理账号列表
-                            for (ConfigAccountVO userConfig : userList) {
-                                if (userConfig.getEnable() == 0 || userConfig.getProxyType() != 3) {
-                                    continue;
-                                }
-                                // 构建请求
-                                Request request = new Request.Builder()
-                                        .url("https://api.cliproxy.io/white/api?region=HK&num=1&time=15&format=n&type=txt")
-                                        .get()
-                                        .addHeader("User-Agent", Constants.USER_AGENT)
-                                        .build();
-
-                                // 执行请求
-                                try (Response response = client.newCall(request).execute()) {
-                                    if (!response.isSuccessful()) {
-                                        throw new IOException("请求失败，状态码：" + response.code());
-                                    }
-
-                                    String proxyStr = response.body() != null ? response.body().string().trim() : null;
-                                    if (proxyStr == null || proxyStr.isEmpty()) {
-                                        throw new IOException("返回内容为空");
-                                    }
-
-                                    log.info("自动更新代理 获取的代理配置:{}", proxyStr);
-
-                                    String[] arr = proxyStr.split(":");
-                                    if (arr.length != 2) {
-                                        throw new IllegalArgumentException("代理格式非法: " + proxyStr);
-                                    }
-
-                                    String proxyHost = arr[0];
-                                    int proxyPort = Integer.parseInt(arr[1]);
-
-                                    userConfig.setProxyHost(proxyHost);
-                                    userConfig.setProxyPort(proxyPort);
-                                    userConfig.setProxyUsername(null);
-                                    userConfig.setProxyPassword(null);
-
-                                    log.info("自动更新账户代理,网站:{},账户:{}", type.getDescription(), userConfig.getAccount());
-
-                                    accountService.saveAccount(adminUser.getUsername(), type.getId(), userConfig);
-                                } catch (Exception e) {
-                                    log.error("自动更新代理任务异常,网站:{},账户:{}",
-                                            type.getDescription(), userConfig.getAccount(), e);
-                                }
-                            }
-                        }, websiteExecutor);
-
-                        websiteFutures.add(websiteFuture);
-                    }
-
-                    // 等待当前 adminUser 下所有网站任务完成
-                    CompletableFuture.allOf(websiteFutures.toArray(new CompletableFuture[0])).join();
-                    PriorityTaskExecutor.shutdownExecutor(websiteExecutor);
-
-                    log.info("系统账号:{} 所有账户自动更新代理任务完成", adminUser.getUsername());
-
-                }, adminExecutor);
-
-                adminFutures.add(adminFuture);
-            }
-
-            // 等待所有管理员任务完成
-            CompletableFuture.allOf(adminFutures.toArray(new CompletableFuture[0])).join();
-            PriorityTaskExecutor.shutdownExecutor(adminExecutor);
-
-        } catch (Exception e) {
-            log.error("自动更新代理 执行异常", e);
-        } finally {
-            long endTime = System.currentTimeMillis();
-            long costTime = (endTime - startTime) / 1000;
-            log.info("此轮自动更新代理任务执行花费 {}s", costTime);
-            if (costTime > 20) {
-                log.warn("自动更新代理 执行时间过长");
-            }
+    private void cancelTask(String taskKey) {
+        ScheduledFuture<?> future = accountTaskMap.remove(taskKey);
+        if (future != null) {
+            future.cancel(false);
+            log.info("取消账户代理拉取任务: {}", taskKey);
         }
     }
 
+    private String getTaskKey(String username, String websiteId, String accountId) {
+        return username + "-" + websiteId + "-" + accountId;
+    }
+
+    private void fetchHttpProxy(AdminLoginDTO adminLogin, String websiteId, ConfigAccountVO account) {
+        String taskKey = getTaskKey(adminLogin.getUsername(), websiteId, account.getId());
+
+        ConfigAccountVO latestAccount = accountService.getAccountById(
+                adminLogin.getUsername(),
+                websiteId,
+                account.getId()
+        );
+
+        if (latestAccount.getProxyType() != 3 || adminLogin.getStopBet() == 1) {
+            accountTaskMap.remove(taskKey);
+            log.info("账户不再需要自动代理拉取,取消任务: {}", taskKey);
+            return;
+        }
+
+        try {
+            Request request = new Request.Builder()
+                    .url("https://api.cliproxy.io/white/api?region=HK&num=1&time=15&format=n&type=txt")
+                    .get()
+                    .addHeader("User-Agent", Constants.USER_AGENT)
+                    .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful()) throw new IOException("请求失败,状态码:" + response.code());
+
+                String proxyStr = response.body() != null ? response.body().string().trim() : null;
+                if (proxyStr == null || proxyStr.isEmpty()) throw new IOException("返回内容为空");
+
+                String[] arr = proxyStr.split(":");
+                if (arr.length != 2) throw new IllegalArgumentException("代理格式非法: " + proxyStr);
+
+                latestAccount.setProxyHost(arr[0]);
+                latestAccount.setProxyPort(Integer.parseInt(arr[1]));
+                latestAccount.setProxyUsername(null);
+                latestAccount.setProxyPassword(null);
+
+                accountService.saveAccount(adminLogin.getUsername(), latestAccount.getWebsiteId(), latestAccount);
+                log.info("账户代理更新成功,账户={},网站={},用户名={}", latestAccount.getId(), latestAccount.getWebsiteId(), adminLogin.getUsername());
+
+                // 再次调度下一轮任务
+                updateAccountTask(latestAccount, websiteId, adminLogin);
+            }
+        } catch (Exception e) {
+            log.error("账户代理拉取失败,账户={},网站={},用户名={}", account.getId(), account.getWebsiteId(), adminLogin.getUsername(), e);
+            // 失败后也重新调度下一轮
+            updateAccountTask(account, websiteId, adminLogin);
+        }
+    }
+
+    /***
+     * 在用户投注开关变化时调用
+     */
+    public void handleUserBetChange(AdminLoginDTO adminLogin) {
+        for (WebsiteType websiteType : WebsiteType.values()) {
+            List<ConfigAccountVO> allAccounts = accountService.getAccount(adminLogin.getUsername(), websiteType.getId());
+            for (ConfigAccountVO account : allAccounts) {
+                updateAccountTask(account, websiteType.getId(), adminLogin);
+            }
+        }
+    }
 }
