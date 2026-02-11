@@ -49,6 +49,8 @@ public class ConfigAccountVO {
     private String proxyUsername;
     // 认证密码
     private String proxyPassword;
+    // 代理过期时间
+    private Long proxyExpireTime;
     // 是否登录
     private Integer isTokenValid = 0;
     // 盘口token json
