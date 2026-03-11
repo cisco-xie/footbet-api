@@ -60,7 +60,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
         headers.put("content-type", "application/json");
         headers.put("authorization", token);
         headers.put("sec-ch-ua-mobile", "?0");
-        headers.put("sec-ch-ua-platform", "\"Windows\"");
+        headers.put("sec-ch-ua-platform", "\"Android\"");
         return headers;
     }
 

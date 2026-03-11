@@ -1,6 +1,7 @@
 package com.example.demo.config;
 
 import com.example.demo.common.constants.Constants;
+import com.example.demo.common.enmu.RequestPlatform;
 import com.example.demo.model.vo.ConfigAccountVO;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -171,20 +172,8 @@ public class OkHttpProxyDispatcher {
                     headers.forEach(requestBuilder::addHeader);
                 }
 
-                // 添加默认伪装头（若 headers 中未指定）
-                if (!requestBuilder.build().headers().names().contains("User-Agent")) {
-                    requestBuilder.header("User-Agent", Constants.USER_AGENT);
-                }
-                if (!requestBuilder.build().headers().names().contains("Accept")) {
-                    requestBuilder.header("Accept", "*/*");
-                }
-                // 默认 OkHttp 会自动添加并解压 gzip
-                /*if (!requestBuilder.build().headers().names().contains("Accept-Encoding")) {
-                    requestBuilder.header("Accept-Encoding", "gzip, deflate, br, zstd");
-                }*/
-                if (!requestBuilder.build().headers().names().contains("Accept-Language")) {
-                    requestBuilder.header("Accept-Language", "zh-CN,zh;q=0.9");
-                }
+                // ⭐ 在这里注入平台伪装
+                applyPlatformHeaders(requestBuilder, RequestPlatform.ANDROID);
 
                 long start = System.currentTimeMillis(); // ✅ 请求开始时间
                 try (Response response = client.newCall(requestBuilder.build()).execute()) {
@@ -303,19 +292,13 @@ public class OkHttpProxyDispatcher {
                     headers.forEach(requestBuilder::addHeader);
                 }
 
+                // ⭐ 在这里注入平台伪装
+                applyPlatformHeaders(requestBuilder, RequestPlatform.ANDROID);
+
                 // 添加默认伪装头（若 headers 中未指定）
-                if (!requestBuilder.build().headers().names().contains("User-Agent")) {
-                    requestBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
-                }
-                if (!requestBuilder.build().headers().names().contains("Accept")) {
-                    requestBuilder.header("Accept", "*/*");
-                }
                 // 默认 OkHttp 会自动添加并解压 gzip
                 if (!requestBuilder.build().headers().names().contains("Accept-Encoding")) {
                     requestBuilder.header("Accept-Encoding", "gzip, deflate, br, zstd");
-                }
-                if (!requestBuilder.build().headers().names().contains("Accept-Language")) {
-                    requestBuilder.header("Accept-Language", "zh-CN,zh;q=0.9");
                 }
 
                 long start = System.currentTimeMillis(); // ✅ 请求开始时间
@@ -484,6 +467,28 @@ public class OkHttpProxyDispatcher {
             }
         }
         throw new IOException("请求执行失败，未命中任何有效结果");
+    }
+
+    private void applyPlatformHeaders(Request.Builder builder, RequestPlatform platform) {
+
+        if (platform == RequestPlatform.ANDROID) {
+            builder.header("User-Agent",
+                    "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) " +
+                            "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                            "Chrome/121.0.0.0 Mobile Safari/537.36");
+
+            builder.header("Accept", "*/*");
+            builder.header("Accept-Language", "zh-CN,zh;q=0.9");
+            builder.header("Sec-CH-UA-Mobile", "?1");
+            builder.header("Sec-CH-UA-Platform", "\"Android\"");
+            builder.header("X-Requested-With", "com.android.browser");
+
+        } else {
+            // PC
+            builder.header("User-Agent", Constants.USER_AGENT);
+            builder.header("Accept", "*/*");
+            builder.header("Accept-Language", "zh-CN,zh;q=0.9");
+        }
     }
 
     @Data

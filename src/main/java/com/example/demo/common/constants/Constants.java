@@ -8,11 +8,12 @@ public class Constants {
     /**
      * 新二盘口请求版本
      */
-    public static final String VER = "2025-11-06-phPasscodeBug_121";
+    public static final String VER = "2026-03-05-FTnew_140";
 
     /**
      * 请求浏览器
      */
     public static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
+    public static final String USER_AGENT_ANDROID = "Mozilla/5.0 (Linux; Android 13; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36";
     public static final String SEC_CH_UA = "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\"";
 }

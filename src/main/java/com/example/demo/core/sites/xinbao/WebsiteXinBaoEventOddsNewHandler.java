@@ -64,7 +64,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
         headers.put("sec-ch-ua", Constants.SEC_CH_UA);
         headers.put("User-Agent", Constants.USER_AGENT);
         headers.put("sec-ch-ua-mobile", "?0");
-        headers.put("sec-ch-ua-platform", "\"Windows\"");
+        headers.put("sec-ch-ua-platform", "\"Android\"");
 
         return headers;
     }
@@ -88,14 +88,17 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             rType = "rnou";  // 今日赛事
             filter = "FT";
         }
+        long ts = System.currentTimeMillis();
+        long chgSortTS = ts + 30000; // +30秒
         // 构造请求体
-        return String.format("p=get_game_list&uid=%s&ver=%s&langx=zh-cn&gtype=ft&showtype=%s&rtype=%s&ltype=3&filter=%s&cupFantasy=N&sorttype=L&isFantasy=N&ts=%s",
+        return String.format("p=get_game_list&uid=%s&ver=%s&langx=zh-cn&gtype=ft&showtype=%s&rtype=%s&ltype=3&filter=%s&cupFantasy=N&sorttype=L&isFantasy=N&ts=%s&chgSortTS=%s",
                 params.getStr("uid"),
                 Constants.VER,
                 showType,
                 rType,
                 filter,
-                System.currentTimeMillis()
+                ts,
+                chgSortTS
         );
     }
     /**
