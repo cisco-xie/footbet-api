@@ -755,8 +755,8 @@ public class HandicapApi {
 
     // 放在类字段中，建议作为单例缓存维护
     private final Map<String, Long> accountCooldownMap = new ConcurrentHashMap<>();
-    // 冷却期，单位毫秒（如2秒内不重复调用同一账号）
-    private final static long cooldownMillis = 2000;
+    // 冷却期，单位毫秒（如0.1秒内不重复调用同一账号）
+    private final static long cooldownMillis = 100;
     // 类成员变量，可加 @Component 单例管理，随机轮询
     private final ConcurrentHashMap<String, AtomicInteger> accountIndexMap = new ConcurrentHashMap<>();
     // 类成员变量，可加 @Component 单例管理，顺序轮询
