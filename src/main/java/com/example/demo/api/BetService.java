@@ -790,6 +790,9 @@ public class BetService {
         ProfitDTO profit = settingsService.getProfit(username);
         // ✅ 单边投注控制
         boolean isUnilateral = limitDTO.getUnilateralBet() != null && limitDTO.getUnilateralBet() == 1;
+        // ✅ 接受所有赔率
+        boolean isAcceptAllOdds = limitDTO.getAcceptAllOdds() != null && limitDTO.getAcceptAllOdds() == 1;
+        boolean skipOddsAndWaterCheck = shouldSkipOddsAndWaterCheck(username, admin.getSimulateBet(), isAcceptAllOdds);
 
         List<WebsiteVO> websites = websiteService.getWebsites(username);
         // 30秒投注限制不需要
@@ -934,57 +937,60 @@ public class BetService {
         dto.setOddsB(oddsB);
         dto.setWater(String.valueOf(water));
 
-        boolean valid = false;
-        if ("letBall".equals(dto.getHandicapType())) {
-            valid = water.compareTo(BigDecimal.valueOf(profit.getRollingLetBall())) >= 0;
-        } else if ("overSize".equals(dto.getHandicapType())) {
-            valid = water.compareTo(BigDecimal.valueOf(profit.getRollingSize())) >= 0;
-        }
+        // 仅在未开启同意所有赔率，或开启后仍处于首单阶段时，才检测水位
+        if (!skipOddsAndWaterCheck) {
+            boolean valid = false;
+            if ("letBall".equals(dto.getHandicapType())) {
+                valid = water.compareTo(BigDecimal.valueOf(profit.getRollingLetBall())) >= 0;
+            } else if ("overSize".equals(dto.getHandicapType())) {
+                valid = water.compareTo(BigDecimal.valueOf(profit.getRollingSize())) >= 0;
+            }
 
-        if (!valid) {
-            log.info("赛事预览水位不足，id={}，A={}, B={}, 总和={}，不投注", dto.getId(), oddsA, oddsB, water);
+            if (!valid) {
+                log.info("赛事预览水位不足，id={}，A={}, B={}, 总和={}，不投注", dto.getId(), oddsA, oddsB, water);
 
-            String betTime = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN);
-            dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-            dto.setBetSuccessA(false);
-            dto.setBetSuccessB(false);
-            dto.setBetInfoA(betPreviewA.getJSONObject("betInfo"));
-            dto.setBetInfoB(betPreviewB.getJSONObject("betInfo"));
-            dto.setBetTimeA(betTime);
-            dto.setBetTimeB(betTime);
+                String betTime = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN);
+                dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+                dto.setBetSuccessA(false);
+                dto.setBetSuccessB(false);
+                dto.setBetInfoA(betPreviewA.getJSONObject("betInfo"));
+                dto.setBetInfoB(betPreviewB.getJSONObject("betInfo"));
+                dto.setBetTimeA(betTime);
+                dto.setBetTimeB(betTime);
 
-            // 设置扫水已投注
-            // sweepwaterService.setIsBet(username, sweepwaterDTO.getId());
+                // 设置扫水已投注
+                // sweepwaterService.setIsBet(username, sweepwaterDTO.getId());
 
-            String json = JSONUtil.toJsonStr(dto);
-            String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
-            // 保存投注信息作为历史记录
-            String key = KeyUtil.genKey(
-                    RedisConstants.PLATFORM_BET_PREFIX,
-                    username,
-                    date,
-                    dto.getId()
-            );
-            businessPlatformRedissonClient.getBucket(key).set(json);
-            // 维护索引
-            String indexKey = KeyUtil.genKey("INDEX", username, "history", date);
-            businessPlatformRedissonClient.getList(indexKey).add(key);
+                String json = JSONUtil.toJsonStr(dto);
+                String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
+                // 保存投注信息作为历史记录
+                String key = KeyUtil.genKey(
+                        RedisConstants.PLATFORM_BET_PREFIX,
+                        username,
+                        date,
+                        dto.getId()
+                );
+                businessPlatformRedissonClient.getBucket(key).set(json);
+                // 维护索引
+                String indexKey = KeyUtil.genKey("INDEX", username, "history", date);
+                businessPlatformRedissonClient.getList(indexKey).add(key);
 
-            // 保存投注信息作为实时记录
-            String realTimeKey = KeyUtil.genKey(
-                    RedisConstants.PLATFORM_BET_PREFIX,
-                    username,
-                    "realtime",
-                    dto.getId()
-            );
-            businessPlatformRedissonClient.getBucket(realTimeKey).set(json);
-            // 实时索引
-            String realTimeIndexKey = KeyUtil.genKey("INDEX", username, "realtime");
-            businessPlatformRedissonClient.getList(realTimeIndexKey).add(realTimeKey);
+                // 保存投注信息作为实时记录
+                String realTimeKey = KeyUtil.genKey(
+                        RedisConstants.PLATFORM_BET_PREFIX,
+                        username,
+                        "realtime",
+                        dto.getId()
+                );
+                businessPlatformRedissonClient.getBucket(realTimeKey).set(json);
+                // 实时索引
+                String realTimeIndexKey = KeyUtil.genKey("INDEX", username, "realtime");
+                businessPlatformRedissonClient.getList(realTimeIndexKey).add(realTimeKey);
 
-            // 回滚投注次数
-            limitManager.rollbackReservation(limitKey, reservationId);
-            return; // 直接跳过
+                // 回滚投注次数
+                limitManager.rollbackReservation(limitKey, reservationId);
+                return; // 直接跳过
+            }
         }
         log.info("【水位调试】id={}, 赔率A={}, 赔率B={}, 计算水位(截断3位)={}, profit.rollingLetBall={}, profit.rollingSize={}",
                 dto.getId(), oddsA, oddsB, water, profit.getRollingLetBall(), profit.getRollingSize());
@@ -1045,6 +1051,9 @@ public class BetService {
 
         // 有一个执行了投注则缓存
         if (successA.getBool("isBet", false) || successB.getBool("isBet", false)) {
+            if (isAcceptAllOdds && !skipOddsAndWaterCheck) {
+                markAcceptAllOddsFirstBetDone(username, admin.getSimulateBet());
+            }
             // 记录投注成功到限流管理器（关键步骤）
             limitManager.confirmSuccess(limitKey, reservationId);
             dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
@@ -1159,6 +1168,9 @@ public class BetService {
         String score = isA ? dto.getScoreA() : dto.getScoreB();
         String betTeamName = isA ? dto.getTeamA() : dto.getTeamB();
         String handicapValue = isA ? dto.getHandicapA() : dto.getHandicapB();
+        // ✅ 接受所有赔率
+        boolean isAcceptAllOdds = limitDTO.getAcceptAllOdds() != null && limitDTO.getAcceptAllOdds() == 1;
+        boolean skipOddsAndWaterCheck = shouldSkipOddsAndWaterCheck(username, simulateBet, isAcceptAllOdds);
         // 构建投注参数并调用投注接口
         JSONObject params = buildBetParams(dto, amountDTO, isA);
 
@@ -1284,7 +1296,7 @@ public class BetService {
                 }
 
                 // 如果上级赔率存在，则进行水位校验
-                if (higherOdds != null) {
+                if (higherOdds != null && !skipOddsAndWaterCheck) {
                     // 计算初始水位（两边相加）
                     BigDecimal water = odds.add(higherOdds);
 
@@ -1310,6 +1322,24 @@ public class BetService {
                         result.putOpt("isBet", false);
                         result.putOpt("success", false);
                         return result;
+                    }
+                }
+                // 勾选同意所有赔率时，后续投注必须和上次成功投注保持同一盘口位置（同网站+同赛事）
+                if (isAcceptAllOdds) {
+                    String successKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_SUCCESS_PREFIX, username, websiteId, eventId);
+                    List<JSONObject> successList = businessPlatformRedissonClient.getList(successKey);
+                    if (successList != null && !successList.isEmpty()) {
+                        JSONObject lastSuccessBetInfo = successList.get(successList.size() - 1);
+                        String lastHandicap = lastSuccessBetInfo == null ? null : lastSuccessBetInfo.getStr("handicap");
+                        String currentHandicap = betInfo.getStr("handicap");
+                        if (StringUtils.isNotBlank(lastHandicap) && StringUtils.isNotBlank(currentHandicap)
+                                && !getHandicapRange(lastHandicap).equals(getHandicapRange(currentHandicap))) {
+                            log.info("同意所有赔率模式下盘口位置不一致，用户={}, 网站={}, 赛事={}, 上次盘口={}, 当前盘口={}, 跳过投注",
+                                    username, websiteId, eventId, lastHandicap, currentHandicap);
+                            result.putOpt("isBet", false);
+                            result.putOpt("success", false);
+                            return result;
+                        }
                     }
                 }
                 // 新二投注前获取一下赔率列表,为了确认需要投注的分数盘还存在
@@ -1442,6 +1472,20 @@ public class BetService {
         String withoutNegative = handicap.replace("-", "");
         // 再替换斜杠
         return withoutNegative.replaceAll(" / ", "-");
+    }
+
+    private boolean shouldSkipOddsAndWaterCheck(String username, Integer simulateBet, boolean isAcceptAllOdds) {
+        if (!isAcceptAllOdds) {
+            return false;
+        }
+        String key = KeyUtil.genKey("platform:bet:acceptAllOdds:firstDone", username, String.valueOf(simulateBet));
+        String marker = (String) businessPlatformRedissonClient.getBucket(key).get();
+        return "1".equals(marker);
+    }
+
+    private void markAcceptAllOddsFirstBetDone(String username, Integer simulateBet) {
+        String key = KeyUtil.genKey("platform:bet:acceptAllOdds:firstDone", username, String.valueOf(simulateBet));
+        businessPlatformRedissonClient.getBucket(key).set("1");
     }
 
     /**

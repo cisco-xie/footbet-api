@@ -11,6 +11,8 @@ public class LimitVO {
     private Integer betLimitGame;
     @Schema(description = "同场同比分·投注限制(注)")
     private Integer betLimitScore;
+    @Schema(description = "接受所有赔率(0=不接受（走正常扫水投注逻辑）, 1=接受（不需要扫水，直接进行投注逻辑）)")
+    private Integer acceptAllOdds;
     @Schema(description = "单边投注(开启后只投注最新赔率的一边)")
     private Integer unilateralBet;
     @Schema(description = "单边(1=旧, 2=新)")

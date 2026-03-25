@@ -1452,9 +1452,13 @@ public class SweepwaterService {
                                         // 如果两个都是旧或者新,则不进行投注,不需要在前端显示
                                         continue; // 直接跳过
                                     }
+                                    boolean isAcceptAllOdds = limit.getAcceptAllOdds() != null && limit.getAcceptAllOdds() == 1;
+                                    String acceptAllOddsFirstDoneKey = KeyUtil.genKey("platform:bet:acceptAllOdds:firstDone", username, "0");
+                                    String acceptAllOddsFirstDone = (String) businessPlatformRedissonClient.getBucket(acceptAllOddsFirstDoneKey).get();
+                                    boolean skipOddsAndWaterCheck = isAcceptAllOdds && "1".equals(acceptAllOddsFirstDone);
                                     // 把投注放在这里的目的是让扫水到数据后马上进行投注，防止因为时间问题导致赔率变更的情况
                                     if ("letBall".equals(key)) {
-                                        if (finalValue >= profit.getRollingLetBall()) {
+                                        if (skipOddsAndWaterCheck || finalValue >= profit.getRollingLetBall()) {
                                             // 满足利润设置的让球盘水位才进行投注
                                             CompletableFuture.runAsync(() -> {
                                                 try {
@@ -1465,7 +1469,7 @@ public class SweepwaterService {
                                             }, threadPoolHolder.getBetExecutor());
                                         }
                                     } else if ("overSize".equals(key)) {
-                                        if (finalValue >= profit.getRollingSize()) {
+                                        if (skipOddsAndWaterCheck || finalValue >= profit.getRollingSize()) {
                                             // 满足利润设置的大小盘水位才进行投注
                                             CompletableFuture.runAsync(() -> {
                                                 try {
