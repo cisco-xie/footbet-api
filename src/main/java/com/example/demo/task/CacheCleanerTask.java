@@ -45,7 +45,7 @@ public class CacheCleanerTask {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(DatePattern.NORM_DATETIME_PATTERN);
 
         // 获取本机标识（机器ID、IP、或自定义ID）
-        String serverId = System.getProperty("server.id", "0");
+        /*String serverId = System.getProperty("server.id", "0");
         int serverIndex = Integer.parseInt(serverId); // 直接用数字索引
         // 分配账户：比如通过 hash 或 Redis 列表分片
         List<AdminLoginDTO> myUsers = adminUsers.stream()
@@ -56,9 +56,9 @@ public class CacheCleanerTask {
             log.info("当前服务器分片没有用户，serverId={}", serverId);
             return;
         }
-        log.info("当前服务器serverIndex:{}, 分片扫水用户:{}", serverIndex, myUsers);
+        log.info("当前服务器serverIndex:{}, 分片扫水用户:{}", serverIndex, myUsers);*/
 
-        for (AdminLoginDTO admin : myUsers) {
+        for (AdminLoginDTO admin : adminUsers) {
             String username = admin.getUsername();
             String key = KeyUtil.genKey(RedisConstants.SWEEPWATER_PREFIX, username);
             RList<String> sweepList = businessPlatformRedissonClient.getList(key);

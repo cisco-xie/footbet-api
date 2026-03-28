@@ -67,6 +67,10 @@ public class RedisConstants {
      * 网站设置-过滤设置-时间范围 前缀
      */
     public static final String PLATFORM_SETTINGS_FILTER_TIMEFRAME_PREFIX = "platform:settings:filter:timeframe";
+    /**
+     * 网站设置-非正常投注检测 前缀
+     */
+    public static final String PLATFORM_SETTINGS_ABNORMAL_DETECTION_PREFIX = "platform:settings:abnormal:detection";
 
     /**
      * 球队字典-绑定球队 前缀

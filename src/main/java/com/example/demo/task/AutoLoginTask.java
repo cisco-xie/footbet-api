@@ -67,7 +67,7 @@ public class AutoLoginTask {
             List<CompletableFuture<Void>> adminFutures = new ArrayList<>();
 
             // 获取本机标识（机器ID、IP、或自定义ID）
-            String serverId = System.getProperty("server.id", "0");
+            /*String serverId = System.getProperty("server.id", "0");
             int serverIndex = Integer.parseInt(serverId); // 直接用数字索引
 
             // 分配账户：比如通过 hash 或 Redis 列表分片
@@ -79,9 +79,9 @@ public class AutoLoginTask {
                 log.info("当前服务器分片没有用户，serverId={}", serverId);
                 return;
             }
-            log.info("当前服务器serverIndex:{}, 分片扫水用户:{}", serverIndex, myUsers);
+            log.info("当前服务器serverIndex:{}, 分片扫水用户:{}", serverIndex, myUsers);*/
 
-            for (AdminLoginDTO adminUser : myUsers) {
+            for (AdminLoginDTO adminUser : adminUsers) {
                 CompletableFuture<Void> adminFuture = CompletableFuture.runAsync(() -> {
 
                     // 中层并发线程池 - 处理当前 adminUser 下的多个网站并行

@@ -9,12 +9,14 @@ import cn.hutool.json.JSONUtil;
 import com.example.demo.api.AdminService;
 import com.example.demo.api.ConfigAccountService;
 import com.example.demo.api.HandicapApi;
+import com.example.demo.api.SettingsAbnormalService;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.enmu.ZhiBoSchedulesType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.model.dto.AdminLoginDTO;
+import com.example.demo.model.dto.settings.DetectionDTO;
 import com.example.demo.model.vo.ConfigAccountVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +34,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 
 /**
@@ -56,12 +59,18 @@ public class CheckAbnormalTask {
     @Resource(name = "businessPlatformRedissonClient")
     private RedissonClient businessPlatformRedissonClient;
 
-    @Value("${sweepwater.server.count}")
-    private int serverCount;
+    @Resource
+    private SettingsAbnormalService settingsAbnormalService;
 
-    // 上一次任务完成后再延迟 20 分钟后执行
-    // @Scheduled(fixedDelay = 20 * 60 * 1000)
+    private final ConcurrentHashMap<String, Long> lastCheckTimeByUser = new ConcurrentHashMap<>();
+    private final AtomicBoolean running = new AtomicBoolean(false);
+
+    // 每分钟检查一次是否到达执行间隔，真正执行频率由配置控制
+    @Scheduled(fixedDelay = 60 * 1000)
     public void check() {
+        if (!running.compareAndSet(false, true)) {
+            return;
+        }
         long startTime = System.currentTimeMillis();
         try {
             log.info("开始执行 检测非正常投注...");
@@ -77,7 +86,7 @@ public class CheckAbnormalTask {
             List<CompletableFuture<Void>> adminFutures = new ArrayList<>();
 
             // 获取本机标识（机器ID、IP、或自定义ID）
-            String serverId = System.getProperty("server.id", "0");
+            /*String serverId = System.getProperty("server.id", "0");
             int serverIndex = Integer.parseInt(serverId); // 直接用数字索引
 
             // 分配账户：比如通过 hash 或 Redis 列表分片
@@ -89,9 +98,20 @@ public class CheckAbnormalTask {
                 log.info("当前服务器分片没有用户，serverId={}", serverId);
                 return;
             }
-            log.info("当前服务器serverIndex:{}, 检测非正常投注用户:{}", serverIndex, myUsers);
+            log.info("当前服务器serverIndex:{}, 检测非正常投注用户:{}", serverIndex, myUsers);*/
 
-            for (AdminLoginDTO adminUser : myUsers) {
+            for (AdminLoginDTO adminUser : adminUsers) {
+                DetectionDTO detection = settingsAbnormalService.getDetection(adminUser.getUsername());
+                if (detection == null || detection.getEnabled() == null || detection.getEnabled() != 1) {
+                    continue;
+                }
+                int intervalMinutes = detection.getInterval() == null || detection.getInterval() <= 0 ? 30 : detection.getInterval();
+                long now = System.currentTimeMillis();
+                Long lastRun = lastCheckTimeByUser.get(adminUser.getUsername());
+                if (lastRun != null && now - lastRun < intervalMinutes * 60L * 1000L) {
+                    continue;
+                }
+                lastCheckTimeByUser.put(adminUser.getUsername(), now);
                 CompletableFuture<Void> adminFuture = CompletableFuture.runAsync(() -> {
 
                     // 中层并发线程池 - 处理当前 adminUser 下的多个网站并行
@@ -131,6 +151,19 @@ public class CheckAbnormalTask {
                                             }
                                         }
                                         if (!betIds.isEmpty()) {
+                                            try {
+                                                ConfigAccountVO shutdown = JSONUtil.toBean(JSONUtil.toJsonStr(userConfig), ConfigAccountVO.class);
+                                                shutdown.setEnable(0);
+                                                shutdown.setAutoLogin(0);
+                                                shutdown.setIsTokenValid(0);
+                                                shutdown.setToken(new JSONObject());
+                                                shutdown.setExecuteMsg(null);
+                                                accountService.saveAccount(adminUser.getUsername(), type.getId(), shutdown);
+                                                log.warn("非正常投注，已停用并关闭自动登录: admin={}, site={}, account={}",
+                                                        adminUser.getUsername(), type.getDescription(), userConfig.getAccount());
+                                            } catch (Exception ex) {
+                                                log.error("非正常投注停用账户失败, account={}", userConfig.getAccount(), ex);
+                                            }
                                             String key = KeyUtil.genKey(RedisConstants.PLATFORM_SETTLED_NORMAL_PREFIX, adminUser.getUsername(), date);
                                             Object abnormalRedis = businessPlatformRedissonClient.getBucket(key).get();
                                             if (abnormalRedis == null) {
@@ -187,6 +220,7 @@ public class CheckAbnormalTask {
             if (costTime > 20) {
                 log.warn("检测非正常投注 执行时间过长");
             }
+            running.set(false);
         }
     }
 

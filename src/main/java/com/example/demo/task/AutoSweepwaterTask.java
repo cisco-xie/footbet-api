@@ -63,7 +63,7 @@ public class AutoSweepwaterTask {
     private final LongAdder activeTasks = new LongAdder();
 
     // @Async("sweepTaskExecutor") // ✅ 独立线程池执行
-    @Scheduled(fixedRate = 100)
+    @Scheduled(fixedRate = 200)
     public void autoSweepwater() {
         // 非阻塞式尝试获取信号量，获取不到就跳过（不再执行新任务）
         if (!sweepPermits.tryAcquire()) {
@@ -198,7 +198,7 @@ public class AutoSweepwaterTask {
         }
 
         // 获取本机标识（机器ID、IP、或自定义ID）
-        String serverId = System.getProperty("server.id", "0");
+        /*String serverId = System.getProperty("server.id", "0");
         int serverIndex = Integer.parseInt(serverId); // 直接用数字索引
         // 分配账户：比如通过 hash 或 Redis 列表分片
         List<AdminLoginDTO> myUsers = adminUsers.stream()
@@ -208,14 +208,14 @@ public class AutoSweepwaterTask {
         if (myUsers.isEmpty()) {
             // 当前服务器分片没有扫水用户
             return;
-        }
+        }*/
 
         // 使用工作窃取线程池替代固定线程池
         ExecutorService executorAdminUserService = threadPoolHolder.getUserSweepExecutor();
         // 轮次id，用于记录本轮的id
         String roundId = IdUtil.getSnowflakeNextIdStr();
         try {
-            List<CompletableFuture<Void>> adminFutures = myUsers.stream()
+            List<CompletableFuture<Void>> adminFutures = adminUsers.stream()
                     .map(adminUser -> {
                         return CompletableFuture.runAsync(() -> {
                             if (Thread.currentThread().isInterrupted()) {
