@@ -3,6 +3,7 @@ package com.example.demo.model.vo.settings;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Data
@@ -13,6 +14,8 @@ public class LimitVO {
     private Integer betLimitScore;
     @Schema(description = "强制投注成功(0=关闭, 1=开启)")
     private Integer forceBetSuccess;
+    @Schema(description = "允许下降水位")
+    private Double allowWaterDrop;
     @Schema(description = "单边投注(开启后只投注最新赔率的一边)")
     private Integer unilateralBet;
     @Schema(description = "单边(1=旧, 2=新)")

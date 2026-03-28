@@ -1287,7 +1287,6 @@ public class BetService {
         int maxRetry = 0;
         int attempt = 0;
         boolean success = false;
-        JSONObject currentBetPreview = betPreviewOpt;
 
         if (null != limitDTO.getRetry() && 1 == limitDTO.getRetry()) {
             // 获取重试次数
@@ -1365,14 +1364,6 @@ public class BetService {
                         }
                     }
                 }
-                if (attempt > 1) {
-                    currentBetPreview = buildBetInfo(username, betTeamName, websiteId, params, isA, dto);
-                    if (currentBetPreview == null) {
-                        log.info("用户 {}, 网站:{} 第{}次重试预投注失败，跳过本次重试",
-                                username, WebsiteType.getById(websiteId).getDescription(), attempt);
-                        continue;
-                    }
-                }
 
                 // 投注预览
                 /*JSONObject betPreview = new JSONObject();
@@ -1402,7 +1393,7 @@ public class BetService {
                 /*} catch (Exception e) {
                     betPreview = betPreviewOpt;
                 }*/
-                JSONObject betInfo = currentBetPreview.getJSONObject("betInfo");
+                JSONObject betInfo = betPreviewOpt.getJSONObject("betInfo");
                 // 更新赔率
                 BigDecimal odds = betInfo.getBigDecimal("oddsValue");
                 if (isA) {
@@ -1428,12 +1419,23 @@ public class BetService {
                     // ✅ 仅保留 3 位小数（不四舍五入）
                     water = water.setScale(3, RoundingMode.DOWN);
 
-                    boolean valid = false;
+                    BigDecimal threshold;
                     if ("letBall".equals(dto.getHandicapType())) {
-                        valid = water.compareTo(BigDecimal.valueOf(profit.getRollingLetBall())) >= 0;
+                        threshold = BigDecimal.valueOf(profit.getRollingLetBall());
                     } else if ("overSize".equals(dto.getHandicapType())) {
-                        valid = water.compareTo(BigDecimal.valueOf(profit.getRollingSize())) >= 0;
+                        threshold = BigDecimal.valueOf(profit.getRollingSize());
+                    } else {
+                        threshold = BigDecimal.ZERO;
                     }
+                    // 强制放水
+                    if (forceBetSuccess && limitDTO.getAllowWaterDrop() != null) {
+                        threshold = threshold.subtract(BigDecimal.valueOf(limitDTO.getAllowWaterDrop()));
+                    }
+                    // 防止变负数
+                    threshold = threshold.max(BigDecimal.ZERO);
+                    // 精度统一
+                    threshold = threshold.setScale(3, RoundingMode.DOWN);
+                    boolean valid = water.compareTo(threshold) >= 0;
 
                     if (!valid) {
                         log.info("盘口分级后 赛事预览水位不足，id={}，本级水位={}, 上级水位={}, 总和={}，不投注", dto.getId(), odds, higherOdds, water);
@@ -1496,7 +1498,7 @@ public class BetService {
 
                 // 投注
                 log.info("用户 {}, 网站:{} 开始投注，eventId={}, isA={}, 投注参数={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, params);
-                Object betResult = handicapApi.bet(username, websiteId, params, currentBetPreview.getJSONObject("betInfo"), currentBetPreview.getJSONObject("betPreview"), handicapValue);
+                Object betResult = handicapApi.bet(username, websiteId, params, betPreviewOpt.getJSONObject("betInfo"), betPreviewOpt.getJSONObject("betPreview"), handicapValue);
                 if (isA) {
                     dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                 } else {
