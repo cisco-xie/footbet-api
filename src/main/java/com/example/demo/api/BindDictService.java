@@ -142,4 +142,31 @@ public class BindDictService {
         businessPlatformRedissonClient.getKeys().deleteByPattern(keyPattern);
     }
 
+    public List<BindLeagueVO> getCornerBindDict(String username, String websiteIdA, String websiteIdB) {
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_BIND_DICT_CORNER_PREFIX, username, websiteIdA, websiteIdB);
+        String json = (String) businessPlatformRedissonClient.getBucket(key).get();
+        if (StringUtils.isBlank(json)) {
+            return null;
+        }
+        return JSONUtil.parseArray(json).toList(BindLeagueVO.class);
+    }
+
+    public void bindCornerDict(String username, String websiteIdA, String websiteIdB, List<BindLeagueVO> bindLeagueVOS) {
+        if (bindLeagueVOS.isEmpty()) {
+            throw new BusinessException(SystemError.BIND_1320);
+        }
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_BIND_DICT_CORNER_PREFIX, username, websiteIdA, websiteIdB);
+        businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(bindLeagueVOS));
+    }
+
+    public void deleteCornerBindDict(String username, String websiteIdA, String websiteIdB) {
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_BIND_DICT_CORNER_PREFIX, username, websiteIdA, websiteIdB);
+        businessPlatformRedissonClient.getBucket(key).delete();
+    }
+
+    public void deleteCornerBindDict(String username) {
+        String keyPattern = KeyUtil.genKey(RedisConstants.PLATFORM_BIND_DICT_CORNER_PREFIX, username, "*");
+        businessPlatformRedissonClient.getKeys().deleteByPattern(keyPattern);
+    }
+
 }

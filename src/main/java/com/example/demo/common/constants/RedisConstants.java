@@ -78,6 +78,11 @@ public class RedisConstants {
     public static final String PLATFORM_BIND_DICT_TEAM_PREFIX = "platform:bind:dict:team";
 
     /**
+     * 角球字典-绑定球队 前缀
+     */
+    public static final String PLATFORM_BIND_DICT_CORNER_PREFIX = "platform:bind:dict:corner";
+
+    /**
      * 扫水列表 前缀
      */
     public static final String SWEEPWATER_PREFIX = "platform:sweepwater";

@@ -102,4 +102,38 @@ public class BindDictController extends BaseController {
         return Result.success(BeanUtil.copyToList(leagueVO, BindLeagueDTO.class));
     }
 
+    @Operation(summary = "角球字典-绑定字典")
+    @PostMapping("/corner-bind")
+    public Result cornerAdd(@RequestParam String websiteIdA, @RequestParam String websiteIdB, @RequestBody List<BindLeagueVO> bindLeagueVOS) {
+        AdminLoginDTO admin = getUser();
+        bindDictService.bindCornerDict(admin.getUsername(), websiteIdA, websiteIdB, bindLeagueVOS);
+        return Result.success();
+    }
+
+    @Operation(summary = "角球字典-删除指定绑定")
+    @DeleteMapping("/corner-bind")
+    public Result cornerDelete(@RequestParam String websiteIdA, @RequestParam String websiteIdB) {
+        AdminLoginDTO admin = getUser();
+        bindDictService.deleteCornerBindDict(admin.getUsername(), websiteIdA, websiteIdB);
+        sweepwaterService.delSweepwaters(admin.getUsername());
+        return Result.success();
+    }
+
+    @Operation(summary = "角球字典-删除所有绑定")
+    @DeleteMapping("/corner-bind/all")
+    public Result cornerDeleteAll() {
+        AdminLoginDTO admin = getUser();
+        bindDictService.deleteCornerBindDict(admin.getUsername());
+        sweepwaterService.delSweepwaters(admin.getUsername());
+        return Result.success();
+    }
+
+    @Operation(summary = "角球字典-获取绑定列表")
+    @GetMapping("/corner-bind")
+    public Result<List<BindLeagueDTO>> getCornerBindDict(@RequestParam String websiteIdA, @RequestParam String websiteIdB) {
+        AdminLoginDTO admin = getUser();
+        List<BindLeagueVO> leagueVO = bindDictService.getCornerBindDict(admin.getUsername(), websiteIdA, websiteIdB);
+        return Result.success(BeanUtil.copyToList(leagueVO, BindLeagueDTO.class));
+    }
+
 }
