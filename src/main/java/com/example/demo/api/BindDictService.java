@@ -142,6 +142,21 @@ public class BindDictService {
         businessPlatformRedissonClient.getKeys().deleteByPattern(keyPattern);
     }
 
+    public List<BindLeagueVO> getCornerBindDictAll(String username) {
+        String patternKey = KeyUtil.genKey(RedisConstants.PLATFORM_BIND_DICT_CORNER_PREFIX, username, "*", "*");
+        Iterable<String> keys = businessPlatformRedissonClient.getKeys().getKeysByPattern(patternKey);
+
+        List<BindLeagueVO> result = new ArrayList<>();
+        for (String key : keys) {
+            String json = (String) businessPlatformRedissonClient.getBucket(key).get();
+            if (StringUtils.isNotBlank(json)) {
+                List<BindLeagueVO> list = JSONUtil.parseArray(json).toList(BindLeagueVO.class);
+                result.addAll(list);
+            }
+        }
+        return result;
+    }
+
     public List<BindLeagueVO> getCornerBindDict(String username, String websiteIdA, String websiteIdB) {
         String key = KeyUtil.genKey(RedisConstants.PLATFORM_BIND_DICT_CORNER_PREFIX, username, websiteIdA, websiteIdB);
         String json = (String) businessPlatformRedissonClient.getBucket(key).get();

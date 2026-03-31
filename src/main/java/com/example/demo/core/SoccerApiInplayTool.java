@@ -178,7 +178,7 @@ public class SoccerApiInplayTool {
     private volatile long inplayCacheTsMs = 0;
     private volatile JsonNode inplayCacheData = null;
 
-    // 获取正在进行的赛事列表（与原 Node 脚本筛选逻辑一致）
+    // 获取所有赛事列表（不过滤进行中状态）
     public List<MatchSummary> fetchInplayMatchesInPlay(int limit) {
         JsonNode feed = fetchInplayFeedData();
         if (feed == null) return List.of();
@@ -189,8 +189,6 @@ public class SoccerApiInplayTool {
         List<MatchSummary> result = new ArrayList<>();
 
         for (JsonNode evt : iterateEvents(eventsNode)) {
-            if (!isInplayInJsLogic(evt)) continue;
-
             MatchSummary summary = mapInplayEventToMatchSummary(evt);
             if (summary == null) continue;
 
@@ -222,7 +220,7 @@ public class SoccerApiInplayTool {
         return out;
     }
 
-    // 根据比赛ID获取详情，并补充状态说明与stats
+    // 根据比赛ID获取详情（内部会自行获取或复用缓存）
     public MatchDetail fetchMatchDetailByMatchId(String matchId) {
         if (matchId == null || matchId.trim().isEmpty()) return null;
 
@@ -247,9 +245,34 @@ public class SoccerApiInplayTool {
         return new MatchDetail(summary, stateCode, stateName, eventTime, description, stats);
     }
 
-    private JsonNode fetchInplayEventByMatchId(String matchId) {
-        JsonNode feed = fetchInplayFeedData();
-        if (feed == null) return null;
+    // 根据比赛ID和外部提供的feed获取详情（外层可先拉一次feed复用）
+    public MatchDetail fetchMatchDetailByMatchId(String matchId, JsonNode feed) {
+        if (matchId == null || matchId.trim().isEmpty()) return null;
+        if (feed == null || feed.isNull()) return null;
+
+        JsonNode evt = findInplayEventByMatchId(feed, matchId.trim());
+        if (evt == null) return null;
+
+        MatchSummary summary = mapInplayEventToMatchSummary(evt);
+        if (summary == null) return null;
+
+        String stateCode = firstText(evt.path("info").path("state"), evt.path("state"));
+        String stateName = translateStateName(stateCode, "");
+
+        String stateSeconds = textTrim(evt.path("info").path("seconds"));
+        String fallbackMinute = textTrim(evt.path("info").path("minute").isMissingNode() ? evt.path("minute") : evt.path("info").path("minute"));
+        String eventTime = !stateSeconds.isEmpty() ? stateSeconds : (!fallbackMinute.isEmpty() ? fallbackMinute : "");
+
+        String ballPos = textTrim(evt.path("info").path("ball_pos"));
+        String description = ballPos.isEmpty() ? stateName : (stateName + " | 球场位置：" + ballPos);
+
+        List<StatLine> stats = parseInplayStatsFromEvent(evt);
+
+        return new MatchDetail(summary, stateCode, stateName, eventTime, description, stats);
+    }
+
+    private JsonNode findInplayEventByMatchId(JsonNode feed, String matchId) {
+        if (feed == null || feed.isNull()) return null;
         JsonNode eventsNode = feed.get("events");
         if (eventsNode == null || eventsNode.isNull()) return null;
 
@@ -271,6 +294,17 @@ public class SoccerApiInplayTool {
             }
         }
         return null;
+    }
+
+    private JsonNode fetchInplayEventByMatchId(String matchId) {
+        JsonNode feed = fetchInplayFeedData();
+        if (feed == null) return null;
+        return findInplayEventByMatchId(feed, matchId);
+    }
+
+    // 外部可显式拉一次 feed 复用，避免多次 HTTP 请求
+    public JsonNode loadInplayFeed() {
+        return fetchInplayFeedData();
     }
 
     // 优先拉取远端 inplay 数据，失败时回退本地快照
@@ -345,6 +379,11 @@ public class SoccerApiInplayTool {
         return List.of();
     }
 
+    /**
+     * 过滤正在进行的比赛
+     * @param evt
+     * @return
+     */
     private boolean isInplayInJsLogic(JsonNode evt) {
         String finished = textTrim(evt.path("core").path("finished"));
         if ("1".equals(finished)) return false;
