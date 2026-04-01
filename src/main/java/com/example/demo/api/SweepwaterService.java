@@ -946,7 +946,7 @@ public class SweepwaterService {
     /**
      * 构建 leagueId → JSONObject 索引
      */
-    private Map<String, JSONObject> buildLeagueMap(JSONArray events) {
+    public Map<String, JSONObject> buildLeagueMap(JSONArray events) {
         Map<String, JSONObject> leagueMap = new HashMap<>();
         for (Object obj : events) {
             JSONObject leagueJson = (JSONObject) obj;
@@ -962,7 +962,7 @@ public class SweepwaterService {
      * @param names
      * @return
      */
-    private JSONObject findEventByLeagueName(Map<String, JSONObject> leagueMap, String leagueId, List<String> names) {
+    public JSONObject findEventByLeagueName(Map<String, JSONObject> leagueMap, String leagueId, List<String> names) {
         // 直接通过 leagueId 查找
         JSONObject eventJson = leagueMap.get(leagueId);
         if (eventJson == null) {
