@@ -310,7 +310,7 @@ public class SoccerApiInplayTool {
     // 优先拉取远端 inplay 数据，失败时回退本地快照
     private JsonNode fetchInplayFeedData() {
         long now = System.currentTimeMillis();
-        if (inplayCacheData != null && (now - inplayCacheTsMs) < 2000) return inplayCacheData;
+        if (inplayCacheData != null && (now - inplayCacheTsMs) < 1000) return inplayCacheData;
 
         try {
             Request request = new Request.Builder().url(inplaySoccerUrl).get().build();

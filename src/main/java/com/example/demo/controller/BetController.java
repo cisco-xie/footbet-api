@@ -49,6 +49,13 @@ public class BetController extends BaseController {
         return Result.success(betService.getNewRealtimeBetsSince(admin.getUsername(), lastSeenTotal));
     }
 
+    @Operation(summary = "查询是否存在新的角球投注")
+    @GetMapping("/corner/bets/exist/new")
+    public Result<Boolean> existCornerNew(@RequestParam(defaultValue = "0") Integer lastSeenTotal) {
+        AdminLoginDTO admin = getUser();
+        return Result.success(betService.getNewCornerRealtimeBetsSince(admin.getUsername(), lastSeenTotal));
+    }
+
     @Operation(summary = "获取实时进单列表")
     @GetMapping("/bets/realtime")
     public Result<PageResult<SweepwaterBetDTO>> getBetsReal(@RequestParam(value = "teamName", required = false) String teamName,
@@ -56,6 +63,16 @@ public class BetController extends BaseController {
                                                       @RequestParam(defaultValue = "500") Integer pageSize) {
         AdminLoginDTO admin = getUser();
         return Result.success(betService.getRealTimeBets(admin.getUsername(), teamName, pageNum, pageSize));
+    }
+
+    @Operation(summary = "获取角球实时进单列表")
+    @GetMapping("/corner/bets/realtime")
+    public Result<PageResult<SweepwaterBetDTO>> getCornerBetsReal(
+            @RequestParam(value = "teamName", required = false) String teamName,
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "500") Integer pageSize) {
+        AdminLoginDTO admin = getUser();
+        return Result.success(betService.getCornerRealTimeBets(admin.getUsername(), teamName, pageNum, pageSize));
     }
 
     @Operation(summary = "获取实时进单列表-websocket增量版")
@@ -92,6 +109,14 @@ public class BetController extends BaseController {
     public Result clear() {
         AdminLoginDTO admin = getUser();
         betService.betClear(admin.getUsername());
+        return Result.success();
+    }
+
+    @Operation(summary = "清空角球实时进单列表")
+    @GetMapping("/corner/bets/clear")
+    public Result cornerClear() {
+        AdminLoginDTO admin = getUser();
+        betService.cornerBetClear(admin.getUsername());
         return Result.success();
     }
 

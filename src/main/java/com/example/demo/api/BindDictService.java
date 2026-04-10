@@ -146,9 +146,18 @@ public class BindDictService {
         String patternKey = KeyUtil.genKey(RedisConstants.PLATFORM_BIND_DICT_CORNER_PREFIX, username, "*", "*");
         Iterable<String> keys = businessPlatformRedissonClient.getKeys().getKeysByPattern(patternKey);
 
-        List<BindLeagueVO> result = new ArrayList<>();
+        List<String> keyList = new ArrayList<>();
         for (String key : keys) {
-            String json = (String) businessPlatformRedissonClient.getBucket(key).get();
+            keyList.add(key);
+        }
+        if (keyList.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<String, Object> values = businessPlatformRedissonClient.getBuckets().get(keyList.toArray(new String[0]));
+        List<BindLeagueVO> result = new ArrayList<>();
+        for (Object value : values.values()) {
+            String json = value == null ? null : String.valueOf(value);
             if (StringUtils.isNotBlank(json)) {
                 List<BindLeagueVO> list = JSONUtil.parseArray(json).toList(BindLeagueVO.class);
                 result.addAll(list);
