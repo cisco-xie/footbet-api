@@ -8,6 +8,7 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.SystemError;
+import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.core.exception.BusinessException;
 import com.example.demo.model.dto.AdminLoginDTO;
@@ -143,27 +144,31 @@ public class BindDictService {
     }
 
     public List<BindLeagueVO> getCornerBindDictAll(String username) {
-        String patternKey = KeyUtil.genKey(RedisConstants.PLATFORM_BIND_DICT_CORNER_PREFIX, username, "*", "*");
-        Iterable<String> keys = businessPlatformRedissonClient.getKeys().getKeysByPattern(patternKey);
 
-        List<String> keyList = new ArrayList<>();
-        for (String key : keys) {
-            keyList.add(key);
-        }
-        if (keyList.isEmpty()) {
+        String key = KeyUtil.genKey(
+                RedisConstants.PLATFORM_BIND_DICT_CORNER_PREFIX,
+                username,
+                "inplay-events",
+                WebsiteType.XINBAO.getId()
+        );
+
+        Object value = businessPlatformRedissonClient.getBucket(key).get();
+
+        if (value == null) {
             return Collections.emptyList();
         }
 
-        Map<String, Object> values = businessPlatformRedissonClient.getBuckets().get(keyList.toArray(new String[0]));
-        List<BindLeagueVO> result = new ArrayList<>();
-        for (Object value : values.values()) {
-            String json = value == null ? null : String.valueOf(value);
-            if (StringUtils.isNotBlank(json)) {
-                List<BindLeagueVO> list = JSONUtil.parseArray(json).toList(BindLeagueVO.class);
-                result.addAll(list);
-            }
+        String json = String.valueOf(value);
+        if (StringUtils.isBlank(json)) {
+            return Collections.emptyList();
         }
-        return result;
+
+        try {
+            return JSONUtil.parseArray(json).toList(BindLeagueVO.class);
+        } catch (Exception e) {
+            log.error("解析角球联赛绑定失败，username={}，key={}，json={}", username, key, json, e);
+            return Collections.emptyList();
+        }
     }
 
     public List<BindLeagueVO> getCornerBindDict(String username, String websiteIdA, String websiteIdB) {

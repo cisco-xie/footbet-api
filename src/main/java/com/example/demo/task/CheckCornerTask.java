@@ -5,11 +5,15 @@ import cn.hutool.core.date.TimeInterval;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import com.example.demo.api.*;
+import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.WebsiteType;
+import com.example.demo.common.utils.KeyUtil;
+import com.example.demo.config.SuccessBasedLimitManager;
 import com.example.demo.core.SoccerApiInplayTool;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.dto.bet.SweepwaterBetDTO;
 import com.example.demo.model.dto.settings.BetAmountDTO;
+import com.example.demo.model.dto.settings.IntervalDTO;
 import com.example.demo.model.dto.settings.LimitDTO;
 import com.example.demo.model.vo.dict.BindLeagueVO;
 import com.example.demo.model.vo.dict.BindTeamVO;
@@ -44,8 +48,12 @@ public class CheckCornerTask {
 
     @Resource
     private SettingsService settingsService;
+
     @Resource
     private SettingsBetService settingsBetService;
+
+    @Resource
+    private SuccessBasedLimitManager limitManager;
 
     @Resource
     private BindDictService bindDictService;
@@ -56,7 +64,7 @@ public class CheckCornerTask {
 
     private final Map<String, String> lastStateByMatch = new ConcurrentHashMap<>();
 
-    @Scheduled(fixedDelay = 1000)
+    @Scheduled(fixedDelay = 100)
     public void checkCorner() {
         if (!running.compareAndSet(false, true)) {
             log.info("角球检测任务正在运行中，本轮跳过...");
@@ -268,12 +276,14 @@ public class CheckCornerTask {
                                     }
                                     BetAmountDTO amount = settingsService.getBetAmount(admin.getUsername());
                                     LimitDTO limit = settingsBetService.getLimit(admin.getUsername());
+                                    IntervalDTO interval = settingsBetService.getInterval(admin.getUsername());
                                     if (amount == null || limit == null) {
                                         log.info("角球检测任务：投注跳过，配置为空，user={}, amountNull={}, limitNull={}",
                                                 admin.getUsername(), amount == null, limit == null);
                                         return;
                                     }
-                                    log.info("角球检测任务：投注跳过，配置信息，user={}, amount={}, limit={}",
+
+                                    log.info("角球检测任务：配置信息，user={}, amount={}, limit={}",
                                             admin.getUsername(), amount, limit);
                                     SweepwaterBetDTO sweepwater = new SweepwaterBetDTO();
                                     sweepwater.setWebsiteIdA(league.getWebsiteIdB());
@@ -290,19 +300,39 @@ public class CheckCornerTask {
                                     sweepwater.setScoreA(score);
                                     sweepwater.setReTimeA(reTime);
                                     sweepwater.setHandicapType("letBall");
+
+                                    // 校验投注间隔key
+                                    String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, "corner", admin.getUsername(), String.valueOf(admin.getSimulateBet()), sweepwater.getEventIdA(), sweepwater.getEventIdB());
+                                    // 投注次数限制key
+                                    String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, "corner", admin.getUsername(), String.valueOf(admin.getSimulateBet()), sweepwater.getEventIdA(), sweepwater.getEventIdB());
+
+                                    // 这里是校验间隔时间
+                                    long intervalMillis = interval.getBetSuccessSec() * 1000L;
+
+                                    // 1. 强制预检查
+                                    SuccessBasedLimitManager.EnforcementResult checkResult = limitManager.preCheckAndReserve(
+                                            limitKey, intervalKey, sweepwater.getScoreA(), limit, intervalMillis);
+
+                                    // 快速检查：如果明显不满足条件，直接返回
+                                    if (!checkResult.isSuccess()) {
+                                        log.info("角球检测任务：快速检查不满足: 用户 {}, 联赛:{}, 比分 {}, 原因: {}",
+                                                admin.getUsername(), sweepwater.getLeague(), sweepwater.getScoreA(), checkResult.getFailReason());
+                                        return;
+                                    }
+                                    // 保存reservationId，用于后续确认或回滚
+                                    String reservationId = checkResult.getReservationId();
+
                                     JSONObject betParams = betService.buildBetParams(sweepwater, amount, true, false);
-                                    log.info("角球检测任务：开始预览，user={}, 投注队伍={}, 赛事={}, oddsId={}",
-                                            admin.getUsername(), betTeamName, eventId, oddsId);
                                     JSONObject retryPreview = betService.buildBetInfo(
                                             admin.getUsername(), betTeamName, league.getWebsiteIdB(),
                                             betParams, true, sweepwater
                                     );
-                                    log.info("角球检测任务：预览结束，user={}, 投注队伍={}, 赛事={}, oddsId={}",
-                                            admin.getUsername(), betTeamName, eventId, oddsId);
                                     if (retryPreview == null) {
                                         log.info("角球检测任务：预览失败，user={}, 投注队伍={}, 赛事={}, oddsId={}",
                                                 admin.getUsername(), betTeamName, eventId, oddsId);
-                                        return;
+                                        // 回滚投注次数
+                                        limitManager.rollbackReservation(limitKey, reservationId);
+                                        return; // 跳过
                                     }
                                     JSONObject successJson = betService.tryBetCorner(admin.getUsername(), eventId, league.getWebsiteIdB(), true, sweepwater, limit, amount, retryPreview);
                                     if (successJson == null) {
@@ -311,8 +341,18 @@ public class CheckCornerTask {
                                         return;
                                     }
                                     boolean success = successJson.getBool("success", false);
+                                    if (!success) {
+                                        // 回滚投注次数
+                                        limitManager.rollbackReservation(limitKey, reservationId);
+                                        log.info("角球检测任务：投注失败,用户 {} 赛事A={} 赛事B={} 投注失败", admin.getUsername(), sweepwater.getLeagueNameA(), sweepwater.getLeagueNameB());
+                                        return; // 跳过
+                                    } else {
+                                        // 记录投注成功到限流管理器（关键步骤）
+                                        limitManager.confirmSuccess(limitKey, reservationId);
+                                    }
                                     log.info("角球检测任务：投注结果: user={}, 投注队伍={}, eventId={}, oddsId={}, success={}, raw={}",
                                             admin.getUsername(), betTeamName, eventId, oddsId, success, successJson);
+
                                 } catch (Exception e) {
                                     log.info("角球检测任务：执行投注异常，user={}, 赛事={}, eventId={}, teamName={}, odds={}, error={}",
                                             admin.getUsername(), team.getNameB(), eventId, teamNameLabel, firstOdds, e.getMessage());
