@@ -9,15 +9,15 @@ import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.config.SuccessBasedLimitManager;
-import com.example.demo.core.SoccerApiInplayTool;
+import com.example.demo.core.SoccerApiNewTool;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.dto.bet.SweepwaterBetDTO;
 import com.example.demo.model.dto.settings.BetAmountDTO;
 import com.example.demo.model.dto.settings.IntervalDTO;
 import com.example.demo.model.dto.settings.LimitDTO;
+import com.example.demo.model.dto.settings.TimeFrameDTO;
 import com.example.demo.model.vo.dict.BindLeagueVO;
 import com.example.demo.model.vo.dict.BindTeamVO;
-import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -53,16 +53,20 @@ public class CheckCornerTask {
     private SettingsBetService settingsBetService;
 
     @Resource
+    private SettingsFilterService settingsFilterService;
+
+    @Resource
     private SuccessBasedLimitManager limitManager;
 
     @Resource
     private BindDictService bindDictService;
 
-    private final SoccerApiInplayTool tool = new SoccerApiInplayTool();
+    private final SoccerApiNewTool tool = new SoccerApiNewTool();
 
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     private final Map<String, String> lastStateByMatch = new ConcurrentHashMap<>();
+    private final Map<String, Integer> lastCornerMinuteByMatch = new ConcurrentHashMap<>();
 
     @Scheduled(fixedDelay = 100)
     public void checkCorner() {
@@ -76,15 +80,13 @@ public class CheckCornerTask {
         ExecutorService leagueExecutor = Executors.newFixedThreadPool(poolSize);
         ExecutorService teamExecutor = Executors.newFixedThreadPool(poolSize);
         try {
-            TimeInterval feedTotal = DateUtil.timer();
-            JsonNode feed = tool.loadInplayFeed();
-            log.info("角球检测任务：inplay 数据源获取结束，总花费:{}毫秒", feedTotal.interval());
-            if (feed == null || feed.isNull()) {
-                log.warn("角球检测任务：inplay 数据源不可用，本轮结束");
-                return;
-            }
             List<AdminLoginDTO> adminUsers = adminService.getUsers(null);
             if (adminUsers == null || adminUsers.isEmpty()) {
+                return;
+            }
+            adminUsers.removeIf(adminUser -> adminUser.getStatus() == 0);
+            if (adminUsers.isEmpty()) {
+                // 没有开启投注的平台用户
                 return;
             }
             List<Future<?>> adminFutures = new ArrayList<>();
@@ -117,40 +119,70 @@ public class CheckCornerTask {
                                 return;
                             }
                             log.info("角球检测任务：平台用户 {} 检查赛事:{}", admin.getUsername(), team.getNameB());
-                            SoccerApiInplayTool.MatchDetail detail = tool.fetchMatchDetailByMatchId(matchIdA, feed);
+                            SoccerApiNewTool.MatchDetail detail = tool.fetchMatchDetailByMatchId(matchIdA);
                             if (detail == null) {
                                 return;
                             }
-                            String stateCode = detail.stateCode();
-                            if (stateCode == null) {
-                                return;
-                            }
-                            log.info(
-                                    "角球检测任务：赛事详情，赛事ID={}，赛事名称={}，状态码={}，状态名={}，事件时间={}，描述={}",
-                                    matchIdA,
-                                    team.getNameB(),
-                                    stateCode,
-                                    detail.stateName(),
-                                    detail.eventTime(),
-                                    detail.description()
-                            );
-                            boolean isHomeCornerCode = "11004".equals(stateCode) || "11901".equals(stateCode) || "11902".equals(stateCode);
-                            boolean isAwayCornerCode = "21004".equals(stateCode) || "21901".equals(stateCode) || "21902".equals(stateCode);
-                            // boolean isNeutralCornerCode = "1004".equals(stateCode);
-                            boolean isCorner = isHomeCornerCode || isAwayCornerCode;
-                            String key = matchIdA;
-                            String last = lastStateByMatch.get(key);
-                            if (isCorner) {
+                            // 检查赛事状态
+                            SoccerApiNewTool.MatchSummary summary = detail.summary();
+                            String status = summary.status();
+                            if ("完场".equals(status)
+                                    || "未开赛".equals(status)
+                                    || "推迟".equals(status)
+                                    || "中断".equals(status)
+                                    || "腰斩".equals(status)
+                                    || "取消".equals(status)
+                                    || "待定".equals(status)) {
                                 log.info(
-                                        "角球检测任务：发生角球，赛事ID={}，赛事名称={}，状态码={}，状态名={}，事件时间={}，描述={}",
+                                        "角球检测任务：跳过赛事，赛事ID={}，赛事名称={}，状态={}",
                                         matchIdA,
                                         team.getNameB(),
-                                        stateCode,
-                                        detail.stateName(),
-                                        detail.eventTime(),
-                                        detail.description()
+                                        status
                                 );
-                                lastStateByMatch.put(key, stateCode);
+                                return;
+                            }
+                            // 检查最新的事件是否为角球
+                            boolean isCorner = false;
+                            String stateCode = "";
+                            String key = matchIdA;
+                            List<SoccerApiNewTool.MatchEvent> namiEvents = detail.events();
+                            if (!namiEvents.isEmpty()) {
+                                // 获取最新的事件（按时间排序，最后一个是最新的）
+                                SoccerApiNewTool.MatchEvent latestEvent = namiEvents.get(namiEvents.size() - 1);
+                                if ("角球".equals(latestEvent.typeLabel())) {
+                                    // 检查事件的minute，防止重复投注
+                                    int currentMinute = latestEvent.minute();
+                                    Integer lastMinute = lastCornerMinuteByMatch.get(key);
+                                    log.info(
+                                            "角球检测任务：发生角球，赛事ID={}，赛事名称={}，状态码={}，分钟={}",
+                                            matchIdA,
+                                            team.getNameB(),
+                                            stateCode,
+                                            currentMinute
+                                    );
+                                    if (lastMinute != null && lastMinute == currentMinute) {
+                                        log.info(
+                                                "角球检测任务：赛事ID={}，赛事名称={}， 事件时间={}，角球事件已处理，跳过投注",
+                                                matchIdA,
+                                                team.getNameB(),
+                                                currentMinute
+                                        );
+                                        return;
+                                    }
+                                    isCorner = true;
+                                    stateCode = latestEvent.typeKey();
+                                    // 根据队伍位置确定是主队还是客队角球
+                                    if ("主队".equals(latestEvent.team())) {
+                                        stateCode = "11004";
+                                    } else if ("客队".equals(latestEvent.team())) {
+                                        stateCode = "21004";
+                                    }
+                                    lastStateByMatch.put(key, stateCode);
+                                    lastCornerMinuteByMatch.put(key, currentMinute);
+                                }
+                            }
+                            String last = lastStateByMatch.get(key);
+                            if (isCorner) {
                                 String sideLabel;
                                 String teamNameLabel;
                                 String nameB = team.getNameB();
@@ -167,7 +199,7 @@ public class CheckCornerTask {
                                     sideLabel = "未知球队角球";
                                     teamNameLabel = "";
                                 } else {
-                                    boolean lastHome = last.startsWith("11") || last.startsWith("119");
+                                    boolean lastHome = last.startsWith("11");
                                     if (lastHome) {
                                         sideLabel = "联赛B主队角球";
                                         teamNameLabel = homeTeam;
@@ -211,8 +243,9 @@ public class CheckCornerTask {
                                     log.info("角球检测任务执行,平台用户:{},赛事赔率 event 为空,跳出", admin.getUsername());
                                     return;
                                 }
+                                String eid = event.getStr("id");
                                 String score = event.getStr("score");
-                                String reTime = event.getStr("reTime");
+                                Integer reTime = event.getInt("reTime");
                                 JSONObject fullCourt = event.getJSONObject("fullCourt");
                                 if (fullCourt == null) {
                                     log.info("角球检测任务执行,平台用户:{},赛事 fullCourt 为空,跳出", admin.getUsername());
@@ -277,6 +310,15 @@ public class CheckCornerTask {
                                     BetAmountDTO amount = settingsService.getBetAmount(admin.getUsername());
                                     LimitDTO limit = settingsBetService.getLimit(admin.getUsername());
                                     IntervalDTO interval = settingsBetService.getInterval(admin.getUsername());
+                                    List<TimeFrameDTO> timeFrames = settingsFilterService.getTimeFrames(admin.getUsername());
+                                    if (!timeFrames.isEmpty()) {
+                                        TimeFrameDTO timeFrame = timeFrames.get(0);
+                                        if (reTime < timeFrame.getTimeFormSec() || reTime > timeFrame.getTimeToSec()) {
+                                            log.info("角球检测任务：当前赛事时间:{}不在[{}-{}]范围内",
+                                                    reTime, timeFrame.getTimeFormSec(), timeFrame.getTimeToSec());
+                                            return;
+                                        }
+                                    }
                                     if (amount == null || limit == null) {
                                         log.info("角球检测任务：投注跳过，配置为空，user={}, amountNull={}, limitNull={}",
                                                 admin.getUsername(), amount == null, limit == null);
@@ -298,17 +340,20 @@ public class CheckCornerTask {
                                     sweepwater.setRatioA(firstOdds.getStr("ratio"));
                                     sweepwater.setHandicapA(firstOdds.getStr("handicap"));
                                     sweepwater.setScoreA(score);
-                                    sweepwater.setReTimeA(reTime);
+                                    sweepwater.setReTimeA(String.valueOf(reTime));
                                     sweepwater.setHandicapType("letBall");
 
                                     // 校验投注间隔key
-                                    String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, "corner", admin.getUsername(), String.valueOf(admin.getSimulateBet()), sweepwater.getEventIdA(), sweepwater.getEventIdB());
+                                    String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, "corner", admin.getUsername(), String.valueOf(admin.getSimulateBet()), eid, null);
                                     // 投注次数限制key
-                                    String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, "corner", admin.getUsername(), String.valueOf(admin.getSimulateBet()), sweepwater.getEventIdA(), sweepwater.getEventIdB());
+                                    String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, "corner", admin.getUsername(), String.valueOf(admin.getSimulateBet()), eid, null);
 
                                     // 这里是校验间隔时间
                                     long intervalMillis = interval.getBetSuccessSec() * 1000L;
 
+                                    // 角球投注不限制次数
+                                    limit.setBetLimitGame(100);
+                                    limit.setBetLimitScore(100);
                                     // 1. 强制预检查
                                     SuccessBasedLimitManager.EnforcementResult checkResult = limitManager.preCheckAndReserve(
                                             limitKey, intervalKey, sweepwater.getScoreA(), limit, intervalMillis);
@@ -359,7 +404,7 @@ public class CheckCornerTask {
                                 }
 
                             } else {
-                                if (last != null && (last.startsWith("11") || last.startsWith("119") || last.startsWith("21") || last.startsWith("219") || "1004".equals(last))) {
+                                if (last != null && (last.startsWith("11") || last.startsWith("21") || "1004".equals(last))) {
                                     String sideLabel;
                                     String teamNameLabel;
                                     String nameB = team.getNameB();
@@ -376,7 +421,7 @@ public class CheckCornerTask {
                                         sideLabel = "未知球队角球";
                                         teamNameLabel = "";
                                     } else {
-                                        boolean lastHome = last.startsWith("11") || last.startsWith("119");
+                                        boolean lastHome = last.startsWith("11");
                                         if (lastHome) {
                                             sideLabel = "联赛B主队角球";
                                             teamNameLabel = homeTeam;
@@ -387,6 +432,7 @@ public class CheckCornerTask {
                                     }
                                     log.info("角球检测任务：发生角球-角球结束触发投注逻辑，联赛B赛事名称: {}，角球队伍: {}，角球方: {}", nameB, teamNameLabel, sideLabel);
                                     lastStateByMatch.remove(key);
+                                    lastCornerMinuteByMatch.remove(key);
                                 }
                             }
                                 }));

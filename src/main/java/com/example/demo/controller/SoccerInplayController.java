@@ -1,18 +1,17 @@
 package com.example.demo.controller;
 
-import cn.hutool.http.HttpUtil;
+import cn.hutool.http.HttpRequest;
 import cn.hutool.json.JSONUtil;
 import com.example.demo.core.SoccerApiInplayTool;
 import com.example.demo.core.SoccerApiInplayTool.MatchSummary;
 import com.example.demo.core.result.Result;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,10 +23,16 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequestMapping("/api/inplay")
 public class SoccerInplayController {
 
+    /**
+     * 本机 Argos 栈 HTTP 服务（推荐 Docker 部署 LibreTranslate，POST /translate 与官方示例一致）
+     */
+    @Value("${inplay.translate.base-url:http://127.0.0.1:5000}")
+    private String translateBaseUrl;
+
     private final SoccerApiInplayTool tool = new SoccerApiInplayTool();
     private final Map<String, String> zhTranslateCache = new ConcurrentHashMap<>();
 
-    @GetMapping("/events")
+    @GetMapping("/events-old")
     public Result listMatchesByLeague() {
         try {
             List<MatchSummary> matches = tool.fetchInplayMatchesInPlay(Integer.MAX_VALUE);
@@ -82,38 +87,35 @@ public class SoccerInplayController {
         String cached = zhTranslateCache.get(src);
         if (cached != null && !cached.isEmpty()) return cached;
         try {
-            String q = URLEncoder.encode(src, StandardCharsets.UTF_8);
-            String url = "https://api.mymemory.translated.net/get?q=" + q + "&langpair=en|zh-CN";
-            String body = HttpUtil.get(url, 8000);
+            String base = translateBaseUrl == null ? "" : translateBaseUrl.trim();
+            if (base.isEmpty()) {
+                base = "http://127.0.0.1:5000";
+            }
+            if (base.endsWith("/")) {
+                base = base.substring(0, base.length() - 1);
+            }
+            String url = base + "/translate";
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("q", src);
+            payload.put("source", "auto");
+            payload.put("target", "zh");
+            payload.put("format", "text");
+            String body = HttpRequest.post(url)
+                    .body(JSONUtil.toJsonStr(payload), "application/json")
+                    .timeout(12_000)
+                    .execute()
+                    .body();
             var obj = JSONUtil.parseObj(body);
-            String translated = obj.getJSONObject("responseData").getStr("translatedText");
-            if (translated != null) translated = translated.trim();
-            if (translated != null && !translated.isEmpty() && !translated.equalsIgnoreCase(src) && translated.matches(".*[\\u4e00-\\u9fa5].*")) {
+            String translated = obj.getStr("translatedText");
+            if (translated != null) {
+                translated = translated.trim();
+            }
+            if (translated != null && !translated.isEmpty()) {
                 zhTranslateCache.put(src, translated);
                 return translated;
             }
-            var matches = obj.getJSONArray("matches");
-            if (matches != null) {
-                for (Object item : matches) {
-                    if (!(item instanceof cn.hutool.json.JSONObject jo)) continue;
-                    String target = jo.getStr("target");
-                    String mTranslated = jo.getStr("translation");
-                    if (mTranslated == null) continue;
-                    mTranslated = mTranslated.trim();
-                    if (mTranslated.isEmpty()) continue;
-                    if (!"zh-CN".equalsIgnoreCase(target)) continue;
-                    if (!mTranslated.matches(".*[\\u4e00-\\u9fa5].*")) continue;
-                    zhTranslateCache.put(src, mTranslated);
-                    return mTranslated;
-                }
-            }
-            if (translated != null && !translated.trim().isEmpty()) {
-                String out = translated.trim();
-                zhTranslateCache.put(src, out);
-                return out;
-            }
         } catch (Exception e) {
-            log.warn("翻译失败，回退原文: {}", src);
+            log.warn("翻译失败，回退原文: {}", src, e);
         }
         zhTranslateCache.put(src, src);
         return src;
