@@ -351,9 +351,6 @@ public class CheckCornerTask {
                                     // 这里是校验间隔时间
                                     long intervalMillis = interval.getBetSuccessSec() * 1000L;
 
-                                    // 角球投注不限制次数
-                                    limit.setBetLimitGame(100);
-                                    limit.setBetLimitScore(100);
                                     // 1. 强制预检查
                                     SuccessBasedLimitManager.EnforcementResult checkResult = limitManager.preCheckAndReserve(
                                             limitKey, intervalKey, sweepwater.getScoreA(), limit, intervalMillis);

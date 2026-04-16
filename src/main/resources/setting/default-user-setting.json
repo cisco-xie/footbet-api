@@ -1,10 +1,18 @@
 {
   "interval": {
-    "betSuccessSec": 60
+    "betSuccessSec": 60,
+    "cornerBetSuccessSec": 60
   },
   "limit": {
     "betLimitGame": 4,
-    "betLimitScore": 3
+    "betLimitScore": 2,
+    "forceBetSuccess": 1,
+    "allowWaterDrop": 0.035,
+    "unilateralBetType": 1,
+    "bothSideOption": 0,
+    "websiteLimit": "1877702689064243200",
+    "retry": 1,
+    "retryCount": 8
   },
   "optimizing": {
     "contrastNum": 1
@@ -14,21 +22,40 @@
   },
   "amount": {
     "type": 1,
-    "amountZhiBo": 200,
     "amountPingBo": 200,
     "amountXinEr": 200,
     "amountSbo": 200
   },
   "oddsscan": {
-    "waterLevelFrom": 1.85,
+    "waterLevelFrom": 1.86,
     "waterLevelTo": 2.1,
     "contrastNum": 2,
     "failedNum": 4
   },
+  "timeframe": {
+    "id": "1996993964897796096",
+    "ballType": 1,
+    "ballName": "滚球",
+    "courseType": 2,
+    "courseName": "全场",
+    "timeFormSec": 0,
+    "timeToSec": 85
+  },
+  "oddsrange": [{
+    "websiteId": "1874805533324103680",
+    "websiteName": "平博",
+    "oddsGreater": -0.8,
+    "oddsLess": 0.8
+  },{
+    "websiteId": "1877702689064243200",
+    "websiteName": "新二",
+    "oddsGreater": -0.8,
+    "oddsLess": 0.8
+  }],
   "profit": {
     "singleLetBall": 0.09,
-    "rollingLetBall": 1.86,
+    "rollingLetBall": 1.965,
     "singleSize": 0.11,
-    "rollingSize": 1.88
+    "rollingSize": 1.965
   }
 }

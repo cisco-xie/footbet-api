@@ -2,6 +2,7 @@ package com.example.demo.api;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.io.resource.ResourceUtil;
+import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import cn.hutool.jwt.JWTUtil;
@@ -160,11 +161,11 @@ public class AdminService {
 
     public void add(List<AdminLoginVO> admins) {
         // 读取配置文件
-        String zhiboStr = ResourceUtil.readUtf8Str("setting/zhibo.json");
+        String xinbaoStr = ResourceUtil.readUtf8Str("setting/xinbao.json");
         // 读取配置文件
         String pingboStr = ResourceUtil.readUtf8Str("setting/pingbo.json");
         // 读取配置文件
-        String xinbaoStr = ResourceUtil.readUtf8Str("setting/xinbao.json");
+        String sboStr = ResourceUtil.readUtf8Str("setting/sbo.json");
         // 读取配置文件
         String settingStr = ResourceUtil.readUtf8Str("setting/default-user-setting.json");
         JSONObject settings = JSONUtil.parseObj(settingStr);
@@ -172,6 +173,8 @@ public class AdminService {
         JSONObject interval = settings.getJSONObject("interval");
         JSONObject optimizing = settings.getJSONObject("optimizing");
         JSONObject typeFilter = settings.getJSONObject("typefilter");
+        JSONObject timeframe = settings.getJSONObject("timeframe");
+        JSONArray oddsrange = settings.getJSONArray("oddsrange");
         JSONObject amount = settings.getJSONObject("amount");
         JSONObject oddsScan = settings.getJSONObject("oddsscan");
         JSONObject profit = settings.getJSONObject("profit");
@@ -207,9 +210,9 @@ public class AdminService {
 
             // 生成 Redis 中的 key
             String websiteKey = KeyUtil.genKey(RedisConstants.PLATFORM_WEBSITE_ALL_PREFIX, admin.getUsername());
-            businessPlatformRedissonClient.getList(websiteKey).add(JSONUtil.parseObj(zhiboStr));
-            businessPlatformRedissonClient.getList(websiteKey).add(JSONUtil.parseObj(pingboStr));
             businessPlatformRedissonClient.getList(websiteKey).add(JSONUtil.parseObj(xinbaoStr));
+            businessPlatformRedissonClient.getList(websiteKey).add(JSONUtil.parseObj(pingboStr));
+            businessPlatformRedissonClient.getList(websiteKey).add(JSONUtil.parseObj(sboStr));
             // 配置默认软件设置信息
             String oddsScanKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_ODDSSCAN_PREFIX, admin.getUsername());
             businessPlatformRedissonClient.getBucket(oddsScanKey).set(oddsScan);
@@ -225,6 +228,10 @@ public class AdminService {
             businessPlatformRedissonClient.getBucket(typeFilterKey).set(typeFilter);
             String optimizingKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_BET_OPTIMIZING_PREFIX, admin.getUsername());
             businessPlatformRedissonClient.getBucket(optimizingKey).set(optimizing);
+            String timeframeKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_FILTER_TIMEFRAME_PREFIX, admin.getUsername());
+            businessPlatformRedissonClient.getList(timeframeKey).add(timeframe);
+            String oddsrangeKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_FILTER_ODDSRANGE_PREFIX, admin.getUsername());
+            businessPlatformRedissonClient.getList(oddsrangeKey).addAll(oddsrange);
         }
     }
 
