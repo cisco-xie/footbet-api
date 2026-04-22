@@ -123,6 +123,7 @@ public class WebsitePingBoBetUnsettledHandler implements ApiHandler {
         headers.put("content-type", "application/x-www-form-urlencoded");
         headers.put("x-custid", custid);
         headers.put("cookie", cookie);
+        headers.put("v-hucode", params.getStr("hucode"));
 
         return headers;
     }

@@ -5,6 +5,7 @@ import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.core.date.TimeInterval;
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
@@ -207,13 +208,17 @@ public class HandicapApi {
         if (apiHandler == null) {
             return;
         }
+        String hucode = null;
         JSONObject params = new JSONObject();
         params.putOpt("adminUsername", username);
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            hucode = IdUtil.simpleUUID();
+            account.setHucode(hucode);
             params.putOpt("loginId", account.getAccount());
             params.putOpt("password", account.getPassword());
+            params.putOpt("hucode", hucode);
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId) || WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putOpt("username", account.getAccount());
             params.putOpt("password", account.getPassword());
@@ -326,6 +331,7 @@ public class HandicapApi {
             params.putOpt("oldPassword", accountVO.getPassword());
             params.putOpt("newPassword", password);
             params.putOpt("chgPassword", password);
+            params.putOpt("hucode", accountVO.getHucode());
             params.putAll(accountVO.getToken().getJSONObject("tokens"));
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + accountVO.getToken().getStr("token"));
@@ -451,6 +457,7 @@ public class HandicapApi {
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            params.putOpt("hucode", account.getHucode());
             params.putAll(account.getToken().getJSONObject("tokens"));
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
@@ -533,6 +540,7 @@ public class HandicapApi {
                     params.putOpt("websiteId", website.getId());
                     // 根据不同站点传入不同的参数
                     if (WebsiteType.PINGBO.getId().equals(website.getId())) {
+                        params.putOpt("hucode", account.getHucode());
                         params.putAll(account.getToken().getJSONObject("tokens"));
                     } else if (WebsiteType.ZHIBO.getId().equals(website.getId())) {
                         params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
@@ -545,7 +553,7 @@ public class HandicapApi {
                     accountService.saveAccount(user.getUsername(), website.getId(), account);
                 }
             }
-        };
+        }
     }
 
     /**
@@ -570,6 +578,7 @@ public class HandicapApi {
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            params.putOpt("hucode", account.getHucode());
             params.putAll(account.getToken().getJSONObject("tokens"));
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
@@ -631,6 +640,7 @@ public class HandicapApi {
                         // 默认马来盘
                         oddsFormatType = PingBoOddsFormatType.RM.getId();
                     }
+                    params.putOpt("hucode", account.getHucode());
                     params.putOpt("oddsFormatType", oddsFormatType);
                 } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                     params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
@@ -720,6 +730,7 @@ public class HandicapApi {
                         // 默认马来盘
                         oddsFormatType = PingBoOddsFormatType.RM.getId();
                     }
+                    params.putOpt("hucode", account.getHucode());
                     params.putOpt("oddsFormatType", oddsFormatType);
                 } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                     params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
@@ -828,6 +839,7 @@ public class HandicapApi {
                         // 默认马来盘
                         oddsFormatType = PingBoOddsFormatType.RM.getId();
                     }
+                    params.putOpt("hucode", account.getHucode());
                     params.putOpt("oddsFormatType", oddsFormatType);
                 } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
                     params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
@@ -977,6 +989,7 @@ public class HandicapApi {
             params.putOpt("websiteId", websiteId);
             // 根据不同站点传入不同的参数
             if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+                params.putOpt("hucode", account.getHucode());
                 params.putAll(account.getToken().getJSONObject("tokens"));
                 params.putOpt("me", "");
             } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
@@ -1032,6 +1045,7 @@ public class HandicapApi {
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            params.putOpt("hucode", account.getHucode());
             params.putAll(account.getToken().getJSONObject("tokens"));
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
@@ -1073,6 +1087,7 @@ public class HandicapApi {
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
             params.putOpt("s", "OPEN");     // 未结算
             params.putOpt("type", "EVENT"); // 未结算
+            params.putOpt("hucode", account.getHucode());
             params.putAll(account.getToken().getJSONObject("tokens"));
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
@@ -1118,6 +1133,7 @@ public class HandicapApi {
             params.putOpt("date", date);
             params.putOpt("s", "SETTLED");  // 已结算
             params.putOpt("type", "WAGER"); // 已结算
+            params.putOpt("hucode", account.getHucode());
             params.putAll(account.getToken().getJSONObject("tokens"));
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
             params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
@@ -1420,6 +1436,7 @@ public class HandicapApi {
                         // 默认马来盘
                         oddsFormatType = PingBoOddsFormatType.RM.getId();
                     }
+                    params.putOpt("hucode", account.getHucode());
                     params.putOpt("oddsFormatType", oddsFormatType);
                     JSONArray data = betPreviewJson.getJSONArray("data");
                     if (data == null || data.isEmpty()) {

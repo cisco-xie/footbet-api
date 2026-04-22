@@ -15,5 +15,5 @@ public class Constants {
      */
     public static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
     public static final String USER_AGENT_ANDROID = "Mozilla/5.0 (Linux; Android 13; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36";
-    public static final String SEC_CH_UA = "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\"";
+    public static final String SEC_CH_UA = "\"Google Chrome\";v=\"147\", \"Not.A/Brand\";v=\"8\", \"Chromium\";v=\"147\"";
 }

@@ -173,7 +173,7 @@ public class OkHttpProxyDispatcher {
                 }
 
                 // ⭐ 在这里注入平台伪装
-                applyPlatformHeaders(requestBuilder, RequestPlatform.ANDROID);
+                // applyPlatformHeaders(requestBuilder, RequestPlatform.ANDROID);
 
                 long start = System.currentTimeMillis(); // ✅ 请求开始时间
                 try (Response response = client.newCall(requestBuilder.build()).execute()) {
@@ -293,7 +293,7 @@ public class OkHttpProxyDispatcher {
                 }
 
                 // ⭐ 在这里注入平台伪装
-                applyPlatformHeaders(requestBuilder, RequestPlatform.ANDROID);
+                // applyPlatformHeaders(requestBuilder, RequestPlatform.ANDROID);
 
                 // 添加默认伪装头（若 headers 中未指定）
                 // 默认 OkHttp 会自动添加并解压 gzip

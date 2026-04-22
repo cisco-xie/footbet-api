@@ -59,6 +59,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
         headers.put("accept-language", "zh-CN,zh;q=0.9");
         headers.put("content-type", "application/json");
         headers.put("authorization", token);
+        headers.put("x-auth-token", token);
         headers.put("sec-ch-ua-mobile", "?0");
         headers.put("sec-ch-ua-platform", "\"Android\"");
         return headers;
@@ -101,8 +102,8 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
             oddsToken = "default_token_placeholder"; // 仅为防止完全失败，实际必须处理
         }
 
-        String variables_step3 = String.format("{\"query\":{\"id\":%d,\"filter\":\""+presetFilter+"\",\"marketGroupIds\":[0,306,307,308,309,310,311,312,313,330,331],\"excludeMarketGroupIds\":null,\"oddsCategory\":\"All\",\"priceStyle\":\"Malay\",\"oddsToken\":\"%s\"}}", eventId, oddsToken);
-        String extensions_step3 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"2c6e1227b7089e756f66a8750cd8c6c087ad4b39792388e35e2b0374b913fec0\"}}";
+        String variables_step3 = String.format("{\"query\":{\"id\":%d,\"filter\":\""+presetFilter+"\",\"marketGroupIds\":[0,306,307,308,309,310,311,312,313,330,331,1066212],\"excludeMarketGroupIds\":null,\"oddsCategory\":\"All\",\"priceStyle\":\"Malay\",\"oddsToken\":\"%s\",\"version\":\"SS\"}}", eventId, oddsToken);
+        String extensions_step3 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"222c6e1227b7089e756f66a8750cd8c6c087ad4b39792388e35e2b0374b913fec0\"}}";
 
         String queryParams_step3 = String.format("operationName=%s&variables=%s&extensions=%s",
                 SboCdnApiConstants.OPERATION_NAME_ODDS_QUERY,
@@ -158,7 +159,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
             // --- 第一步：获取赛事基本列表 ---
             log.info("开始执行第一步：获取赛事基本列表");
             String variables_step1 = "{\"query\":{\"sport\":\"Soccer\",\"filter\":{\"presetFilter\":\""+presetFilter+"\",\"date\":\""+date+"\"},\"oddsCategory\":\"All\",\"eventIds\":[],\"tournamentIds\":[],\"tournamentNames\":[],\"timeZone\":\"UTC__4\"}}";
-            String extensions_step1 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"b960966dff2cbf9d4d7f2127a5e493bd5a3ab0ec98b216bb958c2c0b48f10488\"}}";
+            String extensions_step1 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"3d1d1962ced90cab9f42457169c2ac98098e955265382d94ca3af288a0d401d8\"}}";
 
             String queryParams_step1 = String.format("operationName=%s&variables=%s&extensions=%s",
                     SboCdnApiConstants.OPERATION_NAME_EVENTS_QUERY,
@@ -169,6 +170,13 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
 
             OkHttpProxyDispatcher.HttpResult resultStep1 = dispatcher.execute("GET", fullUrl_step1, null, requestHeaders, userConfig, false);
             JSONObject step1Response = this.parseResponse(params, resultStep1);
+            if (step1Response.containsKey("errors")) {
+                log.info("获取赛事列表数据第一步失败: {}", step1Response);
+                finalResult.putOpt("success", false);
+                finalResult.putOpt("code", 400);
+                finalResult.putOpt("msg", step1Response);
+                return finalResult;
+            }
             if (!step1Response.getBool("success", false) && resultStep1.getStatus() != 200) {
                 return step1Response;
             }
@@ -183,6 +191,13 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                 // 获取赔率信息
                 JSONObject oddsInfo = step3GetOddsForEvent(userConfig, params, requestHeaders, eventId, presetFilter);
                 if (oddsInfo != null) {
+                    if (oddsInfo.containsKey("errors")) {
+                        log.info("获取赛事列表数据第三步失败: {}", oddsInfo);
+                        finalResult.putOpt("success", false);
+                        finalResult.putOpt("code", 400);
+                        finalResult.putOpt("msg", oddsInfo);
+                        return finalResult;
+                    }
                     basicEventInfo.putOpt("eventOdds", oddsInfo.getJSONObject("data").getJSONArray("eventOdds"));
                     break;
                 }
@@ -213,7 +228,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
             finalResult.putOpt("code", 400);
             finalResult.putOpt("msg", e.getMessage());
         } catch (Exception e) {
-            log.error("执行完整流程未知异常: {}", e.getMessage(), e);
+            log.info("执行完整流程未知异常: {}", e.getMessage(), e);
             finalResult.putOpt("success", false);
             finalResult.putOpt("code", 500);
             finalResult.putOpt("msg", "系统内部错误，获取赛事数据失败");

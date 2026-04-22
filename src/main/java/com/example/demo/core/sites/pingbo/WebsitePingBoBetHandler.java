@@ -58,6 +58,7 @@ public class WebsitePingBoBetHandler implements ApiHandler {
         headers.put("x-slid", slid);
         headers.put("x-u", params.getStr("X-U"));
         headers.put("cookie", cookie);
+        headers.put("v-hucode", params.getStr("hucode"));
 
         return headers;
     }

@@ -61,6 +61,7 @@ public class WebsiteSboEventListHandler implements ApiHandler {
         headers.put("accept-language", "zh-CN,zh;q=0.9");
         headers.put("content-type", "application/json");
         headers.put("authorization", token);
+        headers.put("x-auth-token", token);
         headers.put("sec-ch-ua-mobile", "?0");
         headers.put("sec-ch-ua-platform", "\"Windows\"");
         return headers;
@@ -135,7 +136,7 @@ public class WebsiteSboEventListHandler implements ApiHandler {
             oddsToken = "default_token_placeholder"; // 仅为防止完全失败，实际必须处理
         }
 
-        String variables_step3 = String.format("{\"query\":{\"id\":%d,\"filter\":\""+presetFilter+"\",\"marketGroupIds\":[0,306,307,308,309,310,311,312,313,330,331],\"excludeMarketGroupIds\":null,\"oddsCategory\":\"All\",\"priceStyle\":\"Malay\",\"oddsToken\":\"%s\"}}", eventId, oddsToken);
+        String variables_step3 = String.format("{\"query\":{\"id\":%d,\"filter\":\""+presetFilter+"\",\"marketGroupIds\":[0,306,307,308,309,310,311,312,313,330,331,1066212],\"excludeMarketGroupIds\":null,\"oddsCategory\":\"All\",\"priceStyle\":\"Malay\",\"oddsToken\":\"%s\",\"version\":\"SS\"}}", eventId, oddsToken);
         String extensions_step3 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"2c6e1227b7089e756f66a8750cd8c6c087ad4b39792388e35e2b0374b913fec0\"}}";
 
         String queryParams_step3 = String.format("operationName=%s&variables=%s&extensions=%s",
@@ -193,7 +194,7 @@ public class WebsiteSboEventListHandler implements ApiHandler {
             // --- 第一步：获取赛事基本列表 ---
             log.info("开始执行第一步：获取赛事基本列表");
             String variables_step1 = "{\"query\":{\"sport\":\"Soccer\",\"filter\":{\"presetFilter\":\""+presetFilter+"\",\"date\":\""+date+"\"},\"oddsCategory\":\"All\",\"eventIds\":[],\"tournamentIds\":[],\"tournamentNames\":[],\"timeZone\":\"UTC__4\"}}";
-            String extensions_step1 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"0576c8c29422ff37868b131240f644d4cfedb1be2151afbc1c57dbcb997fe9cb\"}}";
+            String extensions_step1 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"3d1d1962ced90cab9f42457169c2ac98098e955265382d94ca3af288a0d401d8\"}}";
 
             String queryParams_step1 = String.format("operationName=%s&variables=%s&extensions=%s",
                     SboCdnApiConstants.OPERATION_NAME_EVENTS_QUERY,
@@ -235,9 +236,19 @@ public class WebsiteSboEventListHandler implements ApiHandler {
             // --- 第三步：使用线程池并行获取赔率 ---
             log.info("开始执行第三步：并行获取赛事赔率 (共 {} 场)...", eventList.size());
 
+            int eventSize = eventList.size();
+            if (eventSize == 0) {
+                log.warn("赛事列表为空，直接跳过线程池执行");
+                finalResult.putOpt("success", true);
+                finalResult.putOpt("code", 200);
+                finalResult.putOpt("msg", "无赛事数据");
+                finalResult.putOpt("totalCount", 0);
+                finalResult.putOpt("leagues", new JSONArray());
+                return finalResult;
+            }
             int cpuCoreCount = Runtime.getRuntime().availableProcessors();
-            int corePoolSize = Math.min(eventList.size(), cpuCoreCount * 4);
-            int maxPoolSize = Math.min(eventList.size(), 100);
+            int maxPoolSize = Math.min(eventSize, 100);
+            int corePoolSize = Math.min(maxPoolSize, cpuCoreCount * 4);
 
             eventsExecutor = new ThreadPoolExecutor(
                     corePoolSize,

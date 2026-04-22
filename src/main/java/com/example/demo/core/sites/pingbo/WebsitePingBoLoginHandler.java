@@ -42,8 +42,9 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
     public Map<String, String> buildHeaders(JSONObject params) {
         // 构造请求头
         Map<String, String> headers = new HashMap<>();
-        headers.put("accept", "*/*");
+        headers.put("accept", "application/json, text/plain, */*");
         headers.put("content-type", "application/x-www-form-urlencoded");
+        headers.put("v-hucode", params.getStr("hucode"));
 
         return headers;
     }

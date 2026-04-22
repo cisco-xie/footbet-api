@@ -88,19 +88,19 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         }
 
         return new StringBuilder()
-                .append("------WebKitFormBoundary9cClcrnMgMBfTU89\r\n")
+                .append("------WebKitFormBoundaryJIziS2aZfhEGaohz\r\n")
                 .append("Content-Disposition: form-data; name=\"Username\"\r\n\r\n")
                 .append(params.getStr("username")).append("\r\n")
-                .append("------WebKitFormBoundary9cClcrnMgMBfTU89\r\n")
+                .append("------WebKitFormBoundaryJIziS2aZfhEGaohz\r\n")
                 .append("Content-Disposition: form-data; name=\"Password\"\r\n\r\n")
                 .append(params.getStr("password")).append("\r\n") // 明文密码
-                .append("------WebKitFormBoundary9cClcrnMgMBfTU89\r\n")
+                .append("------WebKitFormBoundaryJIziS2aZfhEGaohz\r\n")
                 .append("Content-Disposition: form-data; name=\"Version\"\r\n\r\n")
                 .append("1\r\n")
-                .append("------WebKitFormBoundary9cClcrnMgMBfTU89\r\n")
+                .append("------WebKitFormBoundaryJIziS2aZfhEGaohz\r\n")
                 .append("Content-Disposition: form-data; name=\"DeviceType\"\r\n\r\n")
                 .append("0\r\n")
-                .append("------WebKitFormBoundary9cClcrnMgMBfTU89--\r\n")
+                .append("------WebKitFormBoundaryJIziS2aZfhEGaohz--\r\n")
                 .toString();
     }
 
@@ -242,8 +242,8 @@ public class WebsiteSboLoginHandler implements ApiHandler {
 
             // 第四步：执行登录（使用第三步的URL，因为通常是同一个登录端点）
             JSONObject step4Result = executeStep4(userConfig, step3Url, params, cookieStore, xsrfToken);
-            if (step4Result.getInt("status") == 401) {
-                return new JSONObject().set("success", false).set("msg", "第四步:" + step4Result.getJSONObject("body").getStr("message"));
+            if (!step4Result.getBool("success", false)) {
+                return new JSONObject().set("success", false).set("msg", step4Result.getStr("msg"));
             }
             // 从第四步响应中获取Location
             String step5Url = extractLocation(step4Result.get("response", OkHttpProxyDispatcher.HttpResult.class), params);
@@ -437,13 +437,16 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         // 更新cookie和设置登录相关参数
         params.set("cookie", cookieStore.toString());
         params.set("xsrfToken", xsrfToken);
-        params.set("contentType", "multipart/form-data; boundary=----WebKitFormBoundary9cClcrnMgMBfTU89");
+        params.set("contentType", "multipart/form-data; boundary=----WebKitFormBoundaryJIziS2aZfhEGaohz");
         params.set("isLoginRequest", true);
 
         OkHttpProxyDispatcher.HttpResult response;
         try {
             response = dispatcher.execute("POST", step4Url, buildRequest(params), buildHeaders(params), userConfig, false);
 
+            if (response.getStatus() == 401) {
+                return new JSONObject().set("success", false).set("msg", JSONUtil.parseObj(response.getBody()).getStr("message"));
+            }
             // 保存cookie
             updateCookieStore(response, cookieStore);
 

@@ -57,6 +57,7 @@ public class WebsiteSboEventsHandler implements ApiHandler {
         headers.put("accept-language", "zh-CN,zh;q=0.9");
         headers.put("content-type", "application/json");
         headers.put("authorization", token);
+        headers.put("x-auth-token", token);
         headers.put("sec-ch-ua-mobile", "?0");
         headers.put("sec-ch-ua-platform", "\"Windows\"");
         return headers;
@@ -115,7 +116,7 @@ public class WebsiteSboEventsHandler implements ApiHandler {
 
         try {
             String variables_step1 = "{\"query\":{\"sport\":\"Soccer\",\"filter\":{\"presetFilter\":\""+presetFilter+"\",\"date\":\""+date+"\"},\"oddsCategory\":\"All\",\"eventIds\":[],\"tournamentIds\":[],\"tournamentNames\":[],\"timeZone\":\"UTC__4\"}}";
-            String extensions_step1 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"0576c8c29422ff37868b131240f644d4cfedb1be2151afbc1c57dbcb997fe9cb\"}}";
+            String extensions_step1 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"3d1d1962ced90cab9f42457169c2ac98098e955265382d94ca3af288a0d401d8\"}}";
 
             String queryParams_step1 = String.format("operationName=%s&variables=%s&extensions=%s",
                     SboCdnApiConstants.OPERATION_NAME_EVENTS_QUERY,
