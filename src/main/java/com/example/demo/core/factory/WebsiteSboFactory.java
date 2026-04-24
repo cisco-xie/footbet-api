@@ -106,4 +106,9 @@ public class WebsiteSboFactory implements WebsiteApiFactory {
     public ApiHandler betPreview() {
         return new WebsiteSboBetPreviewHandler(dispatcher, websiteService, apiUrlService); // 返回具体的投注预览处理类
     }
+
+    @Override
+    public ApiHandler keepAlive() {
+        return null; // 返回具体的投注预览处理类
+    }
 }

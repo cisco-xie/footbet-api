@@ -116,4 +116,10 @@ public class WebsiteZhiBoFactory implements WebsiteApiFactory {
         return null;
 //        return new WebsiteZhiBoBetPreviewHandler(websiteService, apiUrlService); // 返回具体的投注预览结果处理类
     }
+
+    @Override
+    public ApiHandler keepAlive() {
+        return null;
+//        return new WebsiteZhiBoBetPreviewHandler(websiteService, apiUrlService); // 返回具体的投注预览结果处理类
+    }
 }

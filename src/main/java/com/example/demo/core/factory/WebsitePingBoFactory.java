@@ -109,4 +109,9 @@ public class WebsitePingBoFactory implements WebsiteApiFactory {
     public ApiHandler betPreview() {
         return new WebsitePingBoBetPreviewHandler(dispatcher, websiteService, apiUrlService); // 返回具体的投注预览处理类
     }
+
+    @Override
+    public ApiHandler keepAlive() {
+        return new WebsitePingBoKeepAliveHandler(dispatcher, websiteService, apiUrlService); // 返回具体的账户保活类
+    }
 }

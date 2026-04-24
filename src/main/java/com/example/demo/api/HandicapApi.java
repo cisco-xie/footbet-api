@@ -7,6 +7,7 @@ import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.core.date.TimeInterval;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.RandomUtil;
+import cn.hutool.crypto.digest.DigestUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
@@ -116,6 +117,30 @@ public class HandicapApi {
         });
     }
 
+    // 运行账户保活工厂
+    public void keepAlive(String username, ConfigAccountVO accountVO, String websiteId) {
+        // 修改密码
+        WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+        ApiHandler apiHandler = factory.keepAlive();
+        if (apiHandler == null) {
+            return;
+        }
+        JSONObject params = new JSONObject();
+        params.putOpt("adminUsername", username);
+        params.putOpt("websiteId", websiteId);
+        // 根据不同站点传入不同的参数
+        if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+            params.putAll(accountVO.getToken().getJSONObject("tokens"));
+        } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+        } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+        }
+        JSONObject result = apiHandler.execute(accountVO, params);
+        if (result != null && result.getBool("success")) {
+            accountVO.setHucode(result.getStr("hucode"));
+            accountService.saveAccount(username, websiteId, accountVO);
+        }
+    }
+
     /**
      * 根据平台用户和指定网站登录
      * 不限制网站或者账户状态是否开启
@@ -208,17 +233,13 @@ public class HandicapApi {
         if (apiHandler == null) {
             return;
         }
-        String hucode = null;
         JSONObject params = new JSONObject();
         params.putOpt("adminUsername", username);
         params.putOpt("websiteId", websiteId);
         // 根据不同站点传入不同的参数
         if (WebsiteType.PINGBO.getId().equals(websiteId)) {
-            hucode = IdUtil.simpleUUID();
-            account.setHucode(hucode);
             params.putOpt("loginId", account.getAccount());
             params.putOpt("password", account.getPassword());
-            params.putOpt("hucode", hucode);
         } else if (WebsiteType.ZHIBO.getId().equals(websiteId) || WebsiteType.XINBAO.getId().equals(websiteId)) {
             params.putOpt("username", account.getAccount());
             params.putOpt("password", account.getPassword());
@@ -236,6 +257,12 @@ public class HandicapApi {
             retryMap.remove(key); // 成功则清除失败记录
             // 登录成功就执行获取额度
             balanceByAccount(username, websiteId, account);
+            // 登录成功就执行账户保活操作，用于平博盘口的账户v-hucode参数获取
+            if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+                keepAlive(username, account, websiteId);
+            } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+            } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+            }
         } else {
             Integer code = result.getInt("code");
             if (code != null && code == 106) {
