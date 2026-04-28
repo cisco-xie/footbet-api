@@ -1266,29 +1266,40 @@ public class BetService {
             }
             // 设置扫水已投注
             // sweepwaterService.setIsBet(username, sweepwaterDTO.getId());
-
-            String json = JSONUtil.toJsonStr(dto);
-            String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
-            // 保存投注信息作为历史记录
-            String key = KeyUtil.genKey(
-                    RedisConstants.PLATFORM_BET_PREFIX,
-                    username,
-                    date,
-                    dto.getId()
-            );
-            businessPlatformRedissonClient.getBucket(key).set(json);
-            // 维护索引
-            String indexKey = KeyUtil.genKey("INDEX", username, "history", date);
-            businessPlatformRedissonClient.getList(indexKey).add(key);
-
-            // 保存投注信息作为实时记录
-            String realTimeKey = KeyUtil.genKey(
-                    RedisConstants.PLATFORM_BET_PREFIX,
-                    username,
-                    "realtime",
-                    dto.getId()
-            );
-            realtimeIndexService.pushRealtimeIndex(username, realTimeKey, json);
+            JSONArray splitBetInfosA = successA.getJSONArray("splitBetInfos");
+            JSONArray splitBetInfosB = successB.getJSONArray("splitBetInfos");
+            if (splitBetInfosA != null && !splitBetInfosA.isEmpty()) {
+                // A 拆分时按 A 的拆分明细落库，B 只复用当前结果，不再做二次拆分。
+                for (Object item : splitBetInfosA) {
+                    JSONObject splitInfo = JSONUtil.parseObj(item);
+                    SweepwaterBetDTO splitDto = BeanUtil.copyProperties(dto, SweepwaterBetDTO.class);
+                    splitDto.setId(IdUtil.fastSimpleUUID());
+                    splitDto.setBetIdA(splitInfo.getStr("betId"));
+                    splitDto.setBetAccountA(splitInfo.getStr("account"));
+                    splitDto.setBetAccountIdA(splitInfo.getStr("accountId"));
+                    JSONObject splitBetInfoA = splitInfo.getJSONObject("betInfo");
+                    if (splitBetInfoA != null) {
+                        splitDto.setBetInfoA(splitBetInfoA);
+                    }
+                    persistSweepwaterBetRecord(username, splitDto);
+                }
+            } else if (splitBetInfosB != null && !splitBetInfosB.isEmpty()) {
+                for (Object item : splitBetInfosB) {
+                    JSONObject splitInfo = JSONUtil.parseObj(item);
+                    SweepwaterBetDTO splitDto = BeanUtil.copyProperties(dto, SweepwaterBetDTO.class);
+                    splitDto.setId(IdUtil.fastSimpleUUID());
+                    splitDto.setBetIdB(splitInfo.getStr("betId"));
+                    splitDto.setBetAccountB(splitInfo.getStr("account"));
+                    splitDto.setBetAccountIdB(splitInfo.getStr("accountId"));
+                    JSONObject splitBetInfoB = splitInfo.getJSONObject("betInfo");
+                    if (splitBetInfoB != null) {
+                        splitDto.setBetInfoB(splitBetInfoB);
+                    }
+                    persistSweepwaterBetRecord(username, splitDto);
+                }
+            } else {
+                persistSweepwaterBetRecord(username, dto);
+            }
         } else {
             // 没有一个成功就回滚投注次数
             limitManager.rollbackReservation(limitKey, reservationId);
@@ -1328,6 +1339,28 @@ public class BetService {
             }
         }
         return false;
+    }
+
+    private void persistSweepwaterBetRecord(String username, SweepwaterBetDTO dto) {
+        String json = JSONUtil.toJsonStr(dto);
+        String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
+        String key = KeyUtil.genKey(
+                RedisConstants.PLATFORM_BET_PREFIX,
+                username,
+                date,
+                dto.getId()
+        );
+        businessPlatformRedissonClient.getBucket(key).set(json);
+        String indexKey = KeyUtil.genKey("INDEX", username, "history", date);
+        businessPlatformRedissonClient.getList(indexKey).add(key);
+
+        String realTimeKey = KeyUtil.genKey(
+                RedisConstants.PLATFORM_BET_PREFIX,
+                username,
+                "realtime",
+                dto.getId()
+        );
+        realtimeIndexService.pushRealtimeIndex(username, realTimeKey, json);
     }
 
     /**
@@ -1627,13 +1660,17 @@ public class BetService {
                     result.putOpt("isBet", true);
                     result.putOpt("success", true);
                     result.putOpt("higherOdds", odds);
-                    result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
+                    result.putOpt("betInfo", extractPrimaryBetInfo(betResult));
+                    JSONArray splitBetInfos = extractSplitBetInfos(betResult, isA ? dto.getWebsiteIdA() : dto.getWebsiteIdB());
+                    if (splitBetInfos != null && !splitBetInfos.isEmpty()) {
+                        result.putOpt("splitBetInfos", splitBetInfos);
+                    }
                     success = true;
                 } else if (betResult != null) {
                     result.putOpt("isBet", true);
                     result.putOpt("success", false);
                     result.putOpt("higherOdds", odds);
-                    result.putOpt("betInfo", JSONUtil.parseObj(betResult).getJSONObject("betInfo"));
+                    result.putOpt("betInfo", extractPrimaryBetInfo(betResult));
                 } else {
                     result.putOpt("isBet", true);
                     result.putOpt("success", false);
@@ -2217,6 +2254,39 @@ public class BetService {
             return parseSplitBetResults((List<JSONObject>) betResult, sweepwaterDTO, isA);
         }
         return false;
+    }
+
+    private JSONObject extractPrimaryBetInfo(Object betResult) {
+        if (betResult instanceof JSONObject betResultJson) {
+            return betResultJson.getJSONObject("betInfo");
+        }
+        if (betResult instanceof List<?> betResults && !betResults.isEmpty()) {
+            Object first = betResults.get(0);
+            if (first instanceof JSONObject firstJson) {
+                return firstJson.getJSONObject("betInfo");
+            }
+        }
+        return null;
+    }
+
+    private JSONArray extractSplitBetInfos(Object betResult, String websiteId) {
+        if (!(betResult instanceof List<?> betResults) || betResults.isEmpty()) {
+            return null;
+        }
+        JSONArray splitBetInfos = new JSONArray();
+        for (Object item : betResults) {
+            if (!(item instanceof JSONObject splitResult) || !splitResult.getBool("success", false)) {
+                continue;
+            }
+            JSONObject splitInfo = new JSONObject();
+            splitInfo.putOpt("betId", extractBetId(splitResult, websiteId));
+            splitInfo.putOpt("account", splitResult.getStr("account"));
+            splitInfo.putOpt("accountId", splitResult.getStr("accountId"));
+            splitInfo.putOpt("splitAmount", splitResult.getBigDecimal("splitAmount"));
+            splitInfo.putOpt("betInfo", splitResult.getJSONObject("betInfo"));
+            splitBetInfos.add(splitInfo);
+        }
+        return splitBetInfos;
     }
 
     /**

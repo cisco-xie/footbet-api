@@ -1290,99 +1290,10 @@ public class HandicapApi {
                 // 未登录直接跳过（不会重置 indexRef）
                 continue;
             }
-            WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
-
-            ApiHandler apiHandler = factory.betPreview();
-            if (apiHandler == null) {
+            JSONObject result = executeBetPreviewWithAccount(username, websiteId, odds, account, oddsType);
+            if (result == null) {
                 continue;
             }
-            JSONObject params = new JSONObject();
-            params.putOpt("adminUsername", username);
-            params.putOpt("websiteId", websiteId);
-            try {
-                // 根据不同站点传入不同的参数
-                if (WebsiteType.PINGBO.getId().equals(websiteId)) {
-                    params.putAll(account.getToken().getJSONObject("tokens"));
-                    params.putOpt("hucode", account.getHucode());
-                    params.putOpt("oddsId", odds.getStr("oddsId"));
-                    params.putOpt("selectionId", odds.getStr("selectionId"));
-                    // 转换赔率类型
-                    int oddsFormatType = 0;
-                    if (oddsType == 1) {
-                        // 平台设置的马来盘
-                        oddsFormatType = PingBoOddsFormatType.RM.getId();
-                    } else if (oddsType == 2) {
-                        // 平台设置的香港盘
-                        oddsFormatType = PingBoOddsFormatType.HKC.getId();
-                    } else {
-                        // 默认马来盘
-                        oddsFormatType = PingBoOddsFormatType.RM.getId();
-                    }
-                    params.putOpt("oddsFormatType", oddsFormatType);
-                } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
-                    params.putOpt("token", "Bearer " + account.getToken().getStr("token"));
-                    params.putOpt("marketSelectionId", odds.getStr("marketSelectionId"));
-                    // 转换赔率类型
-                    int oddsFormatType = 0;
-                    if (oddsType == 1) {
-                        // 平台设置的马来盘
-                        oddsFormatType = ZhiBoOddsFormatType.RM.getId();
-                    } else if (oddsType == 2) {
-                        // 平台设置的香港盘
-                        oddsFormatType = ZhiBoOddsFormatType.HKC.getId();
-                    } else {
-                        // 默认马来盘
-                        oddsFormatType = ZhiBoOddsFormatType.RM.getId();
-                    }
-                    params.putOpt("oddsFormatType", oddsFormatType);
-                } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
-                    params.putAll(account.getToken().getJSONObject("serverresponse"));
-
-                    params.putOpt("gid", odds.getStr("gid"));
-                    params.putOpt("gtype", odds.getStr("gtype"));
-                    params.putOpt("wtype", odds.getStr("wtype"));
-                    params.putOpt("choseTeam", odds.getStr("choseTeam"));
-
-                    // 转换赔率类型
-                    String oddsFormatType;
-                    if (oddsType == 1) {
-                        // 平台设置的马来盘
-                        oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
-                    } else if (oddsType == 2) {
-                        // 平台设置的香港盘
-                        oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
-                    } else {
-                        // 默认马来盘
-                        oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
-                    }
-                    params.putOpt("oddsFormatType", oddsFormatType);
-                } else if (WebsiteType.SBO.getId().equals(websiteId)) {
-
-                    params.putOpt("cookie", account.getToken().getJSONObject("token").getStr("cookie"));
-                    params.putOpt("eventId", odds.getStr("eventId"));
-                    params.putOpt("isLive", odds.getStr("isLive"));
-                    params.putOpt("marketType", odds.getStr("marketType"));
-                    params.putOpt("oddsId", odds.getStr("oddsId"));
-                    params.putOpt("option", odds.getStr("option"));
-
-                    // 转换赔率类型
-                    String oddsFormatType;
-                    if (oddsType == 1) {
-                        // 平台设置的马来盘
-                        oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
-                    } else if (oddsType == 2) {
-                        // 平台设置的香港盘
-                        oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
-                    } else {
-                        // 默认马来盘
-                        oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
-                    }
-                    params.putOpt("oddsFormatType", oddsFormatType);
-                }
-            } catch (Exception e) {
-                continue;
-            }
-            JSONObject result = apiHandler.execute(account, params);
 
             // 保存记录投注账号id
             result.putOpt("account", account.getAccount());
@@ -1473,8 +1384,7 @@ public class HandicapApi {
                     BigDecimal stake = odds.getBigDecimal("stake");
 
                     betAmount = stake
-                            .multiply(BigDecimal.valueOf(multiple))         // 相乘
-                            .setScale(2, RoundingMode.HALF_UP);    // 保留两位小数，四舍五入
+                            .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP); // 除法 + 不保留小数
 
                     JSONArray selections = new JSONArray();
                     JSONObject betInfo = new JSONObject();
@@ -1510,8 +1420,7 @@ public class HandicapApi {
                     BigDecimal stake = odds.getBigDecimal("stake");
 
                     betAmount = stake
-                            .multiply(BigDecimal.valueOf(multiple))         // 相乘
-                            .setScale(0, RoundingMode.HALF_UP);    // 保留整数，四舍五入
+                            .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP); // 除法 + 不保留小数
 
                     JSONObject data = betPreviewJson.getJSONObject("data");
                     JSONObject betTicket = data.getJSONObject("betTicket");
@@ -1538,8 +1447,7 @@ public class HandicapApi {
                     BigDecimal golds = odds.getBigDecimal("golds");
 
                     betAmount = golds
-                            .multiply(BigDecimal.valueOf(multiple))         // 相乘
-                            .setScale(0, RoundingMode.HALF_UP);    // 保留整数，四舍五入
+                            .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP); // 除法 + 不保留小数
 
                     JSONObject betInfo = new JSONObject();
                     // JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
@@ -1605,8 +1513,7 @@ public class HandicapApi {
                     BigDecimal stake = odds.getBigDecimal("stake");
 
                     betAmount = stake
-                            .multiply(BigDecimal.valueOf(multiple))         // 相乘
-                            .setScale(2, RoundingMode.HALF_UP);    // 保留两位小数，四舍五入
+                            .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP); // 除法 + 不保留小数
 
                     JSONObject oddsInfo = betPreviewJson.getJSONObject("data").getJSONObject("oddsInfo");
                     String firstKey = oddsInfo.keySet().iterator().next();  // 拿第一个 key
@@ -1657,8 +1564,6 @@ public class HandicapApi {
                     result.putOpt("account", account.getAccount());
                     result.putOpt("accountId", account.getId());
                     splitResults.add(result);
-                } else {
-                    failedSplits.add(params);
                 }
             } else {
                 int splitCount = betAmount.divide(maxBet, 0, RoundingMode.UP).intValue();
@@ -1666,61 +1571,101 @@ public class HandicapApi {
                     BigDecimal thisAmount = (s < splitCount - 1)
                             ? maxBet
                             : betAmount.subtract(maxBet.multiply(BigDecimal.valueOf(splitCount - 1)));
-
-                    JSONObject paramsCopy = JSONUtil.parseObj(params.toString());
-                    switch (WebsiteType.getById(websiteId)) {
-                        case PINGBO -> {
-                            JSONArray selections = paramsCopy.getJSONArray("selections");
-                            for (Object obj : selections) {
-                                JSONObject sel = (JSONObject) obj;
-                                sel.putOpt("stake", thisAmount);
-                            }
+                    boolean splitSuccess = false;
+                    for (int accOffset = 0; accOffset < size; accOffset++) {
+                        int splitIdx = Math.floorMod(idx + s + accOffset, size);
+                        ConfigAccountVO splitAccount = accounts.get(splitIdx);
+                        if (splitAccount.getEnable() == 0 || splitAccount.getIsTokenValid() == 0) {
+                            continue;
                         }
-                        case ZHIBO -> paramsCopy.putOpt("stake", thisAmount);
-                        case XINBAO -> paramsCopy.putOpt("golds", thisAmount);
-                        case SBO -> paramsCopy.putOpt("stake", thisAmount);
+                        JSONObject splitParams = rebuildSplitParamsByPreview(
+                                username,
+                                websiteId,
+                                odds,
+                                splitAccount,
+                                oddsType,
+                                params,
+                                betPreviewInfo,
+                                handicapValue,
+                                thisAmount
+                        );
+                        if (splitParams == null) {
+                            log.info("网站:{} 账号 {} 第 {} 次拆分投注预览失败，金额 {}", WebsiteType.getById(websiteId).getDescription(), splitAccount.getAccount(), s + 1, thisAmount);
+                            continue;
+                        }
+
+                        log.info("投注金额大于最大投注金额，网站:{} ,账号 {} 第 {} 次拆分投注，金额 {}, paramsCopy={}", WebsiteType.getById(websiteId).getDescription(), splitAccount.getAccount(), s + 1, thisAmount, splitParams);
+                        JSONObject result = apiHandler.execute(splitAccount, splitParams);
+                        if (result == null || !result.getBool("success", false)) {
+                            log.info("网站:{} 账号 {} 第 {} 次拆分投注失败，金额 {}，result={}", WebsiteType.getById(websiteId).getDescription(), splitAccount.getAccount(), s + 1, thisAmount, result);
+                            continue;
+                        }
+                        result.putOpt("splitIndex", s + 1);
+                        result.putOpt("splitAmount", thisAmount);
+                        result.putOpt("account", splitAccount.getAccount());
+                        result.putOpt("accountId", splitAccount.getId());
+                        splitResults.add(result);
+                        splitSuccess = true;
+                        break;
                     }
-                    log.info("投注金额大于最大投注金额，网站:{} ,账号 {} 第 {} 次拆分投注，金额 {}, paramsCopy={}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), s + 1, thisAmount, paramsCopy);
-                    JSONObject result = apiHandler.execute(account, paramsCopy);
-                    if (result == null) {
-                        log.info("网站:{} 账号 {} 第 {} 次拆分投注失败，金额 {}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), s + 1, thisAmount);
-                        paramsCopy.putOpt("splitIndex", s + 1);
-                        paramsCopy.putOpt("splitAmount", thisAmount);
-                        failedSplits.add(paramsCopy);
-                        continue;
+                    if (!splitSuccess) {
+                        log.info("网站:{} 第 {} 次拆分投注失败，金额 {}，所有可用账号均尝试失败", WebsiteType.getById(websiteId).getDescription(), s + 1, thisAmount);
+                        JSONObject failedSplit = new JSONObject();
+                        failedSplit.putOpt("splitIndex", s + 1);
+                        failedSplit.putOpt("splitAmount", thisAmount);
+                        failedSplits.add(failedSplit);
                     }
-                    result.putOpt("splitIndex", s + 1);
-                    result.putOpt("splitAmount", thisAmount);
-                    result.putOpt("account", account.getAccount());
-                    result.putOpt("accountId", account.getId());
-                    splitResults.add(result);
                 }
             }
 
-            // ================== 失败补投逻辑 只有拆分投注的才进行补单 ==================
-            if (betAmount.compareTo(maxBet) > 0 && !failedSplits.isEmpty()) {
-                log.info("网站:{} 账号 {} 投注失败，开始补投，失败次数 {}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), failedSplits.size());
-                for (JSONObject failedParam : failedSplits) {
-                    boolean retried = false;
-                    for (ConfigAccountVO otherAcc : accounts) {
-                        if (otherAcc.getId().equals(account.getId())) continue;
-                        if (otherAcc.getEnable() == 0 || otherAcc.getIsTokenValid() == 0) continue;
-
-                        WebsiteApiFactory otherFactory = factoryManager.getFactory(websiteId);
-                        ApiHandler otherHandler = otherFactory.bet();
-                        JSONObject retryResult = otherHandler.execute(otherAcc, failedParam);
-                        if (retryResult != null) {
-                            retryResult.putOpt("retry", true);
-                            retryResult.putOpt("account", otherAcc.getAccount());
-                            retryResult.putOpt("accountId", otherAcc.getId());
-                            splitResults.add(retryResult);
-                            retried = true;
-                            log.info("网站:{} 投注补单成功，仍未成功，参数={}", WebsiteType.getById(websiteId).getDescription(), failedParam);
-                            break;
+            // ================== 二段兜底：第一段全部失败的拆分单再做一次全账号重预览补投 ==================
+            if (!failedSplits.isEmpty()) {
+                log.info("网站:{} 第一段拆分投注后仍有失败子单，开始二段兜底，失败次数 {}",
+                        WebsiteType.getById(websiteId).getDescription(), failedSplits.size());
+                for (JSONObject failedSplit : failedSplits) {
+                    int splitIndex = failedSplit.getInt("splitIndex", -1);
+                    BigDecimal splitAmount = failedSplit.getBigDecimal("splitAmount");
+                    boolean fallbackSuccess = false;
+                    for (ConfigAccountVO fallbackAcc : accounts) {
+                        if (fallbackAcc.getEnable() == 0 || fallbackAcc.getIsTokenValid() == 0) {
+                            continue;
                         }
+                        JSONObject fallbackParams = rebuildSplitParamsByPreview(
+                                username,
+                                websiteId,
+                                odds,
+                                fallbackAcc,
+                                oddsType,
+                                params,
+                                betPreviewInfo,
+                                handicapValue,
+                                splitAmount
+                        );
+                        if (fallbackParams == null) {
+                            log.info("网站:{} 二段兜底预览失败，账号:{}，splitIndex:{}，金额:{}",
+                                    WebsiteType.getById(websiteId).getDescription(), fallbackAcc.getAccount(), splitIndex, splitAmount);
+                            continue;
+                        }
+                        JSONObject fallbackResult = apiHandler.execute(fallbackAcc, fallbackParams);
+                        if (fallbackResult == null || !fallbackResult.getBool("success", false)) {
+                            log.info("网站:{} 二段兜底投注失败，账号:{}，splitIndex:{}，金额:{}，result={}",
+                                    WebsiteType.getById(websiteId).getDescription(), fallbackAcc.getAccount(), splitIndex, splitAmount, fallbackResult);
+                            continue;
+                        }
+                        fallbackResult.putOpt("retry", true);
+                        fallbackResult.putOpt("splitIndex", splitIndex);
+                        fallbackResult.putOpt("splitAmount", splitAmount);
+                        fallbackResult.putOpt("account", fallbackAcc.getAccount());
+                        fallbackResult.putOpt("accountId", fallbackAcc.getId());
+                        splitResults.add(fallbackResult);
+                        fallbackSuccess = true;
+                        log.info("网站:{} 二段兜底投注成功，账号:{}，splitIndex:{}，金额:{}",
+                                WebsiteType.getById(websiteId).getDescription(), fallbackAcc.getAccount(), splitIndex, splitAmount);
+                        break;
                     }
-                    if (!retried) {
-                        log.info("网站:{} 投注补单失败，仍未成功，参数={}", WebsiteType.getById(websiteId).getDescription(), failedParam);
+                    if (!fallbackSuccess) {
+                        log.info("网站:{} 二段兜底仍失败，splitIndex:{}，金额:{}",
+                                WebsiteType.getById(websiteId).getDescription(), splitIndex, splitAmount);
                     }
                 }
             }
@@ -1734,18 +1679,240 @@ public class HandicapApi {
             } else if (splitResults.size() == 1) {
                 return splitResults.get(0);
             } else {
-                JSONObject summaryResult = new JSONObject();
-                summaryResult.putOpt("code", 200);
-                summaryResult.putOpt("message", "拆分投注成功，共" + splitResults.size() + "次");
-                summaryResult.putOpt("splitCount", splitResults.size());
-                summaryResult.putOpt("totalAmount", betAmount);
-                summaryResult.putOpt("splitDetails", splitResults);
-                summaryResult.putOpt("account", account.getAccount());
-                summaryResult.putOpt("accountId", account.getId());
-                return summaryResult;
+                // 返回拆分明细列表，供上层逐条解析 betId，避免汇总对象触发整单重试导致重复投注
+                return splitResults;
             }
         }
         return null;
+    }
+
+    private JSONObject applySplitAmountToParams(JSONObject baseParams, String websiteId, BigDecimal splitAmount) {
+        JSONObject paramsCopy = JSONUtil.parseObj(baseParams.toString());
+        switch (WebsiteType.getById(websiteId)) {
+            case PINGBO -> {
+                JSONArray selections = paramsCopy.getJSONArray("selections");
+                for (Object obj : selections) {
+                    JSONObject sel = (JSONObject) obj;
+                    sel.putOpt("stake", splitAmount);
+                }
+            }
+            case ZHIBO -> paramsCopy.putOpt("stake", splitAmount);
+            case XINBAO -> paramsCopy.putOpt("golds", splitAmount);
+            case SBO -> paramsCopy.putOpt("stake", splitAmount);
+        }
+        return paramsCopy;
+    }
+
+    private JSONObject rebuildSplitParamsByPreview(String username,
+                                                   String websiteId,
+                                                   JSONObject odds,
+                                                   ConfigAccountVO account,
+                                                   Integer oddsType,
+                                                   JSONObject baseParams,
+                                                   JSONObject betPreviewInfo,
+                                                   String handicapValue,
+                                                   BigDecimal splitAmount) {
+        JSONObject previewResult = executeBetPreviewWithAccount(username, websiteId, odds, account, oddsType);
+        if (previewResult == null || !previewResult.getBool("success", false)) {
+            log.info("网站:{} 拆分投注预览失败，previewResult={}", WebsiteType.getById(websiteId).getDescription(), previewResult);
+            return null;
+        }
+
+        JSONObject splitParams = applySplitAmountToParams(baseParams, websiteId, splitAmount);
+        try {
+            if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+                // 切换账号后必须刷新认证参数，否则会沿用原账号 token/hucode 导致投注失败
+                splitParams.putAll(account.getToken().getJSONObject("tokens"));
+                splitParams.putOpt("hucode", account.getHucode());
+                JSONArray data = previewResult.getJSONArray("data");
+                if (data == null || data.isEmpty()) {
+                    return null;
+                }
+                JSONArray selections = new JSONArray();
+                JSONObject betInfo = new JSONObject();
+                for (Object obj : data) {
+                    JSONObject objJson = JSONUtil.parseObj(obj);
+                    JSONObject selection = new JSONObject();
+                    selection.putOpt("stake", splitAmount);
+                    selection.putOpt("odds", objJson.getStr("odds"));
+                    selection.putOpt("oddsId", objJson.getStr("oddsId"));
+                    selection.putOpt("selectionId", objJson.getStr("selectionId"));
+                    selections.add(selection);
+                    betInfo.putOpt("league", objJson.getStr("league"));
+                    betInfo.putOpt("team", objJson.getStr("homeTeam") + " -vs- " + objJson.getStr("awayTeam"));
+                    betInfo.putOpt("marketTypeName", "");
+                    betInfo.putOpt("marketName", objJson.getStr("selection"));
+                    betInfo.putOpt("odds", objJson.getStr("selection") + " " + handicapValue);
+                    betInfo.putOpt("handicap", handicapValue);
+                    betInfo.putOpt("amount", splitAmount);
+                    betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));
+                }
+                splitParams.putOpt("selections", selections);
+                splitParams.putOpt("betInfo", betInfo);
+            } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+                // 切换账号后刷新 Bearer token
+                splitParams.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+                JSONObject data = previewResult.getJSONObject("data");
+                JSONObject betTicket = data.getJSONObject("betTicket");
+                splitParams.putOpt("stake", splitAmount);
+                splitParams.putOpt("odds", betTicket.getStr("odds"));
+                splitParams.putOpt("decimalOdds", betTicket.getStr("decimalOdds"));
+                splitParams.putOpt("handicap", betTicket.getStr("handicap"));
+                splitParams.putOpt("score", betTicket.getStr("score"));
+                splitParams.putOpt("oddsFormatId", betTicket.getStr("oddsFormatId"));
+                splitParams.putOpt("marketSelectionId", betTicket.getStr("marketSelectionId"));
+                JSONObject betInfo = new JSONObject();
+                betInfo.putOpt("league", data.getStr("leagueName"));
+                betInfo.putOpt("team", data.getStr("eventName"));
+                betInfo.putOpt("marketTypeName", data.getStr("marketTypeName"));
+                betInfo.putOpt("marketName", data.getStr("name"));
+                betInfo.putOpt("odds", data.getStr("name") + " " + betTicket.getStr("handicap"));
+                betInfo.putOpt("handicap", data.getStr("handicap"));
+                betInfo.putOpt("amount", splitAmount);
+                splitParams.putOpt("betInfo", betInfo);
+            } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+                // 切换账号后刷新 serverresponse 认证上下文
+                splitParams.putAll(account.getToken().getJSONObject("serverresponse"));
+                JSONObject serverresponse = previewResult.getJSONObject("data");
+                splitParams.putOpt("ioratio", serverresponse.getStr("ioratio"));
+                splitParams.putOpt("con", serverresponse.getStr("con"));
+                splitParams.putOpt("ratio", serverresponse.getStr("ratio"));
+                JSONObject betInfo = new JSONObject();
+                String fastCheck = serverresponse.getStr("fast_check");
+                String marketName = "";
+                String marketTypeName = "";
+                if (fastCheck.contains("REH")) {
+                    marketName = serverresponse.getStr("team_name_h");
+                    marketTypeName = "让球盘";
+                } else if (fastCheck.contains("REC")) {
+                    marketName = serverresponse.getStr("team_name_c");
+                    marketTypeName = "让球盘";
+                } else if (fastCheck.contains("ROUC")) {
+                    marketName = "大盘";
+                    marketTypeName = "大小盘";
+                } else if (fastCheck.contains("ROUH")) {
+                    marketName = "小盘";
+                    marketTypeName = "大小盘";
+                }
+                betInfo.putOpt("league", serverresponse.getStr("league_name"));
+                betInfo.putOpt("team", serverresponse.getStr("team_name_h") + " -vs- " + serverresponse.getStr("team_name_c"));
+                betInfo.putOpt("marketTypeName", marketTypeName);
+                betInfo.putOpt("marketName", marketName);
+                betInfo.putOpt("handicap", serverresponse.getStr("spread"));
+                betInfo.putOpt("odds", marketName + " " + handicapValue);
+                betInfo.putOpt("amount", splitAmount);
+                betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));
+                splitParams.putOpt("betInfo", betInfo);
+            } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+                // 切换账号后刷新 cookie
+                splitParams.putOpt("cookie", account.getToken().getJSONObject("token").getStr("cookie"));
+                JSONObject oddsInfo = previewResult.getJSONObject("data").getJSONObject("oddsInfo");
+                String firstKey = oddsInfo.keySet().iterator().next();
+                JSONObject oddInfo = oddsInfo.getJSONObject(firstKey);
+                splitParams.putOpt("liveHomeScore", oddInfo.getStr("liveHomeScore"));
+                splitParams.putOpt("liveAwayScore", oddInfo.getStr("liveAwayScore"));
+                splitParams.putOpt("oddsId", oddInfo.getStr("oddsId"));
+                splitParams.putOpt("point", oddInfo.getStr("point"));
+                splitParams.putOpt("uid", oddInfo.getStr("uid"));
+                splitParams.putOpt("stake", splitAmount);
+            }
+        } catch (Exception e) {
+            log.info("网站:{} 拆分投注参数刷新失败", WebsiteType.getById(websiteId).getDescription(), e);
+            return null;
+        }
+
+        return splitParams;
+    }
+
+    private JSONObject executeBetPreviewWithAccount(String username,
+                                                    String websiteId,
+                                                    JSONObject odds,
+                                                    ConfigAccountVO account,
+                                                    Integer oddsType) {
+        WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
+        ApiHandler previewHandler = factory.betPreview();
+        if (previewHandler == null) {
+            return null;
+        }
+        JSONObject previewParams = buildPreviewParamsForAccount(username, websiteId, odds, account, oddsType);
+        if (previewParams == null) {
+            return null;
+        }
+        return previewHandler.execute(account, previewParams);
+    }
+
+    private JSONObject buildPreviewParamsForAccount(String username,
+                                                    String websiteId,
+                                                    JSONObject odds,
+                                                    ConfigAccountVO account,
+                                                    Integer oddsType) {
+        JSONObject previewParams = new JSONObject();
+        previewParams.putOpt("adminUsername", username);
+        previewParams.putOpt("websiteId", websiteId);
+        try {
+            if (WebsiteType.PINGBO.getId().equals(websiteId)) {
+                previewParams.putAll(account.getToken().getJSONObject("tokens"));
+                previewParams.putOpt("hucode", account.getHucode());
+                previewParams.putOpt("oddsId", odds.getStr("oddsId"));
+                previewParams.putOpt("selectionId", odds.getStr("selectionId"));
+                int oddsFormatType;
+                if (oddsType == 1) {
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    oddsFormatType = PingBoOddsFormatType.HKC.getId();
+                } else {
+                    oddsFormatType = PingBoOddsFormatType.RM.getId();
+                }
+                previewParams.putOpt("oddsFormatType", oddsFormatType);
+            } else if (WebsiteType.ZHIBO.getId().equals(websiteId)) {
+                previewParams.putOpt("token", "Bearer " + account.getToken().getStr("token"));
+                previewParams.putOpt("marketSelectionId", odds.getStr("marketSelectionId"));
+                int oddsFormatType;
+                if (oddsType == 1) {
+                    oddsFormatType = ZhiBoOddsFormatType.RM.getId();
+                } else if (oddsType == 2) {
+                    oddsFormatType = ZhiBoOddsFormatType.HKC.getId();
+                } else {
+                    oddsFormatType = ZhiBoOddsFormatType.RM.getId();
+                }
+                previewParams.putOpt("oddsFormatType", oddsFormatType);
+            } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
+                previewParams.putAll(account.getToken().getJSONObject("serverresponse"));
+                previewParams.putOpt("gid", odds.getStr("gid"));
+                previewParams.putOpt("gtype", odds.getStr("gtype"));
+                previewParams.putOpt("wtype", odds.getStr("wtype"));
+                previewParams.putOpt("choseTeam", odds.getStr("choseTeam"));
+                String oddsFormatType;
+                if (oddsType == 1) {
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                } else if (oddsType == 2) {
+                    oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
+                } else {
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                }
+                previewParams.putOpt("oddsFormatType", oddsFormatType);
+            } else if (WebsiteType.SBO.getId().equals(websiteId)) {
+                previewParams.putOpt("cookie", account.getToken().getJSONObject("token").getStr("cookie"));
+                previewParams.putOpt("eventId", odds.getStr("eventId"));
+                previewParams.putOpt("isLive", odds.getStr("isLive"));
+                previewParams.putOpt("marketType", odds.getStr("marketType"));
+                previewParams.putOpt("oddsId", odds.getStr("oddsId"));
+                previewParams.putOpt("option", odds.getStr("option"));
+                String oddsFormatType;
+                if (oddsType == 1) {
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                } else if (oddsType == 2) {
+                    oddsFormatType = XinBaoOddsFormatType.HKC.getCurrencyCode();
+                } else {
+                    oddsFormatType = XinBaoOddsFormatType.RM.getCurrencyCode();
+                }
+                previewParams.putOpt("oddsFormatType", oddsFormatType);
+            }
+        } catch (Exception e) {
+            log.info("网站:{} 构建投注预览参数失败", WebsiteType.getById(websiteId).getDescription(), e);
+            return null;
+        }
+        return previewParams;
     }
 
 }
