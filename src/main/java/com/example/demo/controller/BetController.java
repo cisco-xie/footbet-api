@@ -24,6 +24,7 @@ import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.dto.bet.SweepwaterBetDTO;
 import com.example.demo.model.dto.sweepwater.SweepwaterDTO;
+import com.example.demo.model.vo.bet.BetRetryVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
@@ -118,6 +119,20 @@ public class BetController extends BaseController {
         AdminLoginDTO admin = getUser();
         betService.cornerBetClear(admin.getUsername());
         return Result.success();
+    }
+
+    @Operation(summary = "手动补单")
+    @PostMapping("/bets/retry")
+    public Result<cn.hutool.json.JSONObject> betRetry(@RequestBody BetRetryVO retryVO) {
+        AdminLoginDTO admin = getUser();
+        if (retryVO == null || retryVO.getBetId() == null || retryVO.getBetId().isBlank()) {
+            return Result.failed(-1, "betId不能为空");
+        }
+        try {
+            return Result.success(betService.retryBetById(admin.getUsername(), retryVO.getBetId()));
+        } catch (Exception e) {
+            return Result.failed(-1, e.getMessage());
+        }
     }
 
 }

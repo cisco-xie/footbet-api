@@ -36,6 +36,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
@@ -2380,6 +2381,158 @@ public class BetService {
             sweepwaterDTO.setBetAccountB(account);
             sweepwaterDTO.setBetAccountIdB(accountId);
         }
+    }
+
+    public JSONObject retryBetById(String username, String betId) {
+        SweepwaterBetDTO dto = findBetById(username, betId);
+        if (dto == null) {
+            throw new IllegalArgumentException("未找到对应投注单，betId=" + betId);
+        }
+        boolean needRetryA = !Boolean.TRUE.equals(dto.getBetSuccessA());
+        boolean needRetryB = !Boolean.TRUE.equals(dto.getBetSuccessB());
+        if (!needRetryA && !needRetryB) {
+            throw new IllegalArgumentException("当前投注单A/B都已成功，无需补单");
+        }
+
+        LimitDTO limitDTO = settingsBetService.getLimit(username);
+        IntervalDTO intervalDTO = settingsBetService.getInterval(username);
+        OptimizingDTO optimizing = settingsBetService.getOptimizing(username);
+        BetAmountDTO amountDTO = settingsService.getBetAmount(username);
+        AdminLoginDTO admin = adminService.getAdmin(username);
+
+        boolean isUnilateral = limitDTO.getUnilateralBet() != null && limitDTO.getUnilateralBet() == 1;
+        JSONObject retryResultA = new JSONObject();
+        JSONObject retryResultB = new JSONObject();
+
+        if (needRetryA) {
+            JSONObject previewA = buildBetInfo(
+                    username,
+                    dto.getTeamA(),
+                    dto.getWebsiteIdA(),
+                    buildBetParams(dto, amountDTO, true, false),
+                    true,
+                    dto
+            );
+            if (previewA == null) {
+                throw new IllegalStateException("A侧补单预览失败");
+            }
+            retryResultA = tryBet(
+                    username,
+                    dto.getEventIdA(),
+                    dto.getWebsiteIdA(),
+                    true,
+                    isUnilateral,
+                    dto,
+                    limitDTO,
+                    intervalDTO,
+                    amountDTO,
+                    optimizing,
+                    admin.getSimulateBet(),
+                    previewA,
+                    null,
+                    null
+            );
+            dto.setBetSuccessA(retryResultA.getBool("success", false));
+            if (retryResultA.containsKey("betInfo")) {
+                dto.setBetInfoA(retryResultA.getJSONObject("betInfo"));
+            }
+        }
+
+        if (needRetryB) {
+            JSONObject previewB = buildBetInfo(
+                    username,
+                    dto.getTeamB(),
+                    dto.getWebsiteIdB(),
+                    buildBetParams(dto, amountDTO, false, false),
+                    false,
+                    dto
+            );
+            if (previewB == null) {
+                throw new IllegalStateException("B侧补单预览失败");
+            }
+            retryResultB = tryBet(
+                    username,
+                    dto.getEventIdB(),
+                    dto.getWebsiteIdB(),
+                    false,
+                    isUnilateral,
+                    dto,
+                    limitDTO,
+                    intervalDTO,
+                    amountDTO,
+                    optimizing,
+                    admin.getSimulateBet(),
+                    previewB,
+                    null,
+                    null
+            );
+            dto.setBetSuccessB(retryResultB.getBool("success", false));
+            if (retryResultB.containsKey("betInfo")) {
+                dto.setBetInfoB(retryResultB.getJSONObject("betInfo"));
+            }
+        }
+
+        persistRetryBetRecord(username, dto);
+        JSONObject response = new JSONObject();
+        response.putOpt("betId", dto.getId());
+        response.putOpt("retryA", needRetryA);
+        response.putOpt("retryB", needRetryB);
+        response.putOpt("successA", dto.getBetSuccessA());
+        response.putOpt("successB", dto.getBetSuccessB());
+        response.putOpt("resultA", retryResultA);
+        response.putOpt("resultB", retryResultB);
+        return response;
+    }
+
+    private SweepwaterBetDTO findBetById(String username, String betId) {
+        String realtimeKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, "realtime", betId);
+        Object realtimeJsonObj = businessPlatformRedissonClient.getBucket(realtimeKey).get();
+        String realtimeJson = realtimeJsonObj == null ? null : String.valueOf(realtimeJsonObj);
+        if (StringUtils.isNotBlank(realtimeJson)) {
+            return JSONUtil.toBean(realtimeJson, SweepwaterBetDTO.class);
+        }
+
+        String historyPattern = KeyUtil.genKey(RedisConstants.PLATFORM_BET_PREFIX, username, "*", betId);
+        Iterator<String> keys = businessPlatformRedissonClient.getKeys().getKeysByPattern(historyPattern).iterator();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (key.contains(":realtime:")) {
+                continue;
+            }
+            Object jsonObj = businessPlatformRedissonClient.getBucket(key).get();
+            String json = jsonObj == null ? null : String.valueOf(jsonObj);
+            if (StringUtils.isNotBlank(json)) {
+                return JSONUtil.toBean(json, SweepwaterBetDTO.class);
+            }
+        }
+        return null;
+    }
+
+    private void persistRetryBetRecord(String username, SweepwaterBetDTO dto) {
+        String json = JSONUtil.toJsonStr(dto);
+        String historyDate = extractHistoryDate(dto);
+        String historyKey = KeyUtil.genKey(
+                RedisConstants.PLATFORM_BET_PREFIX,
+                username,
+                historyDate,
+                dto.getId()
+        );
+        businessPlatformRedissonClient.getBucket(historyKey).set(json);
+
+        String realTimeKey = KeyUtil.genKey(
+                RedisConstants.PLATFORM_BET_PREFIX,
+                username,
+                "realtime",
+                dto.getId()
+        );
+        businessPlatformRedissonClient.getBucket(realTimeKey).set(json);
+    }
+
+    private String extractHistoryDate(SweepwaterBetDTO dto) {
+        if (StringUtils.isNotBlank(dto.getCreateTime()) && dto.getCreateTime().length() >= 10) {
+            return dto.getCreateTime().substring(0, 10);
+        }
+        return LocalDate.now().format(DateTimeFormatter.ofPattern(DatePattern.NORM_DATE_PATTERN));
     }
 
     /**
