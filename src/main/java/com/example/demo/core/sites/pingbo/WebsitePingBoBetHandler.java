@@ -86,25 +86,27 @@ public class WebsitePingBoBetHandler implements ApiHandler {
             selection.putOpt("stake", selectionJson.getDouble("stake"));
             selection.putOpt("uniqueRequestId", IdUtil.fastUUID());
             selection.putOpt("wagerType", "NORMAL");
+            selection.putOpt("winRiskStake", "RISK");
             selection.putOpt("betLocationTracking", betLocationTracking);
             selections.add(selection);
 
-            betLocationTracking.putOpt("view", "NEW_ASIAN_VIEW");
-            betLocationTracking.putOpt("navigation", "SPORTS");
+            betLocationTracking.putOpt("defaultPage", "TODAY");
             betLocationTracking.putOpt("device", "DESKTOP");
-            betLocationTracking.putOpt("reuseSelection", false);
+            betLocationTracking.putOpt("displayMode", "LIGHT");
+            betLocationTracking.putOpt("eventSorting", "LEAGUE");
+            betLocationTracking.putOpt("isLiveStreamPlaying", null);
+            betLocationTracking.putOpt("language", "zh_CN");
             betLocationTracking.putOpt("mainPages", "SPORT");
-            betLocationTracking.putOpt("marketTab", "TODAY");
             betLocationTracking.putOpt("market", "MATCHES");
+            betLocationTracking.putOpt("marketTab", "TODAY");
+            betLocationTracking.putOpt("marketType", "_3LINES");
+            betLocationTracking.putOpt("navigation", "SPORTS");
             betLocationTracking.putOpt("oddsContainerCategory", "MAIN");
             betLocationTracking.putOpt("oddsContainerTitle", "LIVE");
-            betLocationTracking.putOpt("language", "zh_CN");
-            betLocationTracking.putOpt("displayMode", "LIGHT");
-            betLocationTracking.putOpt("marketType", "_3LINES");
-            betLocationTracking.putOpt("eventSorting", "LEAGUE");
             betLocationTracking.putOpt("pageType", "DOUBLE");
+            betLocationTracking.putOpt("reuseSelection", false);
             betLocationTracking.putOpt("timeZone", "Asia/Shanghai");
-            betLocationTracking.putOpt("defaultPage", "TODAY");
+            betLocationTracking.putOpt("view", "NEW_ASIAN_VIEW");
         }
         return requestBody.toString();
     }

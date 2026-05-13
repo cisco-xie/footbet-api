@@ -1335,10 +1335,9 @@ public class HandicapApi {
             int idx = Math.floorMod(current, size);
             ConfigAccountVO account = accounts.get(idx);
             if (!account.getAccount().equals(targeAccount)) {
-                log.info("投注操作,网站:{},idx:{},账号:{}不是投注预览账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, account.getAccount(), betPreviewJson.getStr("account"));
+                // 不是投注预览账号
                 continue;
             }
-            log.info("投注操作,网站:{},idx:{},账号:{}", WebsiteType.getById(websiteId).getDescription(), idx, account.getAccount());
 
             if (account.getEnable() == 0 || account.getIsTokenValid() == 0) {
                 // 未启用或未登录直接跳过
@@ -1381,7 +1380,7 @@ public class HandicapApi {
                         return null;
                     }
                     // 通过当前盘口账户的倍数计算实际投注金额
-                    BigDecimal stake = odds.getBigDecimal("stake");
+                    /*BigDecimal stake = odds.getBigDecimal("stake");
 
                     betAmount = stake
                             .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP); // 除法 + 不保留小数
@@ -1392,14 +1391,15 @@ public class HandicapApi {
                         betAmount = betAmount
                                 .multiply(oddsValue.abs().add(BigDecimal.ONE))
                                 .divide(BigDecimal.valueOf(2), 0, RoundingMode.HALF_UP);
-                    }
+                    }*/
+                    log.info("平博投注betAmountByOdds: {}, odds:{}, betAmount:{}", betAmountByOdds, odds, odds.getBigDecimal("stake"));
 
                     JSONArray selections = new JSONArray();
                     JSONObject betInfo = new JSONObject();
                     for (Object obj : data) {
                         JSONObject objJson = JSONUtil.parseObj(obj);
                         JSONObject selection = new JSONObject();
-                        selection.putOpt("stake", betAmount);
+                        selection.putOpt("stake", odds.getBigDecimal("stake"));
                         selection.putOpt("odds", objJson.getStr("odds"));
                         selection.putOpt("oddsId", objJson.getStr("oddsId"));
                         selection.putOpt("selectionId", objJson.getStr("selectionId"));
@@ -1452,16 +1452,16 @@ public class HandicapApi {
                 } else if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                     params.putAll(account.getToken().getJSONObject("serverresponse"));
                     // 通过当前盘口账户的倍数计算实际投注金额
-                    BigDecimal golds = odds.getBigDecimal("golds");
+                    /*BigDecimal golds = odds.getBigDecimal("golds");
 
                     betAmount = golds
-                            .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP); // 除法 + 不保留小数
+                            .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP);*/ // 除法 + 不保留小数
 
                     JSONObject betInfo = new JSONObject();
                     // JSONObject betPreviewJson = JSONUtil.parseObj(betPreview);
                     JSONObject serverresponse = betPreviewJson.getJSONObject("data");
                     params.putOpt("gid", odds.getStr("gid"));
-                    params.putOpt("golds", betAmount);
+                    params.putOpt("golds", odds.getBigDecimal("golds"));
                     params.putOpt("gtype", odds.getStr("gtype"));
                     params.putOpt("wtype", odds.getStr("wtype"));
                     params.putOpt("rtype", odds.getStr("rtype"));
@@ -1518,7 +1518,7 @@ public class HandicapApi {
                 } else if (WebsiteType.SBO.getId().equals(websiteId)) {
 
                     // 通过当前盘口账户的倍数计算实际投注金额
-                    BigDecimal stake = odds.getBigDecimal("stake");
+                    /*BigDecimal stake = odds.getBigDecimal("stake");
 
                     betAmount = stake
                             .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP); // 除法 + 不保留小数
@@ -1529,7 +1529,8 @@ public class HandicapApi {
                         betAmount = betAmount
                                 .multiply(oddsValue.abs().add(BigDecimal.ONE))
                                 .divide(BigDecimal.valueOf(2), 0, RoundingMode.HALF_UP);
-                    }
+                    }*/
+                    log.info("盛帆投注betAmountByOdds: {}, odds:{}, betAmount:{}", betAmountByOdds, odds, odds.getBigDecimal("stake"));
 
                     JSONObject oddsInfo = betPreviewJson.getJSONObject("data").getJSONObject("oddsInfo");
                     String firstKey = oddsInfo.keySet().iterator().next();  // 拿第一个 key
@@ -1544,7 +1545,7 @@ public class HandicapApi {
                     params.putOpt("oddsId", oddInfo.getStr("oddsId"));
                     params.putOpt("option", odds.getStr("option"));
                     params.putOpt("point", oddInfo.getStr("point"));
-                    params.putOpt("stake", betAmount);
+                    params.putOpt("stake", odds.getBigDecimal("stake"));
                     params.putOpt("uid", oddInfo.getStr("uid"));
                     params.putOpt("betInfo", betPreviewInfo);
 
@@ -1701,7 +1702,7 @@ public class HandicapApi {
         }
         return null;
     }
-
+    
     private JSONObject applySplitAmountToParams(JSONObject baseParams, String websiteId, BigDecimal splitAmount) {
         JSONObject paramsCopy = JSONUtil.parseObj(baseParams.toString());
         switch (WebsiteType.getById(websiteId)) {

@@ -363,11 +363,12 @@ public class CheckCornerTask {
                                     }
                                     // 保存reservationId，用于后续确认或回滚
                                     String reservationId = checkResult.getReservationId();
+                                    boolean betAmountByOdds = limit.getBetAmountByOdds() != null && limit.getBetAmountByOdds() == 1;
 
                                     JSONObject betParams = betService.buildBetParams(sweepwater, amount, true, false);
                                     JSONObject retryPreview = betService.buildBetInfo(
                                             admin.getUsername(), betTeamName, league.getWebsiteIdB(),
-                                            betParams, true, sweepwater
+                                            betParams, true, sweepwater, betAmountByOdds
                                     );
                                     if (retryPreview == null) {
                                         log.info("角球检测任务：预览失败，user={}, 投注队伍={}, 赛事={}, oddsId={}",
