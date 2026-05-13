@@ -7,6 +7,7 @@
     "betLimitGame": 4,
     "betLimitScore": 2,
     "forceBetSuccess": 1,
+    "betAmountByOdds": 0,
     "allowWaterDrop": 0.035,
     "unilateralBetType": 1,
     "bothSideOption": 0,

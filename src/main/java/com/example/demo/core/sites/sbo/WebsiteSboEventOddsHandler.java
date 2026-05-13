@@ -58,10 +58,10 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
         headers.put("accept", "*/*");
         headers.put("accept-language", "zh-CN,zh;q=0.9");
         headers.put("content-type", "application/json");
-        headers.put("authorization", token);
+        // headers.put("authorization", token);
         headers.put("x-auth-token", token);
         headers.put("sec-ch-ua-mobile", "?0");
-        headers.put("sec-ch-ua-platform", "\"Android\"");
+        headers.put("sec-ch-ua-platform", "\"Windows\"");
         return headers;
     }
 
@@ -103,7 +103,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
         }
 
         String variables_step3 = String.format("{\"query\":{\"id\":%d,\"filter\":\""+presetFilter+"\",\"marketGroupIds\":[0,306,307,308,309,310,311,312,313,330,331,1066212],\"excludeMarketGroupIds\":null,\"oddsCategory\":\"All\",\"priceStyle\":\"Malay\",\"oddsToken\":\"%s\",\"version\":\"SS\"}}", eventId, oddsToken);
-        String extensions_step3 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"222c6e1227b7089e756f66a8750cd8c6c087ad4b39792388e35e2b0374b913fec0\"}}";
+        String extensions_step3 = "{\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"2c6e1227b7089e756f66a8750cd8c6c087ad4b39792388e35e2b0374b913fec0\"}}";
 
         String queryParams_step3 = String.format("operationName=%s&variables=%s&extensions=%s",
                 SboCdnApiConstants.OPERATION_NAME_ODDS_QUERY,

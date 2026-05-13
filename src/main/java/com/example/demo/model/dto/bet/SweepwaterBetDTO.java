@@ -86,4 +86,11 @@ public class SweepwaterBetDTO {
     private String createTime;      // 创建时间
     private String sweepwaterCreateTime;      // 扫水时间
 
+    /** 任一侧人工补单成功后为 true（等价于 manualRetryA || manualRetryB） */
+    private Boolean manualRetry;
+    /** A 侧曾通过接口手动补单并成功 */
+    private Boolean manualRetryA;
+    /** B 侧曾通过接口手动补单并成功 */
+    private Boolean manualRetryB;
+
 }

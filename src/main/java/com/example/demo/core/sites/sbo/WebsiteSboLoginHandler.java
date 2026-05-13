@@ -49,10 +49,10 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         headers.put("accept", "application/json, text/plain, */*");
         headers.put("accept-language", "zh-CN,zh;q=0.9,pt-BR;q=0.8,pt;q=0.7");
         headers.put("cache-control", "no-cache");
-        headers.put("origin", "https://www.u16888.com");
+        headers.put("origin", params.getStr("sportsBookUrl"));
         headers.put("pragma", "no-cache");
         headers.put("priority", "u=1, i");
-        headers.put("referer", "https://www.u16888.com/");
+        headers.put("referer", params.getStr("sportsBookUrl"));
         headers.put("sec-ch-ua", Constants.SEC_CH_UA);
         headers.put("sec-ch-ua-mobile", "?0");
         headers.put("sec-ch-ua-platform", "\"Windows\"");
@@ -114,7 +114,7 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         headers.put("cache-control", "no-cache");
         headers.put("pragma", "no-cache");
         headers.put("priority", "u=0, i");
-        headers.put("referer", "https://www.u16888.com/");
+        headers.put("referer", params.getStr("sportsBookUrl"));
         headers.put("sec-ch-ua", Constants.SEC_CH_UA);
         headers.put("sec-ch-ua-mobile", "?0");
         headers.put("sec-ch-ua-platform", "\"Windows\"");
@@ -140,7 +140,7 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         headers.put("cache-control", "no-cache");
         headers.put("pragma", "no-cache");
         headers.put("priority", "u=0, i");
-        headers.put("referer", "https://www.u16888.com/");
+        headers.put("referer", params.getStr("sportsBookUrl"));
         headers.put("sec-ch-ua", Constants.SEC_CH_UA);
         headers.put("sec-ch-ua-mobile", "?0");
         headers.put("sec-ch-ua-platform", "\"Windows\"");
@@ -199,6 +199,7 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         String apiHomeUrl = insertSubdomain(baseUrl, "api-home");
         String accountsUrl = insertSubdomain(baseUrl, "accounts");
         String sportsBookUrl = insertSubdomain(baseUrl, "sportsbook");
+        params.set("sportsBookUrl", sportsBookUrl);
 
         // 初始化cookie存储
         StringBuilder cookieStore = new StringBuilder();
@@ -214,7 +215,7 @@ public class WebsiteSboLoginHandler implements ApiHandler {
             String step2Url = extractLocation(step1Result.get("response", OkHttpProxyDispatcher.HttpResult.class), params);
             if (step2Url == null) {
                 // 如果没有Location头，使用默认的authorize URL
-                step2Url = accountsUrl + "/connect/authorize?client_id=sbo&redirect_uri=https%3A%2F%2Fapi-home.u16888.com%2Fsignin-sbo%3FReferer%3Dhttps%253a%252f%252fwww.u16888.com%252f&response_type=code&scope=openid%20profile%20offline_access&code_challenge=eF_epIDiInR3wwUnz7fWUD_HNw5C3b7qXOXZmbDC7wE&code_challenge_method=S256&nonce=638911218224136837.YTE3MjI1MjEtYzNhNC00YWQ4LTgxMDYtOGNlMzA5MTM5YjlmMTE5YjIwODEtMTM2MS00NjIzLWIwMjUtZTYwY2U1Y2EyNjY0&state=CfDJ8APwHHDRm8xJpOAuGwNLolkXgkS2YANy7Kqzqc_MG2x0zjSCVsNm9oTTWmdfd1WAjLL_-npAhpcz6oTO0Qq0Bg2ufx-s9IhNthxHSZd5GlImwC7fxDKSPO2eZEOKNskEkTMFQtnea7iME41-USXGMkgUgGeLU5ch1z97sy7wCVc5uTcU9JPSG0RAVSgxYs8ucY7Cnl3Dz5x0nS2VwOlu6INdIjZRWCYjG6DP_XAUex6-wBRcl6ZZfUpZQbHuY3JWnl8Otm5QY3BLtmyzGqOePEEzy_tY64nqIwv-CTQIslfWb1qPelQThdRYHcihDka_jgp0CgZkVTVTpMQKcpmbt9D1ojlRncCooH2VSyI6YAw-aEpYhNseMutG-cwfGEhUyXGZkBCQM6IC-ahQgX8N1bRiaP9sTRx7wZ_sTtJHHiTiAPjSpfZZqHEt7ykiayLDUD6M4FVQrrb__2Ysmt2iAwWvYm4ig0_5nZ8h_8gTXcIY";
+                step2Url = accountsUrl + "/connect/authorize?client_id=sbo&redirect_uri="+apiHomeUrl+"%2Fsignin-sbo%3FReferer%3D"+baseUrl+"%252f&response_type=code&scope=openid%20profile%20offline_access&code_challenge=eF_epIDiInR3wwUnz7fWUD_HNw5C3b7qXOXZmbDC7wE&code_challenge_method=S256&nonce=638911218224136837.YTE3MjI1MjEtYzNhNC00YWQ4LTgxMDYtOGNlMzA5MTM5YjlmMTE5YjIwODEtMTM2MS00NjIzLWIwMjUtZTYwY2U1Y2EyNjY0&state=CfDJ8APwHHDRm8xJpOAuGwNLolkXgkS2YANy7Kqzqc_MG2x0zjSCVsNm9oTTWmdfd1WAjLL_-npAhpcz6oTO0Qq0Bg2ufx-s9IhNthxHSZd5GlImwC7fxDKSPO2eZEOKNskEkTMFQtnea7iME41-USXGMkgUgGeLU5ch1z97sy7wCVc5uTcU9JPSG0RAVSgxYs8ucY7Cnl3Dz5x0nS2VwOlu6INdIjZRWCYjG6DP_XAUex6-wBRcl6ZZfUpZQbHuY3JWnl8Otm5QY3BLtmyzGqOePEEzy_tY64nqIwv-CTQIslfWb1qPelQThdRYHcihDka_jgp0CgZkVTVTpMQKcpmbt9D1ojlRncCooH2VSyI6YAw-aEpYhNseMutG-cwfGEhUyXGZkBCQM6IC-ahQgX8N1bRiaP9sTRx7wZ_sTtJHHiTiAPjSpfZZqHEt7ykiayLDUD6M4FVQrrb__2Ysmt2iAwWvYm4ig0_5nZ8h_8gTXcIY";
             }
 
             // 第二步：调用authorize接口
@@ -336,6 +337,7 @@ public class WebsiteSboLoginHandler implements ApiHandler {
                 responseJson.putOpt("msg", "需要修改账户密码");
                 return responseJson;
             }
+            responseJson.putOpt("durationMs", step12Result.getLong("durationMs"));
             responseJson.putOpt("success", true);
             responseJson.putOpt("token", new JSONObject(JSONUtil.parseObj(step11Result.getStr("body"))).putOpt("cookie", cookieStore));
             responseJson.putOpt("msg", "账户登录成功");
@@ -792,8 +794,17 @@ public class WebsiteSboLoginHandler implements ApiHandler {
 
     public static String insertSubdomain(String baseUrl, String subdomain) {
         URI uri = URI.create(baseUrl);
-        String host = uri.getHost();  // u16888.com
+        String originalHost = uri.getHost();
+        String host = originalHost;
+        // 去掉 www.
+        if (host.startsWith("www.")) {
+            host = host.substring(4);
+        }
         String newHost = subdomain + "." + host;
-        return baseUrl.replaceFirst(host, newHost);
+        return baseUrl.replaceFirst(originalHost, newHost);
+    }
+
+    public static void main(String[] args) {
+        System.out.println(insertSubdomain("https://www.u16888.com", "api-home"));
     }
 }

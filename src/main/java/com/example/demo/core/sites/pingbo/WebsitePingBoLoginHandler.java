@@ -120,6 +120,7 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
         }
 
         responseJson.getJSONObject("tokens").putOpt("x-app-data", result.getHeaders().get("x-app-data").toString().replace("[", "").replace("]", ""));
+        responseJson.putOpt("durationMs", result.getDurationMs());
         responseJson.putOpt("success", true);
         responseJson.putOpt("msg", "账户登录成功");
         return responseJson;
@@ -153,6 +154,7 @@ public class WebsitePingBoLoginHandler implements ApiHandler {
         OkHttpProxyDispatcher.HttpResult resultHttp;
         try {
             resultHttp = dispatcher.execute("POST", fullUrl, requestBody, requestHeaders, userConfig, false);
+            log.info("平博登录请求结果:{}", resultHttp);
         } catch (Exception e) {
             log.error("请求异常，用户:{}, 账号:{}, 参数:{}, 错误:{}", username, userConfig.getAccount(), requestBody, e.getMessage(), e);
             throw new BusinessException(SystemError.SYS_400);

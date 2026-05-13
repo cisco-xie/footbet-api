@@ -251,7 +251,7 @@ public class HandicapApi {
         log.info("登录账号,网站:{}, 账号:{}, 登录结果：{}", WebsiteType.getById(websiteId).getDescription(), account.getAccount(), result);
         account.setIsTokenValid(result.getBool("success") ? 1 : 0);
         account.setToken(result);
-        account.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
+        account.setExecuteMsg(result.get("msg") + "：" + result.getLong("durationMs") + " ms");
         accountService.saveAccount(username, websiteId, account);
         if (result.getBool("success")) {
             retryMap.remove(key); // 成功则清除失败记录
@@ -381,7 +381,7 @@ public class HandicapApi {
         JSONObject result = apiHandler.execute(accountVO, params);
         if (result != null && result.getBool("success")) {
             accountVO.setPassword(password);
-            accountVO.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
+            accountVO.setExecuteMsg(result.get("msg") + "：" + result.getLong("durationMs") + " ms");
             accountService.saveAccount(username, websiteId, accountVO);
             // 修改成功就执行登录
             processAccountLogin(accountVO, username, websiteId, retryMap);
@@ -464,7 +464,7 @@ public class HandicapApi {
         JSONObject result = apiHandler.execute(accountVO, params);
         if (result != null && result.getBool("success")) {
             accountVO.setAccount(chkName);
-            accountVO.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
+            accountVO.setExecuteMsg(result.get("msg") + "：" + result.getLong("durationMs") + " ms");
             accountService.saveAccount(username, websiteId, accountVO);
             // 修改成功就执行登录
             processAccountLogin(accountVO, username, websiteId, retryMap);
@@ -576,7 +576,7 @@ public class HandicapApi {
                     }
                     JSONObject result = apiHandler.execute(account, params);
                     account.setBetCredit(result.getBigDecimal("betCredit"));
-                    account.setExecuteMsg(result.get("msg") + "：" + timer.interval() + " ms");
+                    account.setExecuteMsg(result.get("msg") + "：" + result.getLong("durationMs") + " ms");
                     accountService.saveAccount(user.getUsername(), website.getId(), account);
                 }
             }
@@ -1315,7 +1315,7 @@ public class HandicapApi {
      * @param websiteId
      * @return
      */
-    public Object bet(String username, String websiteId, JSONObject odds, JSONObject betPreviewInfo, JSONObject betPreviewJson, String handicapValue) {
+    public Object bet(String username, String websiteId, JSONObject odds, JSONObject betPreviewInfo, JSONObject betPreviewJson, String handicapValue, boolean betAmountByOdds) {
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
@@ -1385,6 +1385,14 @@ public class HandicapApi {
 
                     betAmount = stake
                             .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP); // 除法 + 不保留小数
+
+                    if (betAmountByOdds) {
+                        // 根据赔率计算投注金额：(下注金额 * (赔率绝对值 + 1)) / 2
+                        BigDecimal oddsValue = odds.getBigDecimal("odds");
+                        betAmount = betAmount
+                                .multiply(oddsValue.abs().add(BigDecimal.ONE))
+                                .divide(BigDecimal.valueOf(2), 0, RoundingMode.HALF_UP);
+                    }
 
                     JSONArray selections = new JSONArray();
                     JSONObject betInfo = new JSONObject();
@@ -1514,6 +1522,14 @@ public class HandicapApi {
 
                     betAmount = stake
                             .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP); // 除法 + 不保留小数
+
+                    if (betAmountByOdds) {
+                        // 根据赔率计算投注金额：(下注金额 * (赔率绝对值 + 1)) / 2
+                        BigDecimal oddsValue = odds.getBigDecimal("odds");
+                        betAmount = betAmount
+                                .multiply(oddsValue.abs().add(BigDecimal.ONE))
+                                .divide(BigDecimal.valueOf(2), 0, RoundingMode.HALF_UP);
+                    }
 
                     JSONObject oddsInfo = betPreviewJson.getJSONObject("data").getJSONObject("oddsInfo");
                     String firstKey = oddsInfo.keySet().iterator().next();  // 拿第一个 key

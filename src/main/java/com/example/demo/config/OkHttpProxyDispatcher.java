@@ -169,11 +169,15 @@ public class OkHttpProxyDispatcher {
                 }
 
                 if (headers != null) {
-                    headers.forEach(requestBuilder::addHeader);
+                    headers.forEach((k, v) -> {
+                        if (k != null && v != null) {
+                            requestBuilder.addHeader(k, v);
+                        }
+                    });
                 }
 
                 // ⭐ 在这里注入平台伪装
-                // applyPlatformHeaders(requestBuilder, RequestPlatform.ANDROID);
+                // applyPlatformHeaders(requestBuilder, RequestPlatform.PC);
 
                 long start = System.currentTimeMillis(); // ✅ 请求开始时间
                 try (Response response = client.newCall(requestBuilder.build()).execute()) {
@@ -485,7 +489,7 @@ public class OkHttpProxyDispatcher {
 
         } else {
             // PC
-            builder.header("User-Agent", Constants.USER_AGENT);
+            // builder.header("User-Agent", Constants.USER_AGENT);
             builder.header("Accept", "*/*");
             builder.header("Accept-Language", "zh-CN,zh;q=0.9");
         }

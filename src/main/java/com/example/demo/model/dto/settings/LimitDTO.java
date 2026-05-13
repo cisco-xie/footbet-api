@@ -14,6 +14,8 @@ public class LimitDTO {
     private Integer betLimitScore;
     @Schema(description = "强制投注成功(0=关闭, 1=开启)")
     private Integer forceBetSuccess;
+    @Schema(description = "投注金额根据赔率计算(0=关闭, 1=开启)")
+    private Integer betAmountByOdds;
     @Schema(description = "允许下降水位")
     private Double allowWaterDrop;
     @Schema(description = "单边投注(开启后只投注一边)")

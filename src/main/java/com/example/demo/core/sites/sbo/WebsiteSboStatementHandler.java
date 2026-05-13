@@ -154,8 +154,13 @@ public class WebsiteSboStatementHandler implements ApiHandler {
 
     public static String insertSubdomain(String baseUrl, String subdomain) {
         URI uri = URI.create(baseUrl);
-        String host = uri.getHost();  // u16888.com
+        String originalHost = uri.getHost();
+        String host = originalHost;
+        // 去掉 www.
+        if (host.startsWith("www.")) {
+            host = host.substring(4);
+        }
         String newHost = subdomain + "." + host;
-        return baseUrl.replaceFirst(host, newHost);
+        return baseUrl.replaceFirst(originalHost, newHost);
     }
 }

@@ -158,7 +158,7 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
      */
     @Override
     public JSONObject parseResponse(JSONObject params, OkHttpProxyDispatcher.HttpResult response) {
-        log.info("平博赛事列表请求响应内容:{}", response.getBody());
+        //log.info("平博赛事列表请求响应内容:{}", response.getBody());
 
         // 检查响应状态
         if (response.getStatus() != 200) {

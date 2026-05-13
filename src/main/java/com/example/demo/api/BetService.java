@@ -1404,6 +1404,7 @@ public class BetService {
         String betTeamName = isA ? dto.getTeamA() : dto.getTeamB();
         String handicapValue = isA ? dto.getHandicapA() : dto.getHandicapB();
         boolean forceBetSuccess = limitDTO.getForceBetSuccess() != null && limitDTO.getForceBetSuccess() == 1;
+        boolean betAmountByOdds = limitDTO.getBetAmountByOdds() != null && limitDTO.getBetAmountByOdds() == 1;
         // 构建投注参数并调用投注接口
         JSONObject params = buildBetParams(dto, amountDTO, isA, forceBetSuccess);
 
@@ -1579,6 +1580,7 @@ public class BetService {
                         log.info("投注前, 用户 {}, 网站:{} 投注预览的盘口分:{}和扫水时需要投注的盘口分:{}不匹配，联赛={}, 球队名={}", username, websiteId, getHandicapRange(betInfo.getStr("handicap")), handicap, league, teamName);
                         result.putOpt("isBet", false);
                         result.putOpt("success", false);
+                        result.putOpt("msg", "盘口已不存在");
                         return result;
                     }
                     // 新二：一次拉整个联赛赔率
@@ -1622,7 +1624,7 @@ public class BetService {
 
                 // 投注
                 log.info("用户 {}, 网站:{} 开始投注，eventId={}, isA={}, 投注参数={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, params);
-                Object betResult = handicapApi.bet(username, websiteId, params, betPreviewOpt.getJSONObject("betInfo"), betPreviewOpt.getJSONObject("betPreview"), handicapValue);
+                Object betResult = handicapApi.bet(username, websiteId, params, betPreviewOpt.getJSONObject("betInfo"), betPreviewOpt.getJSONObject("betPreview"), handicapValue, betAmountByOdds);
                 if (isA) {
                     dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                 } else {
@@ -1714,6 +1716,7 @@ public class BetService {
         JSONObject result = new JSONObject();
 
         String handicapValue = isA ? dto.getHandicapA() : dto.getHandicapB();
+        boolean betAmountByOdds = limitDTO.getBetAmountByOdds() != null && limitDTO.getBetAmountByOdds() == 1;
         // 构建投注参数并调用投注接口
         JSONObject params = buildBetParams(dto, amountDTO, isA, false);
 
@@ -1743,7 +1746,7 @@ public class BetService {
 
                 // 投注
                 log.info("用户 {}, 网站:{} 开始投注，eventId={}, isA={}, 投注参数={}", username, WebsiteType.getById(websiteId).getDescription(), eventId, isA, params);
-                Object betResult = handicapApi.bet(username, websiteId, params, betPreviewOpt.getJSONObject("betInfo"), betPreviewOpt.getJSONObject("betPreview"), handicapValue);
+                Object betResult = handicapApi.bet(username, websiteId, params, betPreviewOpt.getJSONObject("betInfo"), betPreviewOpt.getJSONObject("betPreview"), handicapValue, betAmountByOdds);
                 if (isA) {
                     dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
                 } else {
@@ -2388,6 +2391,7 @@ public class BetService {
         if (dto == null) {
             throw new IllegalArgumentException("未找到对应投注单，betId=" + betId);
         }
+        // 仅允许对「明确未成功」的一侧补单；已成功侧不允许再次投注
         boolean needRetryA = !Boolean.TRUE.equals(dto.getBetSuccessA());
         boolean needRetryB = !Boolean.TRUE.equals(dto.getBetSuccessB());
         if (!needRetryA && !needRetryB) {
@@ -2414,7 +2418,7 @@ public class BetService {
                     dto
             );
             if (previewA == null) {
-                throw new IllegalStateException("A侧补单预览失败");
+                throw new IllegalStateException("补单预览失败");
             }
             retryResultA = tryBet(
                     username,
@@ -2432,7 +2436,13 @@ public class BetService {
                     null,
                     null
             );
-            dto.setBetSuccessA(retryResultA.getBool("success", false));
+            boolean success = retryResultA.getBool("success", false);
+            if (!success) {
+                throw new IllegalStateException("补单失败"
+                        + (retryResultA.containsKey("msg") ? retryResultA.getStr("msg") : ""));
+            }
+            dto.setBetSuccessA(success);
+            dto.setManualRetryA(true);
             if (retryResultA.containsKey("betInfo")) {
                 dto.setBetInfoA(retryResultA.getJSONObject("betInfo"));
             }
@@ -2448,7 +2458,7 @@ public class BetService {
                     dto
             );
             if (previewB == null) {
-                throw new IllegalStateException("B侧补单预览失败");
+                throw new IllegalStateException("补单预览失败");
             }
             retryResultB = tryBet(
                     username,
@@ -2466,12 +2476,20 @@ public class BetService {
                     null,
                     null
             );
-            dto.setBetSuccessB(retryResultB.getBool("success", false));
+            boolean success = retryResultB.getBool("success", false);
+            if (!success) {
+                throw new IllegalStateException("补单失败"
+                        + (retryResultB.containsKey("msg") ? retryResultB.getStr("msg") : ""));
+            }
+            dto.setBetSuccessB(success);
+            dto.setManualRetryB(true);
             if (retryResultB.containsKey("betInfo")) {
                 dto.setBetInfoB(retryResultB.getJSONObject("betInfo"));
             }
         }
 
+        dto.setManualRetry(Boolean.TRUE.equals(dto.getManualRetryA())
+                || Boolean.TRUE.equals(dto.getManualRetryB()));
         persistRetryBetRecord(username, dto);
         JSONObject response = new JSONObject();
         response.putOpt("betId", dto.getId());
@@ -2479,6 +2497,9 @@ public class BetService {
         response.putOpt("retryB", needRetryB);
         response.putOpt("successA", dto.getBetSuccessA());
         response.putOpt("successB", dto.getBetSuccessB());
+        response.putOpt("manualRetry", dto.getManualRetry());
+        response.putOpt("manualRetryA", dto.getManualRetryA());
+        response.putOpt("manualRetryB", dto.getManualRetryB());
         response.putOpt("resultA", retryResultA);
         response.putOpt("resultB", retryResultB);
         return response;

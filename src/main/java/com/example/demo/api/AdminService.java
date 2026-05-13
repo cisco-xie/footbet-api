@@ -17,13 +17,10 @@ import com.example.demo.task.AutoProxyTask;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.redisson.api.RKeys;
-import org.redisson.api.RedissonClient;
+import org.redisson.api.*;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -50,22 +47,64 @@ public class AdminService {
      * @return
      */
     public List<AdminLoginDTO> getUsers(String group) {
+
         // 匹配所有平台用户的 Redis Key
         String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_USER_PREFIX, "*");
-        // 使用 Redisson 执行扫描所有平台用户操作
+
         RKeys keys = businessPlatformRedissonClient.getKeys();
+
         Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
+
         List<String> keysList = new ArrayList<>();
+
         while (iterableKeys.hasNext()) {
             keysList.add(iterableKeys.next());
         }
-        return keysList.stream()
-                .map(key -> {
-                    String json = (String) businessPlatformRedissonClient.getBucket(key).get();
-                    return JSONUtil.toBean(json, AdminLoginDTO.class);
-                })
-                .filter(user -> StringUtils.isBlank(group) || group.equals(user.getGroup())) // 如果 group 为空，跳过过滤
-                .collect(Collectors.toList());
+
+        if (keysList.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // =========================
+        // 使用 Redisson Pipeline 批量获取
+        // =========================
+        RBatch batch = businessPlatformRedissonClient.createBatch();
+
+        Map<String, RFuture<Object>> futureMap = new HashMap<>(keysList.size());
+
+        for (String key : keysList) {
+            RBucketAsync<Object> bucket = batch.getBucket(key);
+            futureMap.put(key, bucket.getAsync());
+        }
+
+        // 一次性发送
+        batch.execute();
+
+        // 解析结果
+        List<AdminLoginDTO> result = new ArrayList<>(keysList.size());
+
+        for (RFuture<Object> future : futureMap.values()) {
+
+            Object obj = future.getNow();
+
+            if (obj == null) {
+                continue;
+            }
+
+            try {
+                AdminLoginDTO user = JSONUtil.toBean(obj.toString(), AdminLoginDTO.class);
+
+                // group 过滤
+                if (StringUtils.isBlank(group) || group.equals(user.getGroup())) {
+                    result.add(user);
+                }
+
+            } catch (Exception e) {
+                log.warn("解析用户数据失败: {}", obj, e);
+            }
+        }
+
+        return result;
     }
 
     public AdminLoginDTO adminLogin(AdminLoginVO login) {
@@ -137,21 +176,28 @@ public class AdminService {
     }
 
     public List<String> getGroup() {
-        // 匹配所有平台用户的 Redis Key
+
         String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_ADMIN_GROUP_PREFIX, "*");
-        // 使用 Redisson 执行扫描所有平台用户操作
+
         RKeys keys = businessPlatformRedissonClient.getKeys();
+
         Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
-        List<String> groupList = new ArrayList<>();
-        // 遍历所有匹配的键
+
+        Set<String> groupSet = new HashSet<>();
+
         while (iterableKeys.hasNext()) {
-            String[] parts = iterableKeys.next().split(":");
-            // 检查数组长度，确保索引存在
-            if (parts.length > 2) {
-                groupList.add(parts[2]);
+
+            String key = iterableKeys.next();
+
+            int first = key.indexOf(':');
+            int second = key.indexOf(':', first + 1);
+
+            if (second != -1 && second + 1 < key.length()) {
+                groupSet.add(key.substring(second + 1));
             }
         }
-        return groupList;
+
+        return new ArrayList<>(groupSet);
     }
 
     public void addGroup(String group) {

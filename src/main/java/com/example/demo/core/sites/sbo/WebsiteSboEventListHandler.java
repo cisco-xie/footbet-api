@@ -60,7 +60,7 @@ public class WebsiteSboEventListHandler implements ApiHandler {
         headers.put("accept", "*/*");
         headers.put("accept-language", "zh-CN,zh;q=0.9");
         headers.put("content-type", "application/json");
-        headers.put("authorization", token);
+        // headers.put("authorization", token);
         headers.put("x-auth-token", token);
         headers.put("sec-ch-ua-mobile", "?0");
         headers.put("sec-ch-ua-platform", "\"Windows\"");
