@@ -105,7 +105,7 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
 
         // 1. 检查 HTTP 响应状态码
         if (status != 200) {
-            log.warn("[平博][投注预览][失败][状态码={}][body={}][params={}]", status, response.getBody(), params);
+            log.warn("平博-投注预览-失败-状态码={}-------body={}-------params={}", status, response.getBody(), params);
 
             result.putOpt("code", status);
             result.putOpt("success", false);
@@ -121,14 +121,14 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
                 responseArray = new JSONArray(responseBody);
             } else {
                 JSONObject obj = new JSONObject(responseBody);
-                log.error("[平博][投注预览][响应为对象非数组][params={}][body={}]", params, obj);
+                log.error("平博-投注预览-响应为对象非数组-params={}-------body={}", params, obj);
                 result.putOpt("code", 500);
                 result.putOpt("success", false);
                 result.putOpt("msg", "投注预览返回格式错误（应为数组）");
                 return result;
             }
         } catch (Exception e) {
-            log.error("[平博][投注][响应解析异常][params={}][body={}][异常={}]", params, responseBody, e.getMessage(), e);
+            log.error("平博-投注-响应解析异常-------params={}-------body={}-------异常={}", params, responseBody, e.getMessage(), e);
             result.putOpt("code", 500);
             result.putOpt("success", false);
             result.putOpt("msg", "投注预览解析失败");
@@ -136,11 +136,11 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
         }
 
 
-        log.info("[平博][投注预览响应]{}", responseArray);
+        log.info("平博-投注预览响应 {}", responseArray);
 
         // 3. 空数组直接返回失败
         if (responseArray.isEmpty()) {
-            log.info("[平博][投注预览][投注预览失败，结果为空][params={}]", params);
+            log.info("平博-投注预览-投注预览失败，结果为空 params={}", params);
             result.putOpt("code", status);
             result.putOpt("success", false);
             result.putOpt("msg", "投注预览失败，结果为空");
@@ -155,20 +155,20 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
             String itemStatus = resObj.getStr("status");
 
             if ("ODDS_CHANGE".equals(itemStatus)) {
-                log.info("[平博][投注预览][赔率已变更]{}", resObj);
+                log.info("平博-投注预览-赔率已变更 {}", resObj);
                 // 赔率变更也投注
                 success = true;
             }
             if ("UNAVAILABLE".equals(itemStatus)) {
-                log.info("[平博][投注预览][注单暂时无效]{}", resObj);
+                log.info("平博-投注预览-注单暂时无效 {}", resObj);
                 success = false;
             }
             if ("PROCESSED_WITH_ERROR".equals(itemStatus)) {
                 if ("BELOW_MIN_BET_AMOUNT".equals(resObj.getStr("errorCode"))) {
-                    log.info("[平博][投注预览][低于最低限额]{}", resObj);
+                    log.info("平博-投注预览-低于最低限额 {}", resObj);
                     success = false;
                 } else {
-                    log.info("[平博][投注预览][注单内容处理错误]{}", resObj);
+                    log.info("平博-投注预览-注单内容处理错误 {}", resObj);
                     success = false;
                 }
             }
@@ -218,9 +218,9 @@ public class WebsitePingBoBetPreviewHandler implements ApiHandler {
             log.error("请求异常，用户:{}, 账号:{}, 参数:{}, 错误:{}", username, userConfig.getAccount(), requestBody, e.getMessage(), e);
             throw new BusinessException(SystemError.SYS_400);
         }
-        log.warn("[平博][请求详情][url={}][headers={}][body={}]", fullUrl, requestHeaders, requestBody);
-        log.warn("[平博][响应状态={}][响应头={}]", resultHttp.getStatus(), resultHttp.getHeaders());
-        log.warn("[平博][响应体（raw）]{}", resultHttp.getBody());
+        log.warn("平博-请求详情-url={}-headers={}-body={}", fullUrl, requestHeaders, requestBody);
+        log.warn("平博-响应状态={}-响应头={}", resultHttp.getStatus(), resultHttp.getHeaders());
+        log.warn("平博-响应体（raw）{}", resultHttp.getBody());
 
         // 解析响应并返回
         return parseResponse(params, resultHttp);

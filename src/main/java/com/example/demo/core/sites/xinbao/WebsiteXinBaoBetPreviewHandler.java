@@ -100,10 +100,10 @@ public class WebsiteXinBaoBetPreviewHandler implements ApiHandler {
         // 解析响应
         JSONObject result = new JSONObject();
         JSONObject responseJson = new JSONObject(response.getBody());
-        log.info("[新2][投注预览]{}", responseJson);
+        log.info("新2-投注预览==={}", responseJson);
         JSONObject serverresponse = responseJson.getJSONObject("serverresponse");
         if (!"501".equals(serverresponse.getStr("code"))) {
-            log.info("[新2][投注预览失败][params={}][body={}]", params, responseJson);
+            log.info("新2-投注预览失败 params={}-------body={}", params, responseJson);
             result.putOpt("success", false);
             result.putOpt("msg", "投注预览失败:"+serverresponse.getStr("msg"));
             return result;

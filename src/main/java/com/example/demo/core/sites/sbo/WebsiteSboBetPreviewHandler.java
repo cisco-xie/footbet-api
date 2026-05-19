@@ -48,11 +48,33 @@ public class WebsiteSboBetPreviewHandler implements ApiHandler {
         headers.put("accept", "application/json, text/plain, */*");
         headers.put("accept-language", "zh-CN,zh;q=0.9");
         headers.put("content-type", "application/json");
-        headers.put("cookie", params.getStr("cookie"));
+        // 只提取 SportsSession 和 .SBO.SharedCookies.
+        String fullCookie = params.getStr("cookie");
+        String filteredCookie = extractSpecificCookies(fullCookie);
+        headers.put("cookie", filteredCookie);
 
         return headers;
     }
 
+    private String extractSpecificCookies(String fullCookie) {
+        if (fullCookie == null || fullCookie.isEmpty()) {
+            return "";
+        }
+
+        String[] cookies = fullCookie.split("; ");
+        StringBuilder filteredCookies = new StringBuilder();
+
+        for (String cookie : cookies) {
+            if (cookie.startsWith("SportsSession=") || cookie.startsWith(".SBO.SharedCookies.=")) {
+                if (filteredCookies.length() > 0) {
+                    filteredCookies.append("; ");
+                }
+                filteredCookies.append(cookie);
+            }
+        }
+
+        return filteredCookies.toString();
+    }
     /**
      * 构建请求体
      * @param params 请求参数
@@ -89,9 +111,9 @@ public class WebsiteSboBetPreviewHandler implements ApiHandler {
         // 解析响应
         JSONObject result = new JSONObject();
         JSONObject responseJson = new JSONObject(response.getBody());
-        log.info("[盛帆][投注预览]{}", responseJson);
+        log.info("盛帆投注预览结果:{}", responseJson);
         if (responseJson.getInt("errorCode") != 0) {
-            log.info("[盛帆][投注预览失败][params={}][body={}]", params, responseJson);
+            log.info("盛帆投注预览失败 params={}-------body={}", params, responseJson);
             result.putOpt("success", false);
             result.putOpt("msg", "投注预览失败");
             return result;
@@ -125,6 +147,7 @@ public class WebsiteSboBetPreviewHandler implements ApiHandler {
         // 发送请求
         OkHttpProxyDispatcher.HttpResult resultHttp;
         try {
+            log.info("盛帆投注预览发起请求, 用户:{}, 账号:{}, 请求头参数:{}, 请求参数:{}", username, userConfig.getAccount(), requestHeaders, requestBody);
             resultHttp = dispatcher.executeFull("POST", fullUrl, requestBody, requestHeaders, userConfig);
         } catch (Exception e) {
             log.error("请求异常，用户:{}, 账号:{}, 参数:{}, 错误:{}", username, userConfig.getAccount(), requestBody, e.getMessage(), e);

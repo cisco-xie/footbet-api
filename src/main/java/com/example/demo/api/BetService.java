@@ -1946,12 +1946,13 @@ public class BetService {
         JSONObject betPreviewJson = null;
 
         String handicapValue = isA ? sweepwaterBetDTO.getHandicapA() : sweepwaterBetDTO.getHandicapB();
+        log.info("buildBetInfo方法-准备投注预览,用户:{},网站:{},扫水数据:{}", username, WebsiteType.getById(websiteId).getDescription(), sweepwaterBetDTO);
         // 重试机制
         // while (attempt < maxRetry) {
             Object betPreview = handicapApi.betPreview(username, websiteId, params);
             if (betPreview == null) {
                 attempt++;
-                log.info("[网站:{}][投注预览重试] 第 {} 次失败：返回为 null", WebsiteType.getById(websiteId).getDescription(), attempt);
+                log.info("网站:{}-投注预览重试 第 {} 次失败：返回为 null", WebsiteType.getById(websiteId).getDescription(), attempt);
                 try {
                     Thread.sleep(300); // 添加延迟
                 } catch (InterruptedException e) {
@@ -1967,7 +1968,7 @@ public class BetService {
             Boolean success = betPreviewJson.getBool("success", false);
             if (!success) {
                 attempt++;
-                log.info("[网站:{}][投注预览重试] 第 {} 次失败：success=false，返回信息：{}", WebsiteType.getById(websiteId).getDescription(), attempt, betPreviewJson);
+                log.info("网站:{}-投注预览重试 第 {} 次失败：success=false，返回信息：{}", WebsiteType.getById(websiteId).getDescription(), attempt, betPreviewJson);
                 // continue;
                 return null;
             }
@@ -2113,7 +2114,8 @@ public class BetService {
             String teamH = null != sweepwaterBetDTO.getTeamVSHA() ? sweepwaterBetDTO.getTeamVSHA() : sweepwaterBetDTO.getTeamVSHB();
             String teamA = null != sweepwaterBetDTO.getTeamVSAB() ? sweepwaterBetDTO.getTeamVSAB() : sweepwaterBetDTO.getTeamVSAA();
             betInfo.putOpt("league", params.getStr("league"));
-            betInfo.putOpt("team", teamH + " -vs- " + teamA);
+            // betInfo.putOpt("team", teamH + " -vs- " + teamA);
+            betInfo.putOpt("team", betTeamName);
             betInfo.putOpt("marketTypeName", marketTypeName);
             betInfo.putOpt("marketName", marketName);
             betInfo.putOpt("odds", marketName + " " + handicapValue);
@@ -2340,19 +2342,19 @@ public class BetService {
      * 处理单个投注结果
      */
     private boolean parseSingleBetResult(JSONObject betResultJson, SweepwaterBetDTO sweepwaterDTO, boolean isA) {
-        if (!betResultJson.getBool("success", false)) {
-            return false;
-        }
 
         String betId = extractBetId(betResultJson, isA ? sweepwaterDTO.getWebsiteIdA() : sweepwaterDTO.getWebsiteIdB());
         String account = betResultJson.getStr("account");
         String accountId = betResultJson.getStr("accountId");
 
-        if (StringUtils.isNotBlank(betId)) {
-            setBetInfoToDTO(sweepwaterDTO, isA, betId, account, accountId);
-            return true;
+        // 无论投注成功还是失败，都需要保存账户信息
+        setBetInfoToDTO(sweepwaterDTO, isA, betId, account, accountId);
+        
+        if (!betResultJson.getBool("success", false)) {
+            return false;
         }
-        return false;
+
+        return StringUtils.isNotBlank(betId);
     }
 
     /**
@@ -2379,13 +2381,18 @@ public class BetService {
                     betIds.add(singleBetId);
                 }
 
-                // 取第一个成功的账号信息（所有拆分投注应该使用同一个账号）
+                // 取第一个成功的账号信息
                 if (account == null) {
                     account = betResult.getStr("account");
                     accountId = betResult.getStr("accountId");
                 }
             } else {
                 log.warn("拆分投注中有一个失败: {}", betResult);
+                // 如果还没有获取到账户信息，从失败的结果中获取
+                if (account == null) {
+                    account = betResult.getStr("account");
+                    accountId = betResult.getStr("accountId");
+                }
             }
         }
 
@@ -2394,6 +2401,9 @@ public class BetService {
             String combinedBetId = String.join(",", betIds);
             setBetInfoToDTO(sweepwaterDTO, isA, combinedBetId, account, accountId);
             return true;
+        } else if (!hasSuccess && account != null) {
+            // 所有投注都失败，但有账户信息，也要保存账户信息
+            setBetInfoToDTO(sweepwaterDTO, isA, null, account, accountId);
         }
         return false;
     }

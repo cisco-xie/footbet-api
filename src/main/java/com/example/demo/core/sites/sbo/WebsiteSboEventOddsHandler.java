@@ -351,6 +351,8 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                     JSONObject node = new JSONObject();
                     node.putOpt("id", o.getLong("id"));
                     node.putOpt("odds", price.getBigDecimal("price"));
+                    node.putOpt("isHome", homeSide);
+                    node.putOpt("teamName", homeSide ? home : away);
                     if (homeSide) {
                         if (liveHandicapType != null && liveHandicapType.equals("Home")) {
                             // 上盘负号开头
@@ -401,11 +403,13 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                 // 大小盘
                 for (int j = 0; j < o.getJSONArray("prices").size(); j++) {
                     JSONObject price = o.getJSONArray("prices").getJSONObject(j);
+                    boolean homeSide = "h".equals(price.getStr("option"));
                     JSONObject node = new JSONObject();
                     node.putOpt("id", o.getLong("id"));
                     node.putOpt("handicap", getHandicapRange(point));
                     node.putOpt("odds", price.getBigDecimal("price"));
-                    boolean homeSide = "h".equals(price.getStr("option"));
+                    node.putOpt("isHome", homeSide);
+                    node.putOpt("teamName", homeSide ? home : away);
 
                     if (homeSide) {
                         if (isFirstHalf) {

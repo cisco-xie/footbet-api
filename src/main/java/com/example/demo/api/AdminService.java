@@ -53,7 +53,8 @@ public class AdminService {
 
         RKeys keys = businessPlatformRedissonClient.getKeys();
 
-        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
+        // 使用 SCAN 命令代替 KEYS 命令，避免阻塞
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern, 100).iterator();
 
         List<String> keysList = new ArrayList<>();
 
@@ -161,7 +162,8 @@ public class AdminService {
         String pattern = KeyUtil.genKey(RedisConstants.PLATFORM_USER_PREFIX, "*");
         // 使用 Redisson 执行扫描所有平台用户操作
         RKeys keys = businessPlatformRedissonClient.getKeys();
-        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
+        // 使用 SCAN 命令代替 KEYS 命令，避免阻塞
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern, 100).iterator();
         List<String> keysList = new ArrayList<>();
         while (iterableKeys.hasNext()) {
             keysList.add(iterableKeys.next());
@@ -181,7 +183,8 @@ public class AdminService {
 
         RKeys keys = businessPlatformRedissonClient.getKeys();
 
-        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern).iterator();
+        // 使用 SCAN 命令代替 KEYS 命令，避免阻塞
+        Iterator<String> iterableKeys = keys.getKeysByPattern(pattern, 100).iterator();
 
         Set<String> groupSet = new HashSet<>();
 

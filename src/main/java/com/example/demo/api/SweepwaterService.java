@@ -1395,6 +1395,8 @@ public class SweepwaterService {
                                     continue;
                                 }
 
+                                Boolean isHomeB = valueBJson.containsKey("isHome") ? valueBJson.getBool("isHome") : null;
+                                String teamNameB = valueBJson.containsKey("teamName") ? valueBJson.getStr("teamName") : null;
                                 // 特殊情况，如果网站是平博，那么对应的oddsId需要把最后一个|的值删掉后再做对比
                                 String oddsIdA = valueAJson.getStr("id");
                                 String oddsIdB = valueBJson.getStr("id");
@@ -1441,7 +1443,7 @@ public class SweepwaterService {
                                     String handicapB = valueBJson.containsKey("handicap") ? valueBJson.getStr("handicap") : "";
                                     SweepwaterDTO sweepwaterDTO = createSweepwaterDTO(username, valueAJson.getStr("id"), valueBJson.getStr("id"), getOddsTime, valueAJson.getStr("selectionId"), valueBJson.getStr("selectionId"), courtType, key, eventAJson, eventBJson, teamA, teamB, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, nameA, nameB, handicapA, handicapB, valueA, valueB, finalValue, decimalOddsA, decimalOddsB, scoreA, scoreB,
                                             valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio"),
-                                            betInfoA, betInfoB
+                                            betInfoA, betInfoB, isHomeB, teamNameB
                                     );
                                     results.add(sweepwaterDTO);
                                     // 更新 lastTime
@@ -1460,7 +1462,7 @@ public class SweepwaterService {
                                                 try {
                                                     tryBet(username, sweepwaterDTO);
                                                 } catch (Exception e) {
-                                                    log.error("立即投注异常: {}", sweepwaterDTO.getId(), e);
+                                                    log.error("立即投注异常,扫水id={}", sweepwaterDTO.getId(), e);
                                                 }
                                             }, threadPoolHolder.getBetExecutor());
                                         }
@@ -1471,7 +1473,7 @@ public class SweepwaterService {
                                                 try {
                                                     tryBet(username, sweepwaterDTO);
                                                 } catch (Exception e) {
-                                                    log.error("立即投注异常: {}", sweepwaterDTO.getId(), e);
+                                                    log.error("立即投注异常,扫水id={}", sweepwaterDTO.getId(), e);
                                                 }
                                             }, threadPoolHolder.getBetExecutor());
                                         }
@@ -1821,7 +1823,7 @@ public class SweepwaterService {
                                                      String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, String nameA, String nameB, String handicapA, String handicapB,
                                                      BigDecimal valueA, BigDecimal valueB, double value, String decimalOddsA, String decimalOddsB, String scoreA, String scoreB,
                                                      String strongA, String strongB, String gTypeA, String gTypeB, String wTypeA, String wTypeB, String rTypeA, String rTypeB, String choseTeamA, String choseTeamB, String conA, String conB, String ratioA, String ratioB,
-                                                     JSONObject betInfoA, JSONObject betInfoB
+                                                     JSONObject betInfoA, JSONObject betInfoB, Boolean isHomeB, String teamNameB
     ) {
         String reTime = WebsiteType.XINBAO.getId().equals(websiteIdA) ? teamA.getStr("reTime") : teamB.getStr("reTime");
         SweepwaterDTO sweepwaterDTO = new SweepwaterDTO();
@@ -1862,6 +1864,8 @@ public class SweepwaterService {
         sweepwaterDTO.setBetInfoA(betInfoA);
         sweepwaterDTO.setBetInfoB(betInfoB);
         sweepwaterDTO.setIsBet(0);
+        sweepwaterDTO.setIsHomeA(null);
+        sweepwaterDTO.setIsHomeB(isHomeB);
 
         sweepwaterDTO.setStrongA(strongA);
         sweepwaterDTO.setStrongB(strongB);
@@ -1880,8 +1884,8 @@ public class SweepwaterService {
 
         sweepwaterDTO.setTeamVSHA(betInfoA != null ? betInfoA.getStr("teamVSH") : null);
         sweepwaterDTO.setTeamVSAA(betInfoA != null ? betInfoA.getStr("teamVSA") : null);
-        sweepwaterDTO.setTeamVSHB(betInfoB != null ? betInfoB.getStr("teamVSH") : null);
-        sweepwaterDTO.setTeamVSAB(betInfoB != null ? betInfoB.getStr("teamVSA") : null);
+        sweepwaterDTO.setTeamVSHB(isHomeB ? teamNameB : null);
+        sweepwaterDTO.setTeamVSAB(isHomeB ? null : teamNameB);
 
         sweepwaterDTO.setCreateTime(getOddsTime);
 
@@ -1987,7 +1991,7 @@ public class SweepwaterService {
                 try {
                     tryBet(username, sweepwaterDTO);
                 } catch (Exception e) {
-                    log.error("立即投注异常: {}", sweepwaterDTO.getId(), e);
+                    log.error("立即投注异常,扫水id={}", sweepwaterDTO.getId(), e);
                     // 可选：在异常时移除，允许重试
                     // processedIds.remove(sweepwaterDTO.getId());
                 }
@@ -1997,6 +2001,7 @@ public class SweepwaterService {
             log.error("提交投注任务异常: {}", sweepwaterDTO.getId(), e);
         }
     }
+
     /**
      * 尝试投注
      * @param username      平台用户名

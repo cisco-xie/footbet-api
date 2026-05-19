@@ -14,7 +14,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -671,6 +674,9 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         try {
             response = dispatcher.execute("GET", step8Url, null, buildHeaders(params), userConfig, false);
 
+            // 保存cookie
+            updateCookieStore(response, cookieStore);
+
             JSONObject result = parseResponse(params, response);
             result.set("success", true);        // 请求成功
             result.set("response", response);
@@ -741,8 +747,23 @@ public class WebsiteSboLoginHandler implements ApiHandler {
         List<String> cookies = response.getHeaders().get("Set-Cookie");
         if (cookies != null) {
             for (String cookie : cookies) {
-                String cookieName = cookie.split("=")[0];
-                String cookieValue = cookie.split(";")[0];
+                String cookiePair = cookie.split(";")[0];
+                String cookieName = cookiePair.split("=")[0];
+                String cookieValue = cookiePair.contains("=")
+                        ? cookiePair.substring(cookiePair.indexOf("=") + 1)
+                        : "";
+                
+                // ✅ 关键修复：对 cookie 值进行 URL 解码
+                try {
+                    cookieValue = URLDecoder.decode(cookieValue, StandardCharsets.UTF_8.name());
+                } catch (UnsupportedEncodingException e) {
+                    // 解码失败则保持原值
+                }
+                
+                // 已存在旧cookie，但新cookie为空，则不覆盖
+                if (cookieStore.indexOf(cookieName + "=") != -1 && cookieValue.isEmpty()) {
+                    continue;
+                }
 
                 // 如果cookieStore中已存在该cookie，则替换
                 if (cookieStore.indexOf(cookieName + "=") != -1) {
@@ -762,15 +783,18 @@ public class WebsiteSboLoginHandler implements ApiHandler {
                     if (newCookieStore.length() > 0) {
                         newCookieStore.append("; ");
                     }
-                    newCookieStore.append(cookieValue);
+
+                    newCookieStore.append(cookieName).append("=").append(cookieValue);
+
                     cookieStore.setLength(0);
                     cookieStore.append(newCookieStore.toString());
+
                 } else {
-                    // 添加新cookie
                     if (cookieStore.length() > 0) {
                         cookieStore.append("; ");
                     }
-                    cookieStore.append(cookieValue);
+
+                    cookieStore.append(cookieName).append("=").append(cookieValue);
                 }
             }
         }
