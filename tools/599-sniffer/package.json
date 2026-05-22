@@ -1,0 +1,17 @@
+{
+  "name": "599-sniffer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node ./list_server.mjs",
+    "sniff": "node ./sniff.mjs",
+    "decode:webasl": "node ./decode_webasl.mjs",
+    "decode:webasl:pw": "node ./decode_webasl_pw.mjs",
+    "stream:events": "node ./stream_events.mjs",
+    "list:serve": "node ./list_server.mjs"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "playwright": "^1.52.0"
+  }
+}

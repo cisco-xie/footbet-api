@@ -1,0 +1,17 @@
+# 1. 删除旧的服务
+cd /home/usr/local/projects/football/backend/599-sniffer
+pm2 delete 599-sniffer
+
+# 2. 更新代码（把修改后的 package.json 上传到服务器）
+# 可以使用 scp 上传或者重新 clone
+
+# 3. 重新启动
+pm2 start npm --name "599-sniffer" -- start
+
+# 4. 保存并设置开机自启
+pm2 save
+pm2 startup
+
+# 5. 查看状态
+pm2 status
+pm2 logs 599-sniffer
