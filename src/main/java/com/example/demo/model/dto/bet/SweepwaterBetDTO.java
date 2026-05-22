@@ -20,6 +20,8 @@ public class SweepwaterBetDTO {
     private String leagueIdB;       // 联赛id
     private String eventIdA;        // 比赛id
     private String eventIdB;        // 比赛id
+    private String biFenUrlA;       // 599网站比分详情页url
+    private String biFenUrlB;       // 599网站比分详情页url
     private String leagueNameA;
     private String leagueNameB;
     private String type;
