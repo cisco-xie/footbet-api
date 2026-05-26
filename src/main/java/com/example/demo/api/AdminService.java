@@ -288,4 +288,18 @@ public class AdminService {
         businessPlatformRedissonClient.getBucket(KeyUtil.genKey(RedisConstants.PLATFORM_USER_PREFIX, username)).delete();
     }
 
+    public void changePassword(String username, String oldPassword, String newPassword) {
+        String key = KeyUtil.genKey(RedisConstants.PLATFORM_USER_PREFIX, username);
+        boolean exists = businessPlatformRedissonClient.getBucket(key).isExists();
+        if (!exists) {
+            throw new BusinessException(SystemError.USER_1004);
+        }
+        AdminLoginDTO adminLogin = JSONUtil.toBean(JSONUtil.parseObj(businessPlatformRedissonClient.getBucket(key).get()), AdminLoginDTO.class);
+        if (!StringUtils.equals(oldPassword, adminLogin.getPassword())) {
+            throw new BusinessException(SystemError.USER_1019);
+        }
+        adminLogin.setPassword(newPassword);
+        businessPlatformRedissonClient.getBucket(key).set(JSONUtil.toJsonStr(adminLogin));
+    }
+
 }

@@ -22,6 +22,7 @@ import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.AdminLoginVO;
 import com.example.demo.model.vo.AdminUserBetVO;
+import com.example.demo.model.vo.ChangePasswordVO;
 import com.example.demo.model.vo.AdminUserVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -101,6 +102,15 @@ public class AdminController extends BaseController {
     @ResponseBody
     public Result adminUserDel(@PathVariable("username") String username) {
         adminService.delUser(username);
+        return Result.success();
+    }
+
+    @Operation(summary = "修改密码")
+    @PostMapping("/admin/password")
+    @ResponseBody
+    public Result changePassword(@RequestBody ChangePasswordVO changePasswordVO) {
+        AdminLoginDTO admin = getUser();
+        adminService.changePassword(admin.getUsername(), changePasswordVO.getOldPassword(), changePasswordVO.getNewPassword());
         return Result.success();
     }
 
