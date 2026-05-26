@@ -65,8 +65,6 @@ public class SoccerApiNewTool {
     private volatile long matchesCacheTsMs = 0;
     private volatile JsonNode matchesCacheData = null;
 
-
-
     // 获取今日赛事列表（根据联赛分组并且过滤掉已完场的赛事）
     public Map<String, List<MatchSummary>> fetchTodayMatchesByLeague() {
         List<MatchSummary> matches = fetchMatchList();

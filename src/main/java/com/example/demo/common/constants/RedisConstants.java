@@ -117,4 +117,8 @@ public class RedisConstants {
      * 已结算非正常投注记录弹窗 前缀
      */
     public static final String PLATFORM_SETTLED_NORMAL_PREFIX = "platform:settled:normal";
+    /**
+     * 599网站赛事列表 前缀
+     */
+    public static final String PLATFORM_599_MATCHES_PREFIX = "platform:599";
 }

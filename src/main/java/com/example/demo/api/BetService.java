@@ -78,6 +78,9 @@ public class BetService {
     @Resource
     private RealtimeIndexService realtimeIndexService;
 
+    @Resource
+    private com.example.demo.common.utils.MatchMatchUtil matchMatchUtil;
+
     // 全局存储处理过的 ID
     private static final Set<String> processedIds = ConcurrentHashMap.newKeySet();
 
@@ -1390,69 +1393,68 @@ public class BetService {
     /**
      * 异步调用599-sniffer获取比分详情URL
      * @param teamA 球队名称（格式：主队 -vs- 客队）
-     * @param dto 投注DTO
      * @param username 用户名
      */
-    private void fetchBiFenUrlAsync(
+    private String fetchBiFenUrlAsync(
         String teamA,
-        String betKey,
-        String realTimeKey,
         String username) {
 
-        CompletableFuture.supplyAsync(() -> {
+            String detailUrl = null;
+
+            // 优先从Redis赛事列表中匹配
             try {
-                String encodedTeams = URLEncoder.encode(teamA, StandardCharsets.UTF_8);
-                String url = SNIFFER_SEARCH_URL + encodedTeams;
-
-                Request request = new Request.Builder().url(url).get().build();
-
-                try (Response response = snifferClient.newCall(request).execute()) {
-
-                    if (!response.isSuccessful() || response.body() == null) {
-                        return null;
+                JSONObject matchedMatch = matchMatchUtil.findBestMatch(teamA);
+                if (matchedMatch != null) {
+                    detailUrl = matchedMatch.getStr("detailUrl");
+                    if (StringUtils.isNotBlank(detailUrl)) {
+                        log.info("用户 {} 投注成功，从Redis匹配赛事获取比分详情URL，球队：{}，URL：{}", username, teamA, detailUrl);
+                        return detailUrl;
                     }
-
-                    JSONObject result = JSONUtil.parseObj(response.body().string());
-                    JSONObject data = result.getJSONObject("data");
-
-                    if (data == null || !data.containsKey("detailUrl")) {
-                        return null;
-                    }
-
-                    return data.getStr("detailUrl");
                 }
-
+                log.info("用户 {} 投注成功，Redis未匹配到赛事，回退到API调用，球队：{}", username, teamA);
             } catch (Exception e) {
-                log.error("[sniffer] 异常 username={}", username, e);
-                return null;
+                log.warn("从Redis匹配赛事失败，回退到API调用: teamA={}, error={}", teamA, e.getMessage());
             }
-        }, threadPoolHolder.getBetExecutor()).thenAccept(detailUrl -> {
 
-            if (StringUtils.isBlank(detailUrl)) return;
+            // Redis匹配失败，回退到API调用
+            int maxRetries = 3;
+            int attempt = 0;
+            while (attempt < maxRetries && StringUtils.isBlank(detailUrl)) {
+                try {
+                    attempt++;
+                    String encodedTeams = URLEncoder.encode(teamA, StandardCharsets.UTF_8);
+                    String url = SNIFFER_SEARCH_URL + encodedTeams;
 
-            try {
-                log.info("用户 {} 投注成功，角球获取比分详情URL，球队：{}，URL：{}", username, teamA, detailUrl);
-                // ✔ 只做 Redis 更新（不碰 dto）
-                RBucket<String> bucket = businessPlatformRedissonClient.getBucket(betKey);
-                String json = bucket.get();
+                    Request request = new Request.Builder().url(url).get().build();
 
-                if (json == null) return;
+                    try (Response response = snifferClient.newCall(request).execute()) {
 
-                JSONObject obj = JSONUtil.parseObj(json);
-                obj.set("biFenUrlA", detailUrl);
+                        if (!response.isSuccessful() || response.body() == null) {
+                            log.warn("获取比分详情URL 请求失败，状态码={}，尝试次数={}，username={}",
+                                    response.code(), attempt, username);
+                            continue;
+                        }
 
-                String newJson = JSONUtil.toJsonStr(obj);
-                // 更新历史
-                businessPlatformRedissonClient.getBucket(betKey)
-                        .set(newJson);
+                        JSONObject result = JSONUtil.parseObj(response.body().string());
+                        JSONObject data = result.getJSONObject("data");
 
-                // 更新实时
-                businessPlatformRedissonClient.getBucket(realTimeKey)
-                        .set(newJson);
-            } catch (Exception e) {
-                log.error("[sniffer] Redis更新失败", e);
+                        if (data == null || !data.containsKey("detailUrl")) {
+                            log.warn("获取比分详情URL 未获取到detailUrl，尝试次数={}，username={}", attempt, username);
+                            continue;
+                        }
+
+                        detailUrl = data.getStr("detailUrl");
+                        break; // 成功获取，退出循环
+                    }
+
+                } catch (Exception e) {
+                    log.error("获取比分详情URL 异常 username={}, 尝试次数={}", username, attempt, e);
+                    if (attempt >= maxRetries) {
+                        return null;
+                    }
+                }
             }
-        });
+        return detailUrl;
     }
 
     /**
@@ -1902,8 +1904,13 @@ public class BetService {
                 dto.setBetSuccessA(result.getBool("isBet", false));
                 dto.setWebsiteNameA(WebsiteType.getById(websiteId).getDescription());
                 dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
-                String json = JSONUtil.toJsonStr(dto);
                 String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
+
+                // 投注成功后异步调用599-sniffer获取比分详情URL
+                String team = dto.getBetInfoA().getStr("team");
+                String detailUrl = fetchBiFenUrlAsync(team, username);
+                dto.setBiFenUrlA(detailUrl);
+                String json = JSONUtil.toJsonStr(dto);
 
                 String key = KeyUtil.genKey(
                         RedisConstants.PLATFORM_BET_CORNER_PREFIX,
@@ -1923,12 +1930,6 @@ public class BetService {
                 );
                 realtimeIndexService.pushRealtimeIndex(username, realTimeKey, json, "corner");
 
-                // 投注成功后异步调用599-sniffer获取比分详情URL
-                String team = dto.getBetInfoA().getStr("team");
-                if (StringUtils.isNotBlank(team)) {
-                    log.info("用户 {} 投注成功，角球获取比分详情URL，球队：{}", username, team);
-                    fetchBiFenUrlAsync(team, key, realTimeKey, username);
-                }
             } catch (Exception e) {
                 log.error("角球投注记录写入失败 username={}, eventId={}", username, eventId, e);
             }
