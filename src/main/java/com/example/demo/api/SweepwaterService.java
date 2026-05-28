@@ -1395,6 +1395,7 @@ public class SweepwaterService {
                                     continue;
                                 }
 
+                                log.info("扫水完成准备进入赔率比对步骤valueBJson:{}", valueBJson);
                                 Boolean isHomeB = valueBJson.containsKey("isHome") ? valueBJson.getBool("isHome") : null;
                                 String teamNameB = valueBJson.containsKey("teamName") ? valueBJson.getStr("teamName") : null;
                                 // 特殊情况，如果网站是平博，那么对应的oddsId需要把最后一个|的值删掉后再做对比
@@ -1884,8 +1885,17 @@ public class SweepwaterService {
 
         sweepwaterDTO.setTeamVSHA(betInfoA != null ? betInfoA.getStr("teamVSH") : null);
         sweepwaterDTO.setTeamVSAA(betInfoA != null ? betInfoA.getStr("teamVSA") : null);
-        sweepwaterDTO.setTeamVSHB(isHomeB ? teamNameB : null);
-        sweepwaterDTO.setTeamVSAB(isHomeB ? null : teamNameB);
+        if (Boolean.TRUE.equals(isHomeB)) {
+            sweepwaterDTO.setTeamVSHB(teamNameB);
+            sweepwaterDTO.setTeamVSAB(null);
+        } else if (Boolean.FALSE.equals(isHomeB)) {
+            sweepwaterDTO.setTeamVSHB(null);
+            sweepwaterDTO.setTeamVSAB(teamNameB);
+        } else {
+            // isHomeB 为 null 时的处理
+            sweepwaterDTO.setTeamVSHB(null);
+            sweepwaterDTO.setTeamVSAB(null);
+        }
 
         sweepwaterDTO.setCreateTime(getOddsTime);
 
