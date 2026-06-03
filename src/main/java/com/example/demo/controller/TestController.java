@@ -16,20 +16,30 @@
 
 package com.example.demo.controller;
 
+import cn.hutool.core.date.DatePattern;
+import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.example.demo.api.BetService;
 import com.example.demo.api.ConfigAccountService;
 import com.example.demo.api.HandicapApi;
+import com.example.demo.api.RealtimeIndexService;
 import com.example.demo.api.SweepwaterService;
+import com.example.demo.common.constants.RedisConstants;
+import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.config.SuccessBasedLimitManager;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
+import com.example.demo.model.dto.bet.SweepwaterBetDTO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+
+import java.time.LocalDateTime;
+
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
@@ -52,6 +62,8 @@ public class TestController extends BaseController {
     private SimpMessagingTemplate messagingTemplate;
     @Resource
     private SuccessBasedLimitManager limitManager;
+    @Resource
+    private RealtimeIndexService realtimeIndexService;
 
     @Operation(summary = "登录所有盘口账号")
     @GetMapping("/login")
@@ -120,14 +132,41 @@ public class TestController extends BaseController {
         return Result.success();
     }
 
-    @Operation(summary = "给websocket发一条通知,模拟出现了新注单")
+    @Operation(summary = "模拟角球投注成功")
     @GetMapping("/ws/debug/push")
     public Result pushTest(@RequestParam String user) {
-        JSONObject msg = new JSONObject();
-        msg.set("debug", true);
-        msg.set("msg", "hello");
-        msg.set("betSuccessA", true);
-        messagingTemplate.convertAndSend("/topic/realtime/" + user, msg.toString());
+        SweepwaterBetDTO dto = new SweepwaterBetDTO();
+        dto.setId(IdUtil.fastSimpleUUID());
+        dto.setBetSuccessA(true);
+        dto.setWebsiteNameA("模拟盘口");
+        dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+        dto.setLeagueNameA("模拟联赛");
+        dto.setTeamA("主队");
+        dto.setTeamB("客队");
+        dto.setProject("corner");
+        dto.setOddsA(new java.math.BigDecimal("1.5"));
+        dto.setType("corner");
+
+        JSONObject betInfoA = new JSONObject();
+        betInfoA.set("team", "主队");
+        betInfoA.set("league", "模拟联赛");
+        betInfoA.set("odds", "1.5");
+        betInfoA.set("handicap", "0");
+        betInfoA.set("oddsId", "test_odds_id");
+        betInfoA.set("selectionId", "test_selection_id");
+        dto.setBetInfoA(betInfoA);
+
+        String json = JSONUtil.toJsonStr(dto);
+
+        String realTimeKey = KeyUtil.genKey(
+                RedisConstants.PLATFORM_BET_CORNER_PREFIX,
+                user,
+                "realtime",
+                dto.getId()
+        );
+
+        realtimeIndexService.pushRealtimeIndex(user, realTimeKey, json, "corner");
+        log.info("模拟角球投注成功已推送 user={}, key={}", user, realTimeKey);
         return Result.success();
     }
 

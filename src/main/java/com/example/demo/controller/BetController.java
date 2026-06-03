@@ -121,6 +121,20 @@ public class BetController extends BaseController {
         return Result.success();
     }
 
+    @Operation(summary = "投注预览")
+    @PostMapping("/bets/preview")
+    public Result betPreview(@RequestBody BetRetryVO retryVO) {
+        AdminLoginDTO admin = getUser();
+        if (retryVO == null || retryVO.getBetId() == null || retryVO.getBetId().isBlank()) {
+            return Result.failed(-1, "betId不能为空");
+        }
+        try {
+            return Result.success(betService.betPreview(admin.getUsername(), retryVO.getBetId()));
+        } catch (Exception e) {
+            return Result.failed(-1, e.getMessage());
+        }
+    }
+
     @Operation(summary = "手动补单")
     @PostMapping("/bets/retry")
     public Result<cn.hutool.json.JSONObject> betRetry(@RequestBody BetRetryVO retryVO) {

@@ -106,7 +106,7 @@ public class SoccerApiNewTool {
         return new MatchDetail(summary, events, stats);
     }
 
-    // 获取赛事列表
+    // 获取赛事列表（今天和明天）
     private List<MatchSummary> fetchMatchList() {
         long now = System.currentTimeMillis();
         // 缓存10分钟
@@ -115,7 +115,32 @@ public class SoccerApiNewTool {
         }
         
         try {
-            String date = getTodayDate();
+            // 获取今天和明天的日期
+            String todayDate = getTodayDate();
+            String tomorrowDate = getTomorrowDate();
+            
+            // 获取今天的赛事
+            JsonNode todayJson = fetchMatchListByDate(todayDate);
+            // 获取明天的赛事
+            JsonNode tomorrowJson = fetchMatchListByDate(tomorrowDate);
+            
+            // 合并两天的赛事数据
+            JsonNode mergedJson = mergeMatchData(todayJson, tomorrowJson);
+            
+            if (mergedJson != null) {
+                matchesCacheTsMs = now;
+                matchesCacheData = mergedJson;
+                return parseMatchesFromCache(mergedJson);
+            }
+        } catch (Exception ignored) {
+        }
+        
+        return List.of();
+    }
+    
+    // 根据日期获取赛事列表
+    private JsonNode fetchMatchListByDate(String date) {
+        try {
             String url = apiBaseUrl + "/match/schedule/diary?user=" + apiUser + "&secret=" + apiSecret + "&date=" + date;
             Request request = new Request.Builder().url(url).get().build();
             
@@ -127,15 +152,83 @@ public class SoccerApiNewTool {
                 JsonNode json = objectMapper.readTree(text);
                 
                 if (json.has("code") && json.get("code").asInt() == 0) {
-                    matchesCacheTsMs = now;
-                    matchesCacheData = json;
-                    return parseMatchesFromCache(json);
+                    return json;
                 }
             }
         } catch (Exception ignored) {
         }
+        return null;
+    }
+    
+    // 合并两天的赛事数据
+    private JsonNode mergeMatchData(JsonNode todayJson, JsonNode tomorrowJson) {
+        if (todayJson == null && tomorrowJson == null) return null;
         
-        return List.of();
+        try {
+            // 使用今天的数据作为基础（转换为ObjectNode以便修改）
+            com.fasterxml.jackson.databind.node.ObjectNode result = null;
+            if (todayJson != null) {
+                result = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(todayJson.toString());
+            }
+            
+            if (tomorrowJson != null) {
+                if (result == null) {
+                    result = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(tomorrowJson.toString());
+                } else {
+                    // 合并 match 数组
+                    JsonNode todayMatches = result.has("results") ? result.get("results").get("match") : null;
+                    JsonNode tomorrowMatches = tomorrowJson.has("results") ? tomorrowJson.get("results").get("match") : null;
+                    
+                    if (tomorrowMatches != null && tomorrowMatches.isArray()) {
+                        if (todayMatches == null || !todayMatches.isArray()) {
+                            // 如果今天没有比赛，直接使用明天的
+                            com.fasterxml.jackson.databind.node.ObjectNode resultsNode = (com.fasterxml.jackson.databind.node.ObjectNode) result.get("results");
+                            if (resultsNode != null) {
+                                resultsNode.set("match", tomorrowMatches);
+                            }
+                        } else {
+                            // 合并两个数组，去重
+                            List<JsonNode> mergedMatches = new ArrayList<>();
+                            java.util.Set<String> matchIds = new java.util.HashSet<>();
+                            
+                            // 添加今天的比赛
+                            for (JsonNode match : todayMatches) {
+                                String id = textTrim(match.path("id"));
+                                if (!id.isEmpty()) {
+                                    matchIds.add(id);
+                                }
+                                mergedMatches.add(match);
+                            }
+                            
+                            // 添加明天的比赛（去重）
+                            for (JsonNode match : tomorrowMatches) {
+                                String id = textTrim(match.path("id"));
+                                if (!matchIds.contains(id)) {
+                                    mergedMatches.add(match);
+                                }
+                            }
+                            
+                            // 创建新的数组节点
+                            JsonNode mergedArray = objectMapper.valueToTree(mergedMatches);
+                            com.fasterxml.jackson.databind.node.ObjectNode resultsNode = (com.fasterxml.jackson.databind.node.ObjectNode) result.get("results");
+                            if (resultsNode != null) {
+                                resultsNode.set("match", mergedArray);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return result;
+        } catch (Exception e) {
+            // 合并失败，返回今天的数据或明天的数据
+            return todayJson != null ? todayJson : tomorrowJson;
+        }
+    }
+    
+    // 获取明天日期（YYYYMMDD格式）
+    private String getTomorrowDate() {
+        return LocalDate.now().plusDays(1).format(DateTimeFormatter.ofPattern("yyyyMMdd"));
     }
 
     // 解析赛事列表

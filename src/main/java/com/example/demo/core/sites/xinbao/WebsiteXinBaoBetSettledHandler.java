@@ -97,7 +97,7 @@ public class WebsiteXinBaoBetSettledHandler implements ApiHandler {
         // 解析响应
         JSONArray result = new JSONArray();
         JSONObject responseJson = new JSONObject(response.getBody());
-        log.info("原始已结单列表数据:{}", responseJson);
+        // log.info("原始已结单列表数据:{}", responseJson);
         JSONObject serverResponse = responseJson.getJSONObject("serverresponse");
         // 先安全获取原始值（可能为 JSONArray / JSONObject / String / null）
         Object wagersObj = serverResponse == null ? null : serverResponse.get("wagers");
@@ -126,7 +126,7 @@ public class WebsiteXinBaoBetSettledHandler implements ApiHandler {
             // null 或未知类型 -> 视为空数组
             wagers = new JSONArray();
         }
-        log.info("原始已结单列表wagers数据:{}", wagers);
+        //log.info("原始已结单列表wagers数据:{}", wagers);
         if (wagers.isEmpty()) {
             responseJson.putOpt("success", true);
             responseJson.putOpt("data", null);

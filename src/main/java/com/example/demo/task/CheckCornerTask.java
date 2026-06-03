@@ -151,12 +151,11 @@ public class CheckCornerTask {
                                     Long now = System.currentTimeMillis();
                                     Integer originalLastMinute = lastCornerMinuteByMatch.get(key); // 保存原始值用于回滚
                                     
-                                    // 防抖动检查：快速连续调用直接跳过
-                                    Long lastProcessTime = lastProcessTimeByMatch.get(key);
+                                    // 防抖动检查：快速连续调用直接跳过（使用原子操作）
+                                    Long lastProcessTime = lastProcessTimeByMatch.putIfAbsent(key, now);
                                     if (lastProcessTime != null && (now - lastProcessTime) < MIN_PROCESS_INTERVAL_MS) {
                                         return;
                                     }
-                                    lastProcessTimeByMatch.put(key, now);
                                     
                                     List<SoccerApiNewTool.MatchEvent> namiEvents = detail.events();
                                     if (!namiEvents.isEmpty()) {
@@ -170,27 +169,25 @@ public class CheckCornerTask {
                                                     currentMinute
                                             );
                                             
-                                            // 使用原子操作避免竞态条件
-                                            Integer lastMinute = lastCornerMinuteByMatch.get(key);
-                                            if (lastMinute != null && (currentMinute - lastMinute) <= 1) {
-                                                log.info(
-                                                        "角球检测任务：赛事ID={}，赛事名称={}，上次分钟={}，当前分钟={}，已处理过，跳过",
-                                                        matchIdA,
-                                                        team.getNameB(),
-                                                        lastMinute,
-                                                        currentMinute
-                                                );
-                                                return;
-                                            }
+                                            // 原子操作：只有第一个线程能成功设置minute
+                                            Integer existingMinute = lastCornerMinuteByMatch.putIfAbsent(key, currentMinute);
                                             
-                                            // 原子检查并设置 - 只有第一个线程能成功设置
-                                            if (lastMinute == null) {
-                                                lastCornerMinuteByMatch.put(key, currentMinute);
-                                            } else {
-                                                // 防止并发 - 只有第一个能成功更新
-                                                if (!lastCornerMinuteByMatch.replace(key, lastMinute, currentMinute)) {
+                                            if (existingMinute != null) {
+                                                // 已有记录，检查是否为同一角球（分钟差<=1）或相同分钟
+                                                if (currentMinute - existingMinute <= 1) {
                                                     log.info(
-                                                            "角球检测任务：赛事ID={}，赛事名称={}，并发检测到相同角球，跳过",
+                                                            "角球检测任务：赛事ID={}，赛事名称={}，上次分钟={}，当前分钟={}，同一角球，跳过",
+                                                            matchIdA,
+                                                            team.getNameB(),
+                                                            existingMinute,
+                                                            currentMinute
+                                                    );
+                                                    return;
+                                                }
+                                                // 分钟差>1，说明是新角球，尝试更新
+                                                if (!lastCornerMinuteByMatch.replace(key, existingMinute, currentMinute)) {
+                                                    log.info(
+                                                            "角球检测任务：赛事ID={}，赛事名称={}，并发更新失败，跳过",
                                                             matchIdA,
                                                             team.getNameB()
                                                     );
@@ -210,10 +207,11 @@ public class CheckCornerTask {
                                     }
                                     String last = lastStateByMatch.get(key);
                                     if (isCorner) {
+                                        LimitDTO limit = settingsBetService.getLimit(admin.getUsername());
                                         // ========== 重试配置 ==========
-                                        int maxRetries = 3;                    // 最大重试次数
-                                        long retryDelayMs = 200;              // 重试间隔0.2秒
-                                        boolean betSuccess = false;            // 投注成功标志
+                                        int maxRetries = limit.getRetry() == 1 ? limit.getRetryCount() : 1;                     // 最大重试次数
+                                        long retryDelayMs = 200;                // 重试间隔0.2秒
+                                        boolean betSuccess = false;             // 投注成功标志
 
                                         for (int retryCount = 0; retryCount < maxRetries && !betSuccess; retryCount++) {
                                             if (retryCount > 0) {
@@ -351,7 +349,7 @@ public class CheckCornerTask {
                                                     continue;
                                                 }
                                                 BetAmountDTO amount = settingsService.getBetAmount(admin.getUsername());
-                                                LimitDTO limit = settingsBetService.getLimit(admin.getUsername());
+
                                                 IntervalDTO interval = settingsBetService.getInterval(admin.getUsername());
                                                 List<TimeFrameDTO> timeFrames = settingsFilterService.getTimeFrames(admin.getUsername());
                                                 if (!timeFrames.isEmpty()) {
@@ -386,10 +384,10 @@ public class CheckCornerTask {
                                                 sweepwater.setReTimeA(String.valueOf(reTime));
                                                 sweepwater.setHandicapType("letBall");
 
-                                                // 校验投注间隔key
-                                                String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, "corner", admin.getUsername(), String.valueOf(admin.getSimulateBet()), eid, null);
+                                                // 校验投注间隔key - 使用matchIdA确保同一赛事始终使用相同的key
+                                                String intervalKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_INTERVAL_PREFIX, "corner", admin.getUsername(), String.valueOf(admin.getSimulateBet()), matchIdA, null);
                                                 // 投注次数限制key
-                                                String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, "corner", admin.getUsername(), String.valueOf(admin.getSimulateBet()), eid, null);
+                                                String limitKey = KeyUtil.genKey(RedisConstants.PLATFORM_BET_LIMIT_PREFIX, "corner", admin.getUsername(), String.valueOf(admin.getSimulateBet()), matchIdA, null);
 
                                                 // 这里是校验间隔时间
                                                 long intervalMillis = interval.getBetSuccessSec() * 1000L;
@@ -436,7 +434,7 @@ public class CheckCornerTask {
                                                 if (!success) {
                                                     limitManager.rollbackReservation(limitKey, reservationId);
                                                     log.info("角球检测任务：投注失败,用户 {} 赛事A={} 赛事B={} 投注失败", admin.getUsername(), sweepwater.getLeagueNameA(), sweepwater.getLeagueNameB());
-                                                    continue; 
+                                                    continue;
                                                 } else {
                                                     limitManager.confirmSuccess(limitKey, reservationId);
                                                     betSuccess = true;
@@ -450,8 +448,8 @@ public class CheckCornerTask {
                                             }
                                         }
                                         
-                                        // 投注全部失败：回滚lastCornerMinuteByMatch，允许下次重试
-                                        if (!betSuccess && isCorner) {
+                                        // 投注全部失败：回滚lastCornerMinuteByMatch，允许下次重试,注释掉则说明投注失败后下次不允许重试
+                                        /*if (!betSuccess && isCorner) {
                                             if (originalLastMinute == null) {
                                                 lastCornerMinuteByMatch.remove(key);
                                             } else {
@@ -459,7 +457,7 @@ public class CheckCornerTask {
                                             }
                                             lastStateByMatch.remove(key);
                                             log.info("角球检测任务：投注全部失败，已回滚状态，赛事ID={}，赛事名称={}", matchIdA, team.getNameB());
-                                        }
+                                        }*/
                                     }
                                 }));
                             }
@@ -467,7 +465,7 @@ public class CheckCornerTask {
                                 try {
                                     future.get();
                                 } catch (Exception e) {
-                                    log.error("角球检测任务：并发处理赛事失败，user={}，leagueIdA={}", admin.getUsername(), league.getLeagueIdA(), e);
+                                    log.error("角球检测任务：并发处理赛事失败，user={}，leagueIdA={}, emsg={}", admin.getUsername(), league.getLeagueIdA(), e.getMessage());
                                 }
                             }
                         }));

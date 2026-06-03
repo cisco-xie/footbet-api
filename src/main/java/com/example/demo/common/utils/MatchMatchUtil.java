@@ -140,28 +140,8 @@ public class MatchMatchUtil {
             return 1.0;
         }
 
-        // 词级匹配
-        List<String> inputWords = splitIntoWords(inputTeam);
-        List<String> targetWords = splitIntoWords(targetTeam);
-
-        if (inputWords.isEmpty() || targetWords.isEmpty()) {
-            return 0;
-        }
-
-        // 计算共同词数（使用模糊匹配）
-        int commonWords = 0;
-        int totalWords = Math.max(inputWords.size(), targetWords.size());
-        
-        for (String inputWord : inputWords) {
-            for (String targetWord : targetWords) {
-                if (wordsMatch(inputWord, targetWord)) {
-                    commonWords++;
-                    break;
-                }
-            }
-        }
-
-        double wordMatchScore = (double) commonWords / totalWords;
+        // 计算最长公共子串的长度（归一化）
+        double lcsScore = calculateLCSScore(inputTeam, targetTeam);
 
         // 计算Levenshtein编辑距离相似度
         double editDistanceScore = calculateLevenshteinSimilarity(inputTeam, targetTeam);
@@ -169,75 +149,47 @@ public class MatchMatchUtil {
         // 计算Jaccard相似度
         double jaccardScore = calculateJaccardSimilarity(inputTeam, targetTeam);
 
-        // 综合评分：词匹配占40%，编辑距离占35%，Jaccard占25%
-        double finalScore = wordMatchScore * 0.4 + editDistanceScore * 0.35 + jaccardScore * 0.25;
+        // 综合评分：最长公共子串占50%，编辑距离占30%，Jaccard占20%
+        // LCS对中文球队名更准确，因为它能找到连续的中文匹配
+        double finalScore = lcsScore * 0.5 + editDistanceScore * 0.3 + jaccardScore * 0.2;
 
         return finalScore;
     }
 
     /**
-     * 判断两个词是否匹配（支持模糊匹配）
+     * 计算最长公共子串的相似度分数
      */
-    private boolean wordsMatch(String word1, String word2) {
-        if (word1 == null || word2 == null) {
-            return false;
+    private double calculateLCSScore(String str1, String str2) {
+        if (str1 == null || str2 == null || str1.isEmpty() || str2.isEmpty()) {
+            return 0;
         }
 
-        String w1 = word1.toLowerCase().trim();
-        String w2 = word2.toLowerCase().trim();
+        int maxLen = Math.max(str1.length(), str2.length());
+        int lcsLen = longestCommonSubstringLength(str1, str2);
 
-        // 直接相等
-        if (w1.equals(w2)) {
-            return true;
-        }
-
-        // 一个词是另一个词的子串（长度至少为2）
-        if (w1.length() >= 2 && w2.length() >= 2) {
-            if (w1.contains(w2) || w2.contains(w1)) {
-                return true;
-            }
-        }
-
-        // Levenshtein距离相似度超过85%
-        if (calculateLevenshteinSimilarity(w1, w2) > 0.85) {
-            return true;
-        }
-
-        // 考虑常见的变体形式
-        if (isVariant(w1, w2)) {
-            return true;
-        }
-
-        return false;
+        return (double) lcsLen / maxLen;
     }
 
     /**
-     * 检查两个词是否是变体形式（不区分大小写和常见后缀）
+     * 计算两个字符串的最长公共子串长度
      */
-    private boolean isVariant(String word1, String word2) {
-        String w1 = word1.toLowerCase().trim();
-        String w2 = word2.toLowerCase().trim();
+    private int longestCommonSubstringLength(String str1, String str2) {
+        int len1 = str1.length();
+        int len2 = str2.length();
 
-        // 移除常见后缀后比较
-        String[] commonSuffixes = {"fc", "sc", "ac", "cf", "team", "club", "united", "city", "town"};
-        
-        String base1 = w1;
-        String base2 = w2;
-        
-        for (String suffix : commonSuffixes) {
-            if (base1.endsWith(suffix)) {
-                base1 = base1.substring(0, base1.length() - suffix.length()).trim();
-            }
-            if (base2.endsWith(suffix)) {
-                base2 = base2.substring(0, base2.length() - suffix.length()).trim();
+        int[][] dp = new int[len1 + 1][len2 + 1];
+        int maxLen = 0;
+
+        for (int i = 1; i <= len1; i++) {
+            for (int j = 1; j <= len2; j++) {
+                if (str1.charAt(i - 1) == str2.charAt(j - 1)) {
+                    dp[i][j] = dp[i - 1][j - 1] + 1;
+                    maxLen = Math.max(maxLen, dp[i][j]);
+                }
             }
         }
 
-        // 移除空格和连字符后比较
-        base1 = base1.replaceAll("[\\s\\-_·.]", "");
-        base2 = base2.replaceAll("[\\s\\-_·.]", "");
-
-        return base1.equals(base2) || calculateLevenshteinSimilarity(base1, base2) > 0.9;
+        return maxLen;
     }
 
     /**
@@ -248,51 +200,28 @@ public class MatchMatchUtil {
         if (teamName == null) {
             return "";
         }
-        
+
         String normalized = teamName.trim();
-        
+
         // 移除括号内容，如 "(女)", "(中)", "(U21)", "(主场)"
         normalized = normalized.replaceAll("\\([^)]*\\)", "");
-        
-        // 移除常见后缀（保留主名称）
+
+        // 移除常见后缀（保留主名称）- 注意：移除了"城"和"市"会导致聊城、济南等城市名被错误截断
         String[] suffixes = {"女足", "男足", "女子", "男子", "青年队", "U21", "U19", "U17", "U23",
-                            "FC", "SC", "AC", "CF", "俱乐部", "队", "联队", "城", "市",
-                            "竞技", "体育", "足球", "Soccer", "Football", "United", "City"};
-        
+                            "FC", "SC", "AC", "CF", "俱乐部", "队", "联队", "竞技", "体育", "足球",
+                            "Soccer", "Football", "United", "City"};
+
         for (String suffix : suffixes) {
             // 不区分大小写移除后缀
             String regex = "(?i)" + Pattern.quote(suffix) + "$";
             normalized = normalized.replaceAll(regex, "").trim();
         }
-        
+
         // 移除多余空格和特殊字符
         normalized = normalized.replaceAll("[\\s\\-_·.]+", " ").trim();
-        
+
         // 统一为小写便于比较
         return normalized.toLowerCase();
-    }
-
-    /**
-     * 将球队名称分割为词语列表
-     */
-    private List<String> splitIntoWords(String teamName) {
-        List<String> words = new ArrayList<>();
-        
-        if (teamName == null || teamName.isEmpty()) {
-            return words;
-        }
-
-        // 使用正则表达式分割：支持中文、英文、数字
-        String[] parts = teamName.split("[\\s\\-_·.]+");
-        
-        for (String part : parts) {
-            String trimmed = part.trim();
-            if (!trimmed.isEmpty() && trimmed.length() >= 2) { // 只保留长度>=2的词
-                words.add(trimmed);
-            }
-        }
-        
-        return words;
     }
 
     /**
