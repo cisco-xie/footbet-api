@@ -1,9 +1,13 @@
 package com.example.demo.task;
 
+import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
+import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.core.date.TimeInterval;
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.example.demo.api.*;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.WebsiteType;
@@ -20,9 +24,11 @@ import com.example.demo.model.vo.dict.BindLeagueVO;
 import com.example.demo.model.vo.dict.BindTeamVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RedissonClient;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -33,6 +39,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 @Component
 public class CheckCornerTask {
+
+    @Resource(name = "businessPlatformRedissonClient")
+    private RedissonClient businessPlatformRedissonClient;
+    @Resource
+    private RealtimeIndexService realtimeIndexService;
 
     @Resource
     private SweepwaterService sweepwaterService;
@@ -212,7 +223,8 @@ public class CheckCornerTask {
                                         int maxRetries = limit.getRetry() == 1 ? limit.getRetryCount() : 1;                     // 最大重试次数
                                         long retryDelayMs = 200;                // 重试间隔0.2秒
                                         boolean betSuccess = false;             // 投注成功标志
-
+                                        boolean isBet = false;                  // 是否进入投注流程标志
+                                        SweepwaterBetDTO sweepwater = new SweepwaterBetDTO();
                                         for (int retryCount = 0; retryCount < maxRetries && !betSuccess; retryCount++) {
                                             if (retryCount > 0) {
                                                 log.info("角球检测任务：第{}次重试投注，赛事={}，分钟={}", retryCount, team.getNameB(), currentMinute);
@@ -250,6 +262,7 @@ public class CheckCornerTask {
                                                 }
                                             }
 
+                                            BetAmountDTO amount = settingsService.getBetAmount(admin.getUsername());
                                             // 获取新二网站赔率
                                             JSONArray events = (JSONArray) handicapApi.eventsOdds(admin.getUsername(), league.getWebsiteIdB(), team.getIdB(), null);
                                             if (events.isEmpty()) {
@@ -261,6 +274,19 @@ public class CheckCornerTask {
                                                         team.getIdB(),
                                                         team.getNameB()
                                                 );
+                                                // 只要进入流程，就记录已执行投注，
+                                                lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
+                                                JSONObject betInfo = new JSONObject();
+                                                betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                betInfo.putOpt("betTeamName", teamNameLabel);
+                                                betInfo.putOpt("handicap", null);
+                                                betInfo.putOpt("league", league.getLeagueNameB());
+                                                betInfo.putOpt("marketName", teamNameLabel);
+                                                betInfo.putOpt("marketTypeName", "让球盘");
+                                                betInfo.putOpt("odds", teamNameLabel);
+                                                betInfo.putOpt("oddsValue", null);
+                                                betInfo.putOpt("team", nameB);
+                                                sweepwater.setBetInfoA(betInfo);
                                                 continue;
                                             }
                                             // 提取球队名称
@@ -268,8 +294,23 @@ public class CheckCornerTask {
                                             Map<String, JSONObject> leagueMap = sweepwaterService.buildLeagueMap(events);
                                             // 平台绑定球队赛事对应获取盘口赛事列表
                                             JSONObject eventJson = sweepwaterService.findEventByLeagueName(leagueMap, league.getLeagueIdB(), names);
-                                            if (eventJson == null || eventJson.getJSONArray("events").isEmpty()) {
+                                            if (eventJson == null ||
+                                                    !eventJson.containsKey("events") ||
+                                                    eventJson.getJSONArray("events") == null) {
                                                 log.info("角球检测任务执行,平台用户:{},新二网站赔率数据为空,跳出", admin.getUsername());
+                                                // 只要进入流程，就记录已执行投注，
+                                                lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
+                                                JSONObject betInfo = new JSONObject();
+                                                betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                betInfo.putOpt("betTeamName", teamNameLabel);
+                                                betInfo.putOpt("handicap", null);
+                                                betInfo.putOpt("league", league.getLeagueNameB());
+                                                betInfo.putOpt("marketName", teamNameLabel);
+                                                betInfo.putOpt("marketTypeName", "让球盘");
+                                                betInfo.putOpt("odds", teamNameLabel);
+                                                betInfo.putOpt("oddsValue", null);
+                                                betInfo.putOpt("team", nameB);
+                                                sweepwater.setBetInfoA(betInfo);
                                                 continue;
                                             }
                                             String eventId = eventJson.getStr("ecid");
@@ -277,11 +318,37 @@ public class CheckCornerTask {
                                             JSONArray eventsJson = eventJson.getJSONArray("events");
                                             if (eventsJson == null || eventsJson.isEmpty()) {
                                                 log.info("角球检测任务执行,平台用户:{},赛事赔率 events 为空,跳出", admin.getUsername());
+                                                // 只要进入流程，就记录已执行投注，
+                                                lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
+                                                JSONObject betInfo = new JSONObject();
+                                                betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                betInfo.putOpt("betTeamName", teamNameLabel);
+                                                betInfo.putOpt("handicap", null);
+                                                betInfo.putOpt("league", league.getLeagueNameB());
+                                                betInfo.putOpt("marketName", teamNameLabel);
+                                                betInfo.putOpt("marketTypeName", "让球盘");
+                                                betInfo.putOpt("odds", teamNameLabel);
+                                                betInfo.putOpt("oddsValue", null);
+                                                betInfo.putOpt("team", nameB);
+                                                sweepwater.setBetInfoA(betInfo);
                                                 continue;
                                             }
                                             JSONObject event = eventsJson.getJSONObject(0);
                                             if (event == null) {
                                                 log.info("角球检测任务执行,平台用户:{},赛事赔率 event 为空,跳出", admin.getUsername());
+                                                // 只要进入流程，就记录已执行投注，
+                                                lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
+                                                JSONObject betInfo = new JSONObject();
+                                                betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                betInfo.putOpt("betTeamName", teamNameLabel);
+                                                betInfo.putOpt("handicap", null);
+                                                betInfo.putOpt("league", league.getLeagueNameB());
+                                                betInfo.putOpt("marketName", teamNameLabel);
+                                                betInfo.putOpt("marketTypeName", "让球盘");
+                                                betInfo.putOpt("odds", teamNameLabel);
+                                                betInfo.putOpt("oddsValue", null);
+                                                betInfo.putOpt("team", nameB);
+                                                sweepwater.setBetInfoA(betInfo);
                                                 continue;
                                             }
                                             String eid = event.getStr("id");
@@ -290,11 +357,37 @@ public class CheckCornerTask {
                                             JSONObject fullCourt = event.getJSONObject("fullCourt");
                                             if (fullCourt == null) {
                                                 log.info("角球检测任务执行,平台用户:{},赛事 fullCourt 为空,跳出", admin.getUsername());
+                                                // 只要进入流程，就记录已执行投注，
+                                                lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
+                                                JSONObject betInfo = new JSONObject();
+                                                betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                betInfo.putOpt("betTeamName", teamNameLabel);
+                                                betInfo.putOpt("handicap", null);
+                                                betInfo.putOpt("league", league.getLeagueNameB());
+                                                betInfo.putOpt("marketName", teamNameLabel);
+                                                betInfo.putOpt("marketTypeName", "让球盘");
+                                                betInfo.putOpt("odds", teamNameLabel);
+                                                betInfo.putOpt("oddsValue", null);
+                                                betInfo.putOpt("team", nameB);
+                                                sweepwater.setBetInfoA(betInfo);
                                                 continue;
                                             }
                                             JSONObject letBall = fullCourt.getJSONObject("letBall");
                                             if (letBall == null) {
                                                 log.info("角球检测任务执行,平台用户:{},赛事 letBall 为空,跳出", admin.getUsername());
+                                                // 只要进入流程，就记录已执行投注，
+                                                lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
+                                                JSONObject betInfo = new JSONObject();
+                                                betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                betInfo.putOpt("betTeamName", teamNameLabel);
+                                                betInfo.putOpt("handicap", null);
+                                                betInfo.putOpt("league", league.getLeagueNameB());
+                                                betInfo.putOpt("marketName", teamNameLabel);
+                                                betInfo.putOpt("marketTypeName", "让球盘");
+                                                betInfo.putOpt("odds", teamNameLabel);
+                                                betInfo.putOpt("oddsValue", null);
+                                                betInfo.putOpt("team", nameB);
+                                                sweepwater.setBetInfoA(betInfo);
                                                 continue;
                                             }
                                             JSONObject up = letBall.getJSONObject("up");
@@ -320,6 +413,19 @@ public class CheckCornerTask {
                                             }
                                             if (firstOdds == null) {
                                                 log.info("角球检测任务执行,平台用户:{},未找到符合 choseTeam={} 的盘口,跳出", admin.getUsername(), desiredChoseTeam);
+                                                // 只要进入流程，就记录已执行投注，
+                                                lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
+                                                JSONObject betInfo = new JSONObject();
+                                                betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                betInfo.putOpt("betTeamName", teamNameLabel);
+                                                betInfo.putOpt("handicap", null);
+                                                betInfo.putOpt("league", league.getLeagueNameB());
+                                                betInfo.putOpt("marketName", teamNameLabel);
+                                                betInfo.putOpt("marketTypeName", "让球盘");
+                                                betInfo.putOpt("odds", teamNameLabel);
+                                                betInfo.putOpt("oddsValue", null);
+                                                betInfo.putOpt("team", nameB);
+                                                sweepwater.setBetInfoA(betInfo);
                                                 continue;
                                             }
                                             log.info("角球检测任务：选择投注盘口，平台用户:{}，角球方:{}，choseTeam={}，赔率JSON:{}",
@@ -337,19 +443,56 @@ public class CheckCornerTask {
                                                 }
                                                 if (betTeamName == null || betTeamName.isEmpty()) {
                                                     log.info("角球检测任务：投注跳过，队伍名称为空，user={}, 赛事={}", admin.getUsername(), team.getNameB());
+                                                    // 只要进入流程，就记录已执行投注，
+                                                    lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
+                                                    JSONObject betInfo = new JSONObject();
+                                                    betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                    betInfo.putOpt("betTeamName", teamNameLabel);
+                                                    betInfo.putOpt("handicap", firstOdds.getStr("handicap"));
+                                                    betInfo.putOpt("league", league.getLeagueNameB());
+                                                    betInfo.putOpt("marketName", teamNameLabel);
+                                                    betInfo.putOpt("marketTypeName", "让球盘");
+                                                    betInfo.putOpt("odds", teamNameLabel + " " + firstOdds.getStr("handicap"));
+                                                    betInfo.putOpt("oddsValue", firstOdds.getStr("odds"));
+                                                    betInfo.putOpt("team", nameB);
+                                                    sweepwater.setBetInfoA(betInfo);
                                                     continue;
                                                 }
                                                 if (eventId == null || eventId.isEmpty()) {
                                                     log.info("角球检测任务：投注跳过，eventId为空，user={}, 赛事={}", admin.getUsername(), team.getNameB());
+                                                    // 只要进入流程，就记录已执行投注，
+                                                    lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
+                                                    JSONObject betInfo = new JSONObject();
+                                                    betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                    betInfo.putOpt("betTeamName", teamNameLabel);
+                                                    betInfo.putOpt("handicap", firstOdds.getStr("handicap"));
+                                                    betInfo.putOpt("league", league.getLeagueNameB());
+                                                    betInfo.putOpt("marketName", teamNameLabel);
+                                                    betInfo.putOpt("marketTypeName", "让球盘");
+                                                    betInfo.putOpt("odds", teamNameLabel + " " + firstOdds.getStr("handicap"));
+                                                    betInfo.putOpt("oddsValue", firstOdds.getStr("odds"));
+                                                    betInfo.putOpt("team", nameB);
+                                                    sweepwater.setBetInfoA(betInfo);
                                                     continue;
                                                 }
                                                 String oddsId = firstOdds.getStr("id");
                                                 if (oddsId == null || oddsId.isEmpty()) {
                                                     log.info("角球检测任务：投注跳过，赔率id为空，user={}, 赛事={}, odds={}", admin.getUsername(), team.getNameB(), firstOdds);
+                                                    // 只要进入流程，就记录已执行投注，
+                                                    lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
+                                                    JSONObject betInfo = new JSONObject();
+                                                    betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                    betInfo.putOpt("betTeamName", teamNameLabel);
+                                                    betInfo.putOpt("handicap", firstOdds.getStr("handicap"));
+                                                    betInfo.putOpt("league", league.getLeagueNameB());
+                                                    betInfo.putOpt("marketName", teamNameLabel);
+                                                    betInfo.putOpt("marketTypeName", "让球盘");
+                                                    betInfo.putOpt("odds", teamNameLabel + " " + firstOdds.getStr("handicap"));
+                                                    betInfo.putOpt("oddsValue", firstOdds.getStr("odds"));
+                                                    betInfo.putOpt("team", nameB);
+                                                    sweepwater.setBetInfoA(betInfo);
                                                     continue;
                                                 }
-                                                BetAmountDTO amount = settingsService.getBetAmount(admin.getUsername());
-
                                                 IntervalDTO interval = settingsBetService.getInterval(admin.getUsername());
                                                 List<TimeFrameDTO> timeFrames = settingsFilterService.getTimeFrames(admin.getUsername());
                                                 if (!timeFrames.isEmpty()) {
@@ -357,18 +500,32 @@ public class CheckCornerTask {
                                                     if (reTime < timeFrame.getTimeFormSec() || reTime > timeFrame.getTimeToSec()) {
                                                         log.info("角球检测任务：当前赛事时间:{}不在[{}-{}]范围内",
                                                                 reTime, timeFrame.getTimeFormSec(), timeFrame.getTimeToSec());
+                                                        // 只要进入流程，就记录已执行投注，
+                                                        lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
                                                         return;
                                                     }
                                                 }
                                                 if (amount == null || limit == null) {
                                                     log.info("角球检测任务：投注跳过，配置为空，user={}, amountNull={}, limitNull={}",
                                                             admin.getUsername(), amount == null, limit == null);
+                                                    // 只要进入流程，就记录已执行投注，
+                                                    lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
+                                                    JSONObject betInfo = new JSONObject();
+                                                    betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                    betInfo.putOpt("betTeamName", teamNameLabel);
+                                                    betInfo.putOpt("handicap", firstOdds.getStr("handicap"));
+                                                    betInfo.putOpt("league", league.getLeagueNameB());
+                                                    betInfo.putOpt("marketName", teamNameLabel);
+                                                    betInfo.putOpt("marketTypeName", "让球盘");
+                                                    betInfo.putOpt("odds", teamNameLabel + " " + firstOdds.getStr("handicap"));
+                                                    betInfo.putOpt("oddsValue", firstOdds.getStr("odds"));
+                                                    betInfo.putOpt("team", nameB);
+                                                    sweepwater.setBetInfoA(betInfo);
                                                     continue;
                                                 }
 
                                                 log.info("角球检测任务：配置信息，user={}, amount={}, limit={}",
                                                         admin.getUsername(), amount, limit);
-                                                SweepwaterBetDTO sweepwater = new SweepwaterBetDTO();
                                                 sweepwater.setWebsiteIdA(league.getWebsiteIdB());
                                                 sweepwater.setOddsIdA(oddsId);
                                                 sweepwater.setStrongA(firstOdds.getStr("oddFType"));
@@ -422,18 +579,36 @@ public class CheckCornerTask {
                                                     log.info("角球检测任务：预览失败，user={}, 投注队伍={}, 赛事={}, oddsId={}",
                                                             admin.getUsername(), betTeamName, eventId, oddsId);
                                                     limitManager.rollbackReservation(limitKey, reservationId);
+                                                    // 只要进入流程，就记录已执行投注，
+                                                    lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
+                                                    JSONObject betInfo = new JSONObject();
+                                                    betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                    betInfo.putOpt("betTeamName", teamNameLabel);
+                                                    betInfo.putOpt("handicap", firstOdds.getStr("handicap"));
+                                                    betInfo.putOpt("league", league.getLeagueNameB());
+                                                    betInfo.putOpt("marketName", teamNameLabel);
+                                                    betInfo.putOpt("marketTypeName", "让球盘");
+                                                    betInfo.putOpt("odds", teamNameLabel + " " + firstOdds.getStr("handicap"));
+                                                    betInfo.putOpt("oddsValue", firstOdds.getStr("odds"));
+                                                    betInfo.putOpt("team", nameB);
+                                                    sweepwater.setBetInfoA(betInfo);
                                                     continue; 
                                                 }
                                                 JSONObject successJson = betService.tryBetCorner(admin.getUsername(), eventId, league.getWebsiteIdB(), true, sweepwater, limit, amount, retryPreview);
+                                                isBet = true;
                                                 if (successJson == null) {
                                                     log.info("角球检测任务：投注返回空，user={}, 投注队伍={}, 赛事={}, oddsId={}",
                                                             admin.getUsername(), betTeamName, eventId, oddsId);
+                                                    // 只要进入流程，就记录已执行投注，
+                                                    lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
                                                     continue;
                                                 }
                                                 boolean success = successJson.getBool("success", false);
                                                 if (!success) {
                                                     limitManager.rollbackReservation(limitKey, reservationId);
                                                     log.info("角球检测任务：投注失败,用户 {} 赛事A={} 赛事B={} 投注失败", admin.getUsername(), sweepwater.getLeagueNameA(), sweepwater.getLeagueNameB());
+                                                    // 只要进入流程，就记录已执行投注，
+                                                    lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
                                                     continue;
                                                 } else {
                                                     limitManager.confirmSuccess(limitKey, reservationId);
@@ -447,7 +622,10 @@ public class CheckCornerTask {
                                                         admin.getUsername(), team.getNameB(), eventId, teamNameLabel, firstOdds, e.getMessage());
                                             }
                                         }
-                                        
+                                        if (!isBet && !betSuccess) {
+                                            // 角球没有进入投注流程就失败了，才进行记录保存
+                                            betFailed(admin.getUsername(), sweepwater, league.getWebsiteIdB());
+                                        }
                                         // 投注全部失败：回滚lastCornerMinuteByMatch，允许下次重试,注释掉则说明投注失败后下次不允许重试
                                         /*if (!betSuccess && isCorner) {
                                             if (originalLastMinute == null) {
@@ -496,6 +674,47 @@ public class CheckCornerTask {
         }
     }
 
+    /**
+     * 角球投注失败记录-就算没有进入到投注流程也记录因为前端需要展示
+     * @param username
+     * @param dto
+     * @param websiteId
+     */
+    public void betFailed(String username, SweepwaterBetDTO dto, String websiteId) {
+        log.info("角球投注失败记录-就算没有进入到投注流程也记录因为前端需要展示，username={},dto={},websiteId={}", username, dto, websiteId);
+        if (dto.getId() == null || dto.getId().isEmpty()) {
+            dto.setId(IdUtil.fastSimpleUUID());
+        }
+        dto.setBetSuccessA(false);
+        dto.setWebsiteNameA(WebsiteType.getById(websiteId).getDescription());
+        dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
+        String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
+
+        // 投注成功后异步调用599-sniffer获取比分详情URL
+        String team = dto.getBetInfoA().getStr("team");
+        String detailUrl = betService.fetchBiFenUrlAsync(team, username);
+        dto.setBiFenUrlA(detailUrl);
+        String json = JSONUtil.toJsonStr(dto);
+
+        String key = KeyUtil.genKey(
+                RedisConstants.PLATFORM_BET_CORNER_PREFIX,
+                username,
+                date,
+                dto.getId()
+        );
+        businessPlatformRedissonClient.getBucket(key).set(json);
+        String indexKey = KeyUtil.genKey("INDEX", username, "corner-history", date);
+        businessPlatformRedissonClient.getList(indexKey).add(key);
+
+        String realTimeKey = KeyUtil.genKey(
+                RedisConstants.PLATFORM_BET_CORNER_PREFIX,
+                username,
+                "realtime",
+                dto.getId()
+        );
+        realtimeIndexService.pushRealtimeIndex(username, realTimeKey, json, "corner");
+
+    }
 
 }
 

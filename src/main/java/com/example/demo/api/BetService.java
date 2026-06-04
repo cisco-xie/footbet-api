@@ -1401,7 +1401,7 @@ public class BetService {
      * @param teamA 球队名称（格式：主队 -vs- 客队）
      * @param username 用户名
      */
-    private String fetchBiFenUrlAsync(
+    public String fetchBiFenUrlAsync(
         String teamA,
         String username) {
 

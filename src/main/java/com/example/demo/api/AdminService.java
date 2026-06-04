@@ -259,9 +259,24 @@ public class AdminService {
 
             // 生成 Redis 中的 key
             String websiteKey = KeyUtil.genKey(RedisConstants.PLATFORM_WEBSITE_ALL_PREFIX, admin.getUsername());
-            businessPlatformRedissonClient.getList(websiteKey).add(JSONUtil.parseObj(xinbaoStr));
-            businessPlatformRedissonClient.getList(websiteKey).add(JSONUtil.parseObj(pingboStr));
-            businessPlatformRedissonClient.getList(websiteKey).add(JSONUtil.parseObj(sboStr));
+            RList<Object> websiteList = businessPlatformRedissonClient.getList(websiteKey);
+            // 解析要添加的配置
+            JSONObject xinbaoConfig = JSONUtil.parseObj(xinbaoStr);
+            JSONObject pingboConfig = JSONUtil.parseObj(pingboStr);
+            JSONObject sboConfig = JSONUtil.parseObj(sboStr);
+            // 添加新二盘口前校验
+            if (!isWebsiteConfigExists(websiteList, xinbaoConfig)) {
+                websiteList.add(xinbaoConfig);
+            }
+            // 添加平博盘口前校验
+            if (!isWebsiteConfigExists(websiteList, pingboConfig)) {
+                websiteList.add(pingboConfig);
+            }
+            // 添加盛帆盘口前校验
+            if (!isWebsiteConfigExists(websiteList, sboConfig)) {
+                websiteList.add(sboConfig);
+            }
+
             // 配置默认软件设置信息
             String oddsScanKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_GENERAL_ODDSSCAN_PREFIX, admin.getUsername());
             businessPlatformRedissonClient.getBucket(oddsScanKey).set(oddsScan);
@@ -282,6 +297,29 @@ public class AdminService {
             String oddsrangeKey = KeyUtil.genKey(RedisConstants.PLATFORM_SETTINGS_FILTER_ODDSRANGE_PREFIX, admin.getUsername());
             businessPlatformRedissonClient.getList(oddsrangeKey).addAll(oddsrange);
         }
+    }
+
+    // 校验盘口网站是否存在
+    private boolean isWebsiteConfigExists(RList<Object> websiteList, JSONObject targetConfig) {
+        String targetId = targetConfig.getStr("id");
+        String targetName = targetConfig.getStr("name");
+
+        for (Object item : websiteList) {
+            if (item instanceof JSONObject) {
+                JSONObject existing = (JSONObject) item;
+                // 优先用 id 判断，如果没有 id 则用 name 判断
+                String existingId = existing.getStr("id");
+                String existingName = existing.getStr("name");
+
+                if (targetId != null && targetId.equals(existingId)) {
+                    return true; // id 已存在
+                }
+                if (targetName != null && targetName.equals(existingName)) {
+                    return true; // name 已存在
+                }
+            }
+        }
+        return false;
     }
 
     public void delUser(String username) {
