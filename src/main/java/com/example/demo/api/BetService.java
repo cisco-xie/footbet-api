@@ -2669,7 +2669,8 @@ public class BetService {
                         betAmountByOdds
                 );
                 if (previewA == null) {
-                    throw new IllegalStateException("补单预览失败");
+                    log.info("手动补单第{}次预览失败", retry + 1);
+                    continue;
                 }
                 retryResultA = tryBet(
                         username,
@@ -2689,8 +2690,8 @@ public class BetService {
                 );
                 successOk = retryResultA.getBool("success", false);
                 if (!successOk) {
-                    throw new IllegalStateException("补单失败"
-                            + (retryResultA.containsKey("msg") ? retryResultA.getStr("msg") : ""));
+                    log.info("手动补单赛事A第{}次投注失败:{}", retry + 1, retryResultA.containsKey("msg") ? retryResultA.getStr("msg") : retryResultA);
+                    continue;
                 }
                 dto.setBetSuccessA(successOk);
                 dto.setManualRetryA(true);
@@ -2712,7 +2713,8 @@ public class BetService {
                         betAmountByOdds
                 );
                 if (previewB == null) {
-                    throw new IllegalStateException("补单预览失败");
+                    log.info("手动补单第{}次预览失败", retry + 1);
+                    continue;
                 }
                 retryResultB = tryBet(
                         username,
@@ -2732,8 +2734,8 @@ public class BetService {
                 );
                 successOk = retryResultB.getBool("success", false);
                 if (!successOk) {
-                    throw new IllegalStateException("补单失败"
-                            + (retryResultB.containsKey("msg") ? retryResultB.getStr("msg") : ""));
+                    log.info("手动补单赛事B第{}次投注失败:{}", retry + 1, retryResultB.containsKey("msg") ? retryResultB.getStr("msg") : retryResultB);
+                    continue;
                 }
                 dto.setBetSuccessB(successOk);
                 dto.setManualRetryB(true);

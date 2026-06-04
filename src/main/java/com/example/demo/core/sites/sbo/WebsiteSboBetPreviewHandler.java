@@ -48,9 +48,14 @@ public class WebsiteSboBetPreviewHandler implements ApiHandler {
         headers.put("accept", "application/json, text/plain, */*");
         headers.put("accept-language", "zh-CN,zh;q=0.9");
         headers.put("content-type", "application/json");
+
+        // 固定的 SportsSession 值
+        String FIXED_SPORTS_SESSION = "CfDJ8Ac1PWpfUt5Dj8g/R51yDE6DoVC68eAXYbWiFprdIdYXg1qopLXM9+3SfUiGUHQiy+ph7VUmHtO2PxNbObr9/9d42M8eXs3zXZBv57KR8GdX9D25eKTNqkEKbd8QqrD/eDdNTPE9q27cN4i55wpa1GCR/yEDDgA6OMz+KtHgrgFm";
         // 只提取 SportsSession 和 .SBO.SharedCookies.
         String fullCookie = params.getStr("cookie");
-        String filteredCookie = extractSpecificCookies(fullCookie);
+        String sharedCookie = extractSpecificCookies(fullCookie);
+        // 组合固定的 SportsSession 和提取的 .SBO.SharedCookies.
+        String filteredCookie = String.format("SportsSession=%s; %s", FIXED_SPORTS_SESSION, sharedCookie);
         headers.put("cookie", filteredCookie);
 
         return headers;
@@ -65,7 +70,7 @@ public class WebsiteSboBetPreviewHandler implements ApiHandler {
         StringBuilder filteredCookies = new StringBuilder();
 
         for (String cookie : cookies) {
-            if (cookie.startsWith("SportsSession=") || cookie.startsWith(".SBO.SharedCookies.=")) {
+            if (cookie.startsWith(".SBO.SharedCookies.=")) {
                 if (filteredCookies.length() > 0) {
                     filteredCookies.append("; ");
                 }
@@ -75,6 +80,7 @@ public class WebsiteSboBetPreviewHandler implements ApiHandler {
 
         return filteredCookies.toString();
     }
+
     /**
      * 构建请求体
      * @param params 请求参数
