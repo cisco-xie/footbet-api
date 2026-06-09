@@ -35,16 +35,35 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 
+import jakarta.annotation.Resource;
+import com.example.demo.api.ConfigAccountService;
+import org.springframework.context.annotation.Lazy;
+
 @Slf4j
 @Component
 public class OkHttpProxyDispatcher {
+
+    @Resource
+    @Lazy
+    private ConfigAccountService accountService;
 
     private static final int MAX_FAIL = 3;
     private static final long COOLDOWN_MS = 10 * 1000;  // 10秒冷却
     private static final int MAX_RETRY = 0;                 // 最多重试次数
 
+    // 自动代理API地址
+    private static final String AUTO_PROXY_API_URL = "https://api.911proxy.com/web_v1/ip/get-ip-v3?app_key=93fb3931ffbf8baad407b45325db3659&pt=9&num=1&ep=hk&cc=HK&state=&city=&life=5&protocol=1&format=txt&lb=";
+
     private final ConcurrentHashMap<String, ProxyState> proxyStateMap = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, OkHttpClient> clientMap = new ConcurrentHashMap<>();
+
+    // 用于获取自动代理的OkHttpClient
+    private final OkHttpClient proxyFetchClient = new OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .callTimeout(10, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
+            .build();
 
     // 全局默认无代理的OkHttpClient，单例即可
     private final OkHttpClient defaultClient = new OkHttpClient.Builder()
@@ -59,6 +78,63 @@ public class OkHttpProxyDispatcher {
 
     private OkHttpClient defaultClient() {
         return defaultClient;
+    }
+
+    /**
+     * 如果代理类型是自动获取(3)，则在请求前更新代理
+     * @param config 账户配置
+     * @return 是否成功更新代理
+     */
+    private boolean refreshAutoProxyIfNeeded(ConfigAccountVO config) {
+        // 只有代理类型为3（自动获取）才需要刷新
+        if (config.getProxyType() != null && config.getProxyType() == 3) {
+            try {
+                log.info("[OkHttpProxyDispatcher] 检测到自动代理类型，请求前刷新代理，账户={}", config.getAccount());
+                
+                Request request = new Request.Builder()
+                        .url(AUTO_PROXY_API_URL)
+                        .get()
+                        .addHeader("User-Agent", Constants.USER_AGENT)
+                        .build();
+
+                try (Response response = proxyFetchClient.newCall(request).execute()) {
+                    if (!response.isSuccessful()) {
+                        log.warn("[OkHttpProxyDispatcher] 自动代理获取失败，状态码: {}", response.code());
+                        return false;
+                    }
+
+                    String proxyStr = response.body() != null ? response.body().string().trim() : null;
+                    if (proxyStr == null || proxyStr.isEmpty()) {
+                        log.warn("[OkHttpProxyDispatcher] 自动代理返回内容为空");
+                        return false;
+                    }
+
+                    String[] arr = proxyStr.split(":");
+                    if (arr.length != 2) {
+                        log.warn("[OkHttpProxyDispatcher] 自动代理格式非法: {}", proxyStr);
+                        return false;
+                    }
+
+                    // 更新代理信息
+                    config.setProxyHost(arr[0]);
+                    config.setProxyPort(Integer.parseInt(arr[1]));
+                    config.setProxyUsername(null);
+                    config.setProxyPassword(null);
+
+                    // 清除旧的客户端缓存，强制创建新的客户端
+                    String oldKey = config.getProxyKey();
+                    clientMap.remove(oldKey);
+
+                    log.info("[OkHttpProxyDispatcher] 自动代理更新成功，账户={}, 新代理={}:{}", 
+                            config.getAccount(), arr[0], arr[1]);
+                    return true;
+                }
+            } catch (Exception e) {
+                log.error("[OkHttpProxyDispatcher] 自动代理获取异常，账户={}", config.getAccount(), e);
+                return false;
+            }
+        }
+        return true; // 不是自动代理类型，不需要刷新
     }
 
     // 根据账户唯一key获取或创建OkHttpClient
@@ -133,6 +209,9 @@ public class OkHttpProxyDispatcher {
                           Map<String, String> headers,
                           ConfigAccountVO config,
                           boolean checkOnlyConnection) throws IOException {
+
+        // 如果代理类型是自动获取(3)，则在请求前更新代理
+        refreshAutoProxyIfNeeded(config);
 
         String key = config.getProxyKey();
         ProxyState state = proxyStateMap.computeIfAbsent(key, k -> new ProxyState());
@@ -261,6 +340,9 @@ public class OkHttpProxyDispatcher {
                                   Map<String, String> headers,
                                   ConfigAccountVO config) throws IOException {
 
+        // 如果代理类型是自动获取(3)，则在请求前更新代理
+        refreshAutoProxyIfNeeded(config);
+
         String key = config.getProxyKey();
         ProxyState state = proxyStateMap.computeIfAbsent(key, k -> new ProxyState());
 
@@ -386,6 +468,9 @@ public class OkHttpProxyDispatcher {
                                     String body,
                                     Map<String, String> headers,
                                     ConfigAccountVO config) throws IOException {
+
+        // 如果代理类型是自动获取(3)，则在请求前更新代理
+        refreshAutoProxyIfNeeded(config);
 
         String key = config.getProxyKey();
         ProxyState state = proxyStateMap.computeIfAbsent(key, k -> new ProxyState());

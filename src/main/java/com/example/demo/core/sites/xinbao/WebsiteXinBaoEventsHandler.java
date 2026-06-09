@@ -76,19 +76,23 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
     public String buildRequest(JSONObject params) {
         String showType;  // 滚球赛事
         String rType;  // 滚球赛事
+        String filter;
         if (ZhiBoSchedulesType.LIVESCHEDULE.getId() == params.getInt("showType")) {
             showType = "live";  // 滚球赛事
             rType = "rb";  // 滚球赛事
+            filter = "";  // 滚球赛事
         } else {
             showType = "today";  // 今日赛事
             rType = "r";  // 今日赛事
+            filter = "FT";  // 今日赛事
         }
         // 构造请求体
-        return String.format("p=get_game_list&uid=%s&ver=%s&langx=zh-cn&gtype=ft&showtype=%s&rtype=%s&ltype=3&cupFantasy=N&sorttype=L&isFantasy=N&ts=%s",
+        return String.format("p=get_game_list&uid=%s&ver=%s&langx=zh-cn&gtype=ft&showtype=%s&rtype=%s&ltype=3&filter=%s&cupFantasy=N&sorttype=L&isFantasy=N&ts=%s",
                 params.getStr("uid"),
                 Constants.VER,
                 showType,
                 rType,
+                filter,
                 System.currentTimeMillis()
         );
     }
@@ -107,7 +111,7 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
             res.putOpt("msg", "账户登录失效");
             return res;
         }
-
+        log.info("新二赛事列表结果: {}", response.getBody());
         // 解析响应
         Document docResult = XmlUtil.readXML(response.getBody());
         JSONObject responseJson = new JSONObject(response.getBody());

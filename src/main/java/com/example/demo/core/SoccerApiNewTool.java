@@ -109,8 +109,8 @@ public class SoccerApiNewTool {
     // 获取赛事列表（今天和明天）
     private List<MatchSummary> fetchMatchList() {
         long now = System.currentTimeMillis();
-        // 缓存10分钟
-        if (matchesCacheData != null && (now - matchesCacheTsMs) < 10 * 60 * 1000) {
+        // 缓存5分钟
+        if (matchesCacheData != null && (now - matchesCacheTsMs) < 5 * 60 * 1000) {
             return parseMatchesFromCache(matchesCacheData);
         }
         
@@ -175,47 +175,10 @@ public class SoccerApiNewTool {
                 if (result == null) {
                     result = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(tomorrowJson.toString());
                 } else {
-                    // 合并 match 数组
-                    JsonNode todayMatches = result.has("results") ? result.get("results").get("match") : null;
-                    JsonNode tomorrowMatches = tomorrowJson.has("results") ? tomorrowJson.get("results").get("match") : null;
-                    
-                    if (tomorrowMatches != null && tomorrowMatches.isArray()) {
-                        if (todayMatches == null || !todayMatches.isArray()) {
-                            // 如果今天没有比赛，直接使用明天的
-                            com.fasterxml.jackson.databind.node.ObjectNode resultsNode = (com.fasterxml.jackson.databind.node.ObjectNode) result.get("results");
-                            if (resultsNode != null) {
-                                resultsNode.set("match", tomorrowMatches);
-                            }
-                        } else {
-                            // 合并两个数组，去重
-                            List<JsonNode> mergedMatches = new ArrayList<>();
-                            java.util.Set<String> matchIds = new java.util.HashSet<>();
-                            
-                            // 添加今天的比赛
-                            for (JsonNode match : todayMatches) {
-                                String id = textTrim(match.path("id"));
-                                if (!id.isEmpty()) {
-                                    matchIds.add(id);
-                                }
-                                mergedMatches.add(match);
-                            }
-                            
-                            // 添加明天的比赛（去重）
-                            for (JsonNode match : tomorrowMatches) {
-                                String id = textTrim(match.path("id"));
-                                if (!matchIds.contains(id)) {
-                                    mergedMatches.add(match);
-                                }
-                            }
-                            
-                            // 创建新的数组节点
-                            JsonNode mergedArray = objectMapper.valueToTree(mergedMatches);
-                            com.fasterxml.jackson.databind.node.ObjectNode resultsNode = (com.fasterxml.jackson.databind.node.ObjectNode) result.get("results");
-                            if (resultsNode != null) {
-                                resultsNode.set("match", mergedArray);
-                            }
-                        }
-                    }
+                    // 合并 match, competition, team 三个数组
+                    mergeJsonArray(result, todayJson, tomorrowJson, "match");
+                    mergeJsonArray(result, todayJson, tomorrowJson, "competition");
+                    mergeJsonArray(result, todayJson, tomorrowJson, "team");
                 }
             }
             
@@ -223,6 +186,62 @@ public class SoccerApiNewTool {
         } catch (Exception e) {
             // 合并失败，返回今天的数据或明天的数据
             return todayJson != null ? todayJson : tomorrowJson;
+        }
+    }
+    
+    // 合并指定名称的JSON数组（从results节点下），根据id去重
+    private void mergeJsonArray(com.fasterxml.jackson.databind.node.ObjectNode result,
+                                JsonNode todayJson, JsonNode tomorrowJson, String arrayName) {
+        try {
+            // 从明天的数据中取出对应数组
+            JsonNode tomorrowResults = tomorrowJson.has("results") ? tomorrowJson.get("results") : null;
+            JsonNode tomorrowArray = (tomorrowResults != null && tomorrowResults.has(arrayName))
+                    ? tomorrowResults.get(arrayName) : null;
+            
+            if (tomorrowArray == null || !tomorrowArray.isArray()) {
+                return;
+            }
+            
+            // 从结果中取出今天的对应数组
+            com.fasterxml.jackson.databind.node.ObjectNode resultsNode =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) result.get("results");
+            if (resultsNode == null) return;
+            
+            JsonNode todayArray = resultsNode.has(arrayName) ? resultsNode.get(arrayName) : null;
+            
+            if (todayArray == null || !todayArray.isArray()) {
+                // 今天没有这个数组，直接用明天的
+                resultsNode.set(arrayName, tomorrowArray);
+            } else {
+                // 合并两个数组，根据id去重
+                List<JsonNode> mergedList = new ArrayList<>();
+                java.util.Set<String> seenIds = new java.util.HashSet<>();
+                
+                // 先添加今天的所有元素
+                for (JsonNode item : todayArray) {
+                    String id = textTrim(item.path("id"));
+                    if (!id.isEmpty()) seenIds.add(id);
+                    mergedList.add(item);
+                }
+                
+                // 再添加明天的，跳过重复id
+                for (JsonNode item : tomorrowArray) {
+                    String id = textTrim(item.path("id"));
+                    if (id.isEmpty() || !seenIds.contains(id)) {
+                        mergedList.add(item);
+                    }
+                }
+                
+                // 设置合并后的数组
+                com.fasterxml.jackson.databind.node.ArrayNode newArray =
+                        objectMapper.createArrayNode();
+                for (JsonNode item : mergedList) {
+                    newArray.add(item);
+                }
+                resultsNode.set(arrayName, newArray);
+            }
+        } catch (Exception ignored) {
+            // 合并失败，保留今天的数据不变
         }
     }
     

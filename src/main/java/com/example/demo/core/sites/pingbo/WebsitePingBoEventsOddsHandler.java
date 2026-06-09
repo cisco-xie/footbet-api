@@ -501,7 +501,7 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                     }
                                     awayOddsJson.putOpt("handicap", letBallJsonArr.get(0));
                                     awayOddsJson.putOpt("odds", letBallJsonArr.getBigDecimal(4)); // 投注赔率
-                                    double handicapAway = letBallJsonArr.getDouble(1);
+                                    double handicapAway = letBallJsonArr.getDouble(0);
                                     boolean isZeroAway = BigDecimal.ZERO.compareTo(BigDecimal.valueOf(handicapAway)) == 0;
 
                                     if (isZeroAway) {

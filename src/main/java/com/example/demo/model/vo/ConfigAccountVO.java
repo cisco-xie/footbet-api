@@ -92,7 +92,7 @@ public class ConfigAccountVO {
         }
 
         // 自动获取代理（3）统一映射为 HTTP
-        int type = (proxyType == 3 ? 1 : proxyType);
+        int type = (proxyType == 3 ? 2 : proxyType);
 
         // 用 host:port + 类型 + 用户名 拼出一个唯一 key
         return type + "://" + proxyHost + ":" + proxyPort +

@@ -692,11 +692,11 @@ public class BetService {
 
             // 并行获取 A/B 投注预览
             CompletableFuture<JSONObject> previewA = CompletableFuture.supplyAsync(() ->
-                            buildBetInfo(username, dto.getTeamA(), dto.getWebsiteIdA(), buildBetParams(dto, amountDTO, true, false), true, dto, betAmountByOdds),
+                            buildBetInfo(username, dto.getTeamA(), dto.getWebsiteIdA(), buildBetParams(dto, amountDTO, true, false), true, dto, betAmountByOdds, null),
                     betExecutor
             );
             CompletableFuture<JSONObject> previewB = CompletableFuture.supplyAsync(() ->
-                            buildBetInfo(username, dto.getTeamB(), dto.getWebsiteIdB(), buildBetParams(dto, amountDTO, false, false), false, dto, betAmountByOdds),
+                            buildBetInfo(username, dto.getTeamB(), dto.getWebsiteIdB(), buildBetParams(dto, amountDTO, false, false), false, dto, betAmountByOdds, null),
                     betExecutor
             );
 
@@ -1013,11 +1013,11 @@ public class BetService {
 
         // 并行获取 A/B 投注预览
         CompletableFuture<JSONObject> previewA = CompletableFuture.supplyAsync(() ->
-                        buildBetInfo(username, dto.getTeamA(), dto.getWebsiteIdA(), buildBetParams(dto, amountDTO, true, forceBetSuccess), true, dto, betAmountByOdds),
+                        buildBetInfo(username, dto.getTeamA(), dto.getWebsiteIdA(), buildBetParams(dto, amountDTO, true, forceBetSuccess), true, dto, betAmountByOdds, dto.getOddsB()),
                 betExecutor
         );
         CompletableFuture<JSONObject> previewB = CompletableFuture.supplyAsync(() ->
-                        buildBetInfo(username, dto.getTeamB(), dto.getWebsiteIdB(), buildBetParams(dto, amountDTO, false, forceBetSuccess), false, dto, betAmountByOdds),
+                        buildBetInfo(username, dto.getTeamB(), dto.getWebsiteIdB(), buildBetParams(dto, amountDTO, false, forceBetSuccess), false, dto, betAmountByOdds, dto.getOddsA()),
                 betExecutor
         );
 
@@ -1128,7 +1128,7 @@ public class BetService {
                         for (int retry = 0; retry < maxRetry && !successBOk; retry++) {
                             JSONObject retryPreviewB = buildBetInfo(
                                     username, dto.getTeamB(), dto.getWebsiteIdB(),
-                                    buildBetParams(dto, amountDTO, false, forceBetSuccess), false, dto, betAmountByOdds
+                                    buildBetParams(dto, amountDTO, false, forceBetSuccess), false, dto, betAmountByOdds, dto.getOddsA()
                             );
                             if (retryPreviewB == null) {
                                 log.info("重投B预览失败: user={}, eventId={}, websiteId={}, retry={}/5",
@@ -1147,7 +1147,7 @@ public class BetService {
                         for (int retry = 0; retry < maxRetry && !successAOk; retry++) {
                             JSONObject retryPreviewA = buildBetInfo(
                                     username, dto.getTeamA(), dto.getWebsiteIdA(),
-                                    buildBetParams(dto, amountDTO, true, forceBetSuccess), true, dto, betAmountByOdds
+                                    buildBetParams(dto, amountDTO, true, forceBetSuccess), true, dto, betAmountByOdds, dto.getOddsB()
                             );
                             if (retryPreviewA == null) {
                                 log.info("重投A预览失败: user={}, eventId={}, websiteId={}, retry={}/5",
@@ -1164,98 +1164,159 @@ public class BetService {
                     }
                 }
             } else if (rollingOrderA < rollingOrderB) {
-                // A 优先
+                // A 优先，重试逻辑
                 successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA, null, null);
-                BigDecimal higherOddsForB = successA.getBool("success", false) ? successA.getBigDecimal("higherOdds") : null;
-                successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB, higherOddsForB != null ? profit : null, higherOddsForB);
                 boolean successAOk = successA.getBool("success", false);
-                boolean successBOk = successB.getBool("success", false);
-                if (forceBetSuccess && (successAOk ^ successBOk)) {
-                    if (successAOk) {
-                        BigDecimal retryHigherOddsForB = successA.getBigDecimal("higherOdds");
-                        for (int retry = 0; retry < maxRetry && !successBOk; retry++) {
-                            JSONObject retryPreviewB = buildBetInfo(
-                                    username, dto.getTeamB(), dto.getWebsiteIdB(),
-                                    buildBetParams(dto, amountDTO, false, forceBetSuccess), false, dto, betAmountByOdds
-                            );
-                            if (retryPreviewB == null) {
-                                log.info("重投B预览失败: user={}, eventId={}, websiteId={}, retry={}/5",
-                                        username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1);
-                                continue;
-                            }
-                            log.info("重投B开始: user={}, eventId={}, websiteId={}, retry={}/5, higherOdds={}",
-                                    username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1, retryHigherOddsForB);
-                            successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), retryPreviewB, profit, retryHigherOddsForB);
-                            successBOk = successB.getBool("success", false);
-                            log.info("重投B结束: user={}, eventId={}, websiteId={}, retry={}/5, success={}",
-                                    username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1, successBOk);
+                if (!successAOk) {
+                    // A 首次失败，尝试重试 maxRetry 次
+                    BigDecimal retryHigherOddsForA = successA.getBigDecimal("higherOdds");
+                    for (int retry = 0; retry < maxRetry && !successAOk; retry++) {
+                        JSONObject retryPreviewA = buildBetInfo(
+                                username, dto.getTeamA(), dto.getWebsiteIdA(),
+                                buildBetParams(dto, amountDTO, true, forceBetSuccess), true, dto, betAmountByOdds, dto.getOddsB()
+                        );
+                        if (retryPreviewA == null) {
+                            log.info("A优先-重投A预览失败: user={}, eventId={}, websiteId={}, retry={}/{}",
+                                    username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1, maxRetry);
+                            continue;
                         }
-                    } else {
-                        BigDecimal retryHigherOddsForA = successB.getBigDecimal("higherOdds");
-                        for (int retry = 0; retry < maxRetry && !successAOk; retry++) {
-                            JSONObject retryPreviewA = buildBetInfo(
-                                    username, dto.getTeamA(), dto.getWebsiteIdA(),
-                                    buildBetParams(dto, amountDTO, true, forceBetSuccess), true, dto, betAmountByOdds
-                            );
-                            if (retryPreviewA == null) {
-                                log.info("重投A预览失败: user={}, eventId={}, websiteId={}, retry={}/5",
-                                        username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1);
-                                continue;
+                        log.info("A优先-重投A开始: user={}, eventId={}, websiteId={}, retry={}/{}, higherOdds={}",
+                                username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1, maxRetry, retryHigherOddsForA);
+                        successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), retryPreviewA, profit, retryHigherOddsForA);
+                        successAOk = successA.getBool("success", false);
+                        log.info("A优先-重投A结束: user={}, eventId={}, websiteId={}, retry={}/{}, success={}",
+                                username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1, maxRetry, successAOk);
+                    }
+                    // 重试结束后再次检查 A 是否成功
+                    if (!successAOk) {
+                        log.info("A优先-投注A全部失败（首次+{}次重试），跳出不投注", maxRetry);
+                    }
+                }
+                if (successAOk) {
+                    BigDecimal higherOddsForB = successA.getBigDecimal("higherOdds");
+                    JSONObject retryPreviewB = buildBetInfo(
+                            username, dto.getTeamB(), dto.getWebsiteIdB(),
+                            buildBetParams(dto, amountDTO, false, forceBetSuccess), false, dto, betAmountByOdds, higherOddsForB
+                    );
+                    if (retryPreviewB != null) {
+                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), retryPreviewB, higherOddsForB != null ? profit : null, higherOddsForB);
+
+                        boolean successBOk = successB.getBool("success", false);
+                        if (forceBetSuccess && (successAOk ^ successBOk)) {
+                            if (successAOk) {
+                                BigDecimal retryHigherOddsForB = successA.getBigDecimal("higherOdds");
+                                for (int retry = 0; retry < maxRetry && !successBOk; retry++) {
+                                    retryPreviewB = buildBetInfo(
+                                            username, dto.getTeamB(), dto.getWebsiteIdB(),
+                                            buildBetParams(dto, amountDTO, false, forceBetSuccess), false, dto, betAmountByOdds, dto.getOddsA()
+                                    );
+                                    if (retryPreviewB == null) {
+                                        log.info("重投B预览失败: user={}, eventId={}, websiteId={}, retry={}/5",
+                                                username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1);
+                                        continue;
+                                    }
+                                    log.info("重投B开始: user={}, eventId={}, websiteId={}, retry={}/5, higherOdds={}",
+                                            username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1, retryHigherOddsForB);
+                                    successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), retryPreviewB, profit, retryHigherOddsForB);
+                                    successBOk = successB.getBool("success", false);
+                                    log.info("重投B结束: user={}, eventId={}, websiteId={}, retry={}/5, success={}",
+                                            username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1, successBOk);
+                                }
+                            } else {
+                                BigDecimal retryHigherOddsForA = successB.getBigDecimal("higherOdds");
+                                for (int retry = 0; retry < maxRetry && !successAOk; retry++) {
+                                    JSONObject retryPreviewA = buildBetInfo(
+                                            username, dto.getTeamA(), dto.getWebsiteIdA(),
+                                            buildBetParams(dto, amountDTO, true, forceBetSuccess), true, dto, betAmountByOdds, dto.getOddsB()
+                                    );
+                                    if (retryPreviewA == null) {
+                                        log.info("重投A预览失败: user={}, eventId={}, websiteId={}, retry={}/5",
+                                                username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1);
+                                        continue;
+                                    }
+                                    log.info("重投A开始: user={}, eventId={}, websiteId={}, retry={}/5, higherOdds={}",
+                                            username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1, retryHigherOddsForA);
+                                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), retryPreviewA, profit, retryHigherOddsForA);
+                                    successAOk = successA.getBool("success", false);
+                                    log.info("重投A结束: user={}, eventId={}, websiteId={}, retry={}/5, success={}",
+                                            username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1, successAOk);
+                                }
                             }
-                            log.info("重投A开始: user={}, eventId={}, websiteId={}, retry={}/5, higherOdds={}",
-                                    username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1, retryHigherOddsForA);
-                            successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), retryPreviewA, profit, retryHigherOddsForA);
-                            successAOk = successA.getBool("success", false);
-                            log.info("重投A结束: user={}, eventId={}, websiteId={}, retry={}/5, success={}",
-                                    username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1, successAOk);
                         }
                     }
                 }
             } else {
-                // B 优先
+                // B 优先，重试逻辑
                 successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewB, null, null);
-                BigDecimal higherOddsForA = successB.getBool("success", false) ? successB.getBigDecimal("higherOdds") : null;
-                successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA, higherOddsForA != null ? profit : null, higherOddsForA);
-                boolean successAOk = successA.getBool("success", false);
                 boolean successBOk = successB.getBool("success", false);
-                if (forceBetSuccess && (successAOk ^ successBOk)) {
-                    if (successAOk) {
-                        BigDecimal higherOddsForB = successA.getBigDecimal("higherOdds");
-                        for (int retry = 0; retry < maxRetry && !successBOk; retry++) {
-                            JSONObject retryPreviewB = buildBetInfo(
-                                    username, dto.getTeamB(), dto.getWebsiteIdB(),
-                                    buildBetParams(dto, amountDTO, false, forceBetSuccess), false, dto, betAmountByOdds
-                            );
-                            if (retryPreviewB == null) {
-                                log.info("重投B预览失败: user={}, eventId={}, websiteId={}, retry={}/5",
-                                        username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1);
-                                continue;
-                            }
-                            log.info("重投B开始: user={}, eventId={}, websiteId={}, retry={}/5, higherOdds={}",
-                                    username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1, higherOddsForB);
-                            successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), retryPreviewB, profit, higherOddsForB);
-                            successBOk = successB.getBool("success", false);
-                            log.info("重投B结束: user={}, eventId={}, websiteId={}, retry={}/5, success={}",
-                                    username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1, successBOk);
+                if (!successBOk) {
+                    // B 首次失败，尝试重试 maxRetry 次
+                    BigDecimal retryHigherOddsForB = successB.getBigDecimal("higherOdds");
+                    for (int retry = 0; retry < maxRetry && !successBOk; retry++) {
+                        JSONObject retryPreviewB = buildBetInfo(
+                                username, dto.getTeamB(), dto.getWebsiteIdB(),
+                                buildBetParams(dto, amountDTO, false, forceBetSuccess), false, dto, betAmountByOdds, dto.getOddsA()
+                        );
+                        if (retryPreviewB == null) {
+                            log.info("B优先-重投B预览失败: user={}, eventId={}, websiteId={}, retry={}/{}",
+                                    username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1, maxRetry);
+                            continue;
                         }
-                    } else {
-                        BigDecimal retryHigherOddsForA = successB.getBigDecimal("higherOdds");
-                        for (int retry = 0; retry < maxRetry && !successAOk; retry++) {
-                            JSONObject retryPreviewA = buildBetInfo(
-                                    username, dto.getTeamA(), dto.getWebsiteIdA(),
-                                    buildBetParams(dto, amountDTO, true, forceBetSuccess), true, dto, betAmountByOdds
-                            );
-                            if (retryPreviewA == null) {
-                                log.info("重投A预览失败: user={}, eventId={}, websiteId={}, retry={}/5",
-                                        username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1);
-                                continue;
+                        log.info("B优先-重投B开始: user={}, eventId={}, websiteId={}, retry={}/{}, higherOdds={}",
+                                username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1, maxRetry, retryHigherOddsForB);
+                        successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), retryPreviewB, profit, retryHigherOddsForB);
+                        successBOk = successB.getBool("success", false);
+                        log.info("B优先-重投B结束: user={}, eventId={}, websiteId={}, retry={}/{}, success={}",
+                                username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1, maxRetry, successBOk);
+                    }
+                    // 重试结束后再次检查 B 是否成功
+                    if (!successBOk) {
+                        log.info("B优先-投注B全部失败（首次+{}次重试），跳出不投注", maxRetry);
+                    }
+                }
+                if (successBOk) {
+                    BigDecimal higherOddsForA = successB.getBigDecimal("higherOdds");
+                    successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), betPreviewA, higherOddsForA != null ? profit : null, higherOddsForA);
+                    boolean successAOk = successA.getBool("success", false);
+                    if (forceBetSuccess && (successAOk ^ successBOk)) {
+                        if (successAOk) {
+                            BigDecimal higherOddsForB = successA.getBigDecimal("higherOdds");
+                            for (int retry = 0; retry < maxRetry && !successBOk; retry++) {
+                                JSONObject retryPreviewB = buildBetInfo(
+                                        username, dto.getTeamB(), dto.getWebsiteIdB(),
+                                        buildBetParams(dto, amountDTO, false, forceBetSuccess), false, dto, betAmountByOdds, dto.getOddsA()
+                                );
+                                if (retryPreviewB == null) {
+                                    log.info("重投B预览失败: user={}, eventId={}, websiteId={}, retry={}/5",
+                                            username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1);
+                                    continue;
+                                }
+                                log.info("重投B开始: user={}, eventId={}, websiteId={}, retry={}/5, higherOdds={}",
+                                        username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1, higherOddsForB);
+                                successB = tryBet(username, dto.getEventIdB(), dto.getWebsiteIdB(), false, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), retryPreviewB, profit, higherOddsForB);
+                                successBOk = successB.getBool("success", false);
+                                log.info("重投B结束: user={}, eventId={}, websiteId={}, retry={}/5, success={}",
+                                        username, dto.getEventIdB(), dto.getWebsiteIdB(), retry + 1, successBOk);
                             }
-                            log.info("重投A开始: user={}, eventId={}, websiteId={}, retry={}/5, higherOdds={}",
-                                    username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1, retryHigherOddsForA);
-                            successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), retryPreviewA, profit, retryHigherOddsForA);
-                            successAOk = successA.getBool("success", false);
-                            log.info("重投A结束: user={}, eventId={}, websiteId={}, retry={}/5, success={}",
-                                    username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1, successAOk);
+                        } else {
+                            BigDecimal retryHigherOddsForA = successB.getBigDecimal("higherOdds");
+                            for (int retry = 0; retry < maxRetry && !successAOk; retry++) {
+                                JSONObject retryPreviewA = buildBetInfo(
+                                        username, dto.getTeamA(), dto.getWebsiteIdA(),
+                                        buildBetParams(dto, amountDTO, true, forceBetSuccess), true, dto, betAmountByOdds, dto.getOddsB()
+                                );
+                                if (retryPreviewA == null) {
+                                    log.info("重投A预览失败: user={}, eventId={}, websiteId={}, retry={}/5",
+                                            username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1);
+                                    continue;
+                                }
+                                log.info("重投A开始: user={}, eventId={}, websiteId={}, retry={}/5, higherOdds={}",
+                                        username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1, retryHigherOddsForA);
+                                successA = tryBet(username, dto.getEventIdA(), dto.getWebsiteIdA(), true, isUnilateral, dto, limitDTO, intervalDTO, amountDTO, optimizing, admin.getSimulateBet(), retryPreviewA, profit, retryHigherOddsForA);
+                                successAOk = successA.getBool("success", false);
+                                log.info("重投A结束: user={}, eventId={}, websiteId={}, retry={}/5, success={}",
+                                        username, dto.getEventIdA(), dto.getWebsiteIdA(), retry + 1, successAOk);
+                            }
                         }
                     }
                 }
@@ -1669,7 +1730,7 @@ public class BetService {
                         return result;
                     }
                 }
-                // 新二投注前获取一下赔率列表,为了确认需要投注的分数盘还存在
+                // 新二投注前获取一下赔率列表,为了确认需要投注的分数盘还存在(打水模式也查询赔率)
                 if (WebsiteType.XINBAO.getId().equals(websiteId)) {
                     String oddsId = isA ? dto.getOddsIdA() : dto.getOddsIdB();
                     String leagueId = isA ? dto.getLeagueIdA() : dto.getLeagueIdB();
@@ -1906,6 +1967,9 @@ public class BetService {
             try {
                 if (dto.getId() == null || dto.getId().isEmpty()) {
                     dto.setId(IdUtil.fastSimpleUUID());
+                } else {
+                    log.info("角球投注记录已经写入,无需重复写入 username={}, eventId={}, id={}", username, eventId, dto.getId());
+                    return result;
                 }
                 dto.setBetSuccessA(result.getBool("success", false));
                 dto.setWebsiteNameA(WebsiteType.getById(websiteId).getDescription());
@@ -2034,9 +2098,10 @@ public class BetService {
      * @param username
      * @param websiteId
      * @param params
+     * @param oddsValue     另一方的赔率
      * @return
      */
-    public JSONObject buildBetInfo(String username, String betTeamName, String websiteId, JSONObject params, boolean isA, SweepwaterBetDTO sweepwaterBetDTO, boolean betAmountByOdds) {
+    public JSONObject buildBetInfo(String username, String betTeamName, String websiteId, JSONObject params, boolean isA, SweepwaterBetDTO sweepwaterBetDTO, boolean betAmountByOdds, BigDecimal oddsValue) {
         JSONObject betPreviewResult = new JSONObject();
         JSONObject betInfo = new JSONObject();
 
@@ -2100,14 +2165,24 @@ public class BetService {
                 BigDecimal betAmount = BigDecimal.ZERO;
                 betAmount = stake
                         .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP); // 除法 + 不保留小数
+                /*BigDecimal multipleDecimal = BigDecimal.valueOf(multiple); // double 转 BigDecimal
+                if (multipleDecimal.compareTo(BigDecimal.ONE) < 0) {
+                    // multiple < 1，使用除法（不保留小数）
+                    betAmount = stake.divide(multipleDecimal, 0, RoundingMode.HALF_UP);
+                } else {
+                    // multiple >= 1，使用乘法后取整
+                    betAmount = stake.multiply(multipleDecimal)
+                            .setScale(0, RoundingMode.HALF_UP);
+                }*/
 
                 JSONObject objJson = JSONUtil.parseObj(obj);
-                if (betAmountByOdds) {
-                    // 根据赔率计算投注金额：(下注金额 * (赔率绝对值 + 1)) / 2
-                    BigDecimal oddsValue = objJson.getBigDecimal("odds");
+                if (betAmountByOdds && oddsValue != null) {
+                    // 根据赔率计算投注金额：(下注金额 * (新二赔率绝对值 + 1)) /  (平博赔率绝对值 + 1)
+                    BigDecimal odds = objJson.getBigDecimal("odds");
                     betAmount = betAmount
                             .multiply(oddsValue.abs().add(BigDecimal.ONE))
-                            .divide(BigDecimal.valueOf(2), 0, RoundingMode.HALF_UP);
+                            .divide(odds.abs().add(BigDecimal.ONE), 0, RoundingMode.HALF_UP);
+                    log.info("新二赔率 oddsValue = {},平博赔率 odds = {},计算结果 betAmount = {}", oddsValue, odds, betAmount);
                 }
 
                 betInfo.putOpt("league", objJson.getStr("league"));
@@ -2156,9 +2231,19 @@ public class BetService {
             }
             // 通过当前盘口账户的倍数计算实际投注金额
             BigDecimal stake = params.getBigDecimal("golds");
+            // 新二不需要打水模式
             BigDecimal betAmount = BigDecimal.ZERO;
             betAmount = stake
                     .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP); // 除法 + 不保留小数
+            /*BigDecimal multipleDecimal = BigDecimal.valueOf(multiple); // double 转 BigDecimal
+            if (multipleDecimal.compareTo(BigDecimal.ONE) < 0) {
+                // multiple < 1，使用除法（不保留小数）
+                betAmount = stake.divide(multipleDecimal, 0, RoundingMode.HALF_UP);
+            } else {
+                // multiple >= 1，使用乘法后取整
+                betAmount = stake.multiply(multipleDecimal)
+                        .setScale(0, RoundingMode.HALF_UP);
+            }*/
             betInfo.putOpt("league", serverresponse.getStr("league_name"));
             betInfo.putOpt("team", serverresponse.getStr("team_name_h") + " -vs- " + serverresponse.getStr("team_name_c"));
             betInfo.putOpt("marketTypeName", marketTypeName);
@@ -2202,13 +2287,22 @@ public class BetService {
             BigDecimal betAmount = BigDecimal.ZERO;
             betAmount = stake
                     .divide(BigDecimal.valueOf(multiple), 0, RoundingMode.HALF_UP); // 除法 + 不保留小数
+            /*BigDecimal multipleDecimal = BigDecimal.valueOf(multiple); // double 转 BigDecimal
+            if (multipleDecimal.compareTo(BigDecimal.ONE) < 0) {
+                // multiple < 1，使用除法（不保留小数）
+                betAmount = stake.divide(multipleDecimal, 0, RoundingMode.HALF_UP);
+            } else {
+                // multiple >= 1，使用乘法后取整
+                betAmount = stake.multiply(multipleDecimal)
+                        .setScale(0, RoundingMode.HALF_UP);
+            }*/
 
-            if (betAmountByOdds) {
-                // 根据赔率计算投注金额：(下注金额 * (赔率绝对值 + 1)) / 2
-                BigDecimal oddsValue = odd.getBigDecimal("price");
+            if (betAmountByOdds && oddsValue != null) {
+                // 根据赔率计算投注金额：(下注金额 * (新二赔率绝对值 + 1)) / (盛帆赔率绝对值 + 1)
+                BigDecimal odds = odd.getBigDecimal("price");
                 betAmount = betAmount
                         .multiply(oddsValue.abs().add(BigDecimal.ONE))
-                        .divide(BigDecimal.valueOf(2), 0, RoundingMode.HALF_UP);
+                        .divide(odds.abs().add(BigDecimal.ONE), 0, RoundingMode.HALF_UP);
             }
 
             String teamH = null != sweepwaterBetDTO.getTeamVSHA() ? sweepwaterBetDTO.getTeamVSHA() : sweepwaterBetDTO.getTeamVSHB();
@@ -2584,19 +2678,79 @@ public class BetService {
         boolean betAmountByOdds = limitDTO.getBetAmountByOdds() != null && limitDTO.getBetAmountByOdds() == 1;
         JSONObject preview = new JSONObject();
         if (needRetryA && null != dto.getBetInfoA()) {
-            JSONObject previewA = buildBetInfo(
-                    username,
-                    dto.getTeamA(),
-                    dto.getWebsiteIdA(),
-                    buildBetParams(dto, amountDTO, true, false),
-                    true,
-                    dto,
-                    betAmountByOdds
-            );
-            if (previewA == null) {
-                return null;
+            boolean isHandicap = dto.getBetInfoA().containsKey("handicap");
+            if (isHandicap) {
+                log.info("手动投注-针对性的进行投注预览查询");
+                // isHandicap = true，则说明是已确定了哪个赔率盘口,可直接针对性的进行投注预览
+                JSONObject previewA = buildBetInfo(
+                        username,
+                        dto.getBetInfoA().getStr("betTeamName"),
+                        dto.getWebsiteIdA(),
+                        buildBetParams(dto, amountDTO, true, false),
+                        true,
+                        dto,
+                        betAmountByOdds,
+                        null
+                );
+                if (previewA == null) {
+                    return null;
+                }
+                preview.putOpt("odds", previewA.getJSONObject("betInfo").getStr("oddsValue"));
+            } else {
+                log.info("手动投注-查询整个赛事赔率列表");
+                String team = dto.getBetInfoA().getStr("team");
+                // isHandicap = false，则说明赔率查询出了问题，导致不确定是要投注哪个赔率盘口，就进行赔率查询然后用对应球队的第一个让球盘即可
+                 JSONArray events = (JSONArray) handicapApi.eventsOdds(username, dto.getWebsiteIdA(), dto.getEventIdA(), null);
+                if (!events.isEmpty()) {
+                    List<String> names = Collections.singletonList(team);
+                    Map<String, JSONObject> leagueMap = sweepwaterService.buildLeagueMap(events);
+                    // 平台绑定球队赛事对应获取盘口赛事列表
+                    JSONObject eventJson = sweepwaterService.findEventByLeagueName(leagueMap, dto.getLeagueIdA(), names);
+                    if (eventJson != null &&
+                            eventJson.containsKey("events") &&
+                            eventJson.getJSONArray("events") != null) {
+                        String eventId = eventJson.getStr("ecid");
+                        log.info("角球检测任务执行,平台用户:{},新二网站赔率数据:{}", username, eventJson);
+                        JSONArray eventsJson = eventJson.getJSONArray("events");
+                        if (eventsJson != null && !eventsJson.isEmpty()) {
+                            JSONObject event = eventsJson.getJSONObject(0);
+                            if (event != null) {
+                                String eid = event.getStr("id");
+                                String score = event.getStr("score");
+                                Integer reTime = event.getInt("reTime");
+                                JSONObject fullCourt = event.getJSONObject("fullCourt");
+                                if (fullCourt != null) {
+                                    JSONObject letBall = fullCourt.getJSONObject("letBall");
+                                    if (letBall != null) {
+                                        JSONObject up = letBall.getJSONObject("up");
+                                        JSONObject down = letBall.getJSONObject("down");
+                                        String desiredChoseTeam = dto.getBetInfoA().getStr("betTeamName");
+                                        JSONObject firstOdds = null;
+                                        if (up != null && !up.isEmpty()) {
+                                            for (Object val : up.values()) {
+                                                if (val instanceof JSONObject jo && desiredChoseTeam.equalsIgnoreCase(jo.getStr("choseTeam"))) {
+                                                    firstOdds = jo;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if (firstOdds == null && down != null && !down.isEmpty()) {
+                                            for (Object val : down.values()) {
+                                                if (val instanceof JSONObject jo && desiredChoseTeam.equalsIgnoreCase(jo.getStr("choseTeam"))) {
+                                                    firstOdds = jo;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        // 输出赔率
+                                        preview.putOpt("odds", firstOdds);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            preview.putOpt("odds", previewA.getJSONObject("betInfo").getStr("oddsValue"));
         }
 
         if (needRetryB && null != dto.getBetInfoB()) {
@@ -2607,7 +2761,8 @@ public class BetService {
                     buildBetParams(dto, amountDTO, false, false),
                     false,
                     dto,
-                    betAmountByOdds
+                    betAmountByOdds,
+                    dto.getOddsA()
             );
             if (previewB == null) {
                 return null;
@@ -2666,7 +2821,8 @@ public class BetService {
                         buildBetParams(dto, amountDTO, true, false),
                         true,
                         dto,
-                        betAmountByOdds
+                        betAmountByOdds,
+                        dto.getOddsB()
                 );
                 if (previewA == null) {
                     log.info("手动补单第{}次预览失败", retry + 1);
@@ -2710,7 +2866,8 @@ public class BetService {
                         buildBetParams(dto, amountDTO, false, false),
                         false,
                         dto,
-                        betAmountByOdds
+                        betAmountByOdds,
+                        dto.getOddsA()
                 );
                 if (previewB == null) {
                     log.info("手动补单第{}次预览失败", retry + 1);

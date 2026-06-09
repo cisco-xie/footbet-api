@@ -1412,7 +1412,7 @@ public class HandicapApi {
                         betInfo.putOpt("odds", objJson.getStr("selection") + " " + handicapValue);
                         // betInfo.putOpt("handicap", objJson.getStr("handicap"));
                         betInfo.putOpt("handicap", handicapValue);
-                        betInfo.putOpt("amount", odds.getStr("stake"));
+                        betInfo.putOpt("amount", betAmount);
                         betInfo.putOpt("betTeamName", betPreviewInfo.getStr("betTeamName"));
                         selection.putOpt("betInfo", betInfo);
                         selections.add(selection);

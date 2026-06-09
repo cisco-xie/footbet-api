@@ -79,6 +79,7 @@ public class CheckCornerTask {
     private final Map<String, String> lastStateByMatch = new ConcurrentHashMap<>();
     private final Map<String, Integer> lastCornerMinuteByMatch = new ConcurrentHashMap<>();
     private final Map<String, Long> lastProcessTimeByMatch = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> processedCornerByMatch = new ConcurrentHashMap<>();
     private static final long MIN_PROCESS_INTERVAL_MS = 2000;
 
     @Scheduled(fixedDelay = 100)
@@ -173,13 +174,21 @@ public class CheckCornerTask {
                                         SoccerApiNewTool.MatchEvent latestEvent = namiEvents.get(namiEvents.size() - 1);
                                         if ("角球".equals(latestEvent.typeLabel())) {
                                             currentMinute = latestEvent.minute();
+                                            
+                                            // 修复：一个角球只处理一次，不管成功失败都永不重试
+                                            // 用"分钟+事件类型"作为唯一标识，确保同一角球永不重复处理
+                                            String cornerKey = key + "_" + currentMinute;
+                                            Boolean alreadyProcessed = processedCornerByMatch.putIfAbsent(cornerKey, true);
+                                            if (alreadyProcessed != null && alreadyProcessed) {
+                                                return;
+                                            }
+                                            
                                             log.info(
                                                     "角球检测任务：发生角球，赛事ID={}，赛事名称={}，分钟={}",
                                                     matchIdA,
                                                     team.getNameB(),
                                                     currentMinute
                                             );
-                                            
                                             // 原子操作：只有第一个线程能成功设置minute
                                             Integer existingMinute = lastCornerMinuteByMatch.putIfAbsent(key, currentMinute);
                                             
@@ -214,13 +223,16 @@ public class CheckCornerTask {
                                                 stateCode = "21004";
                                             }
                                             lastStateByMatch.put(key, stateCode);
+                                            lastCornerMinuteByMatch.put(key, currentMinute);
                                         }
                                     }
                                     String last = lastStateByMatch.get(key);
                                     if (isCorner) {
                                         LimitDTO limit = settingsBetService.getLimit(admin.getUsername());
                                         // ========== 重试配置 ==========
-                                        int maxRetries = limit.getRetry() == 1 ? limit.getRetryCount() : 1;                     // 最大重试次数
+                                        int maxRetries = (limit.getRetry() != null && limit.getRetry() == 1)
+                                                ? limit.getRetryCount()
+                                                : 1;                     // 最大重试次数
                                         long retryDelayMs = 200;                // 重试间隔0.2秒
                                         boolean betSuccess = false;             // 投注成功标志
                                         boolean isBet = false;                  // 是否进入投注流程标志
@@ -266,7 +278,7 @@ public class CheckCornerTask {
                                             // 获取新二网站赔率
                                             JSONArray events = (JSONArray) handicapApi.eventsOdds(admin.getUsername(), league.getWebsiteIdB(), team.getIdB(), null);
                                             if (events.isEmpty()) {
-                                                log.info("角球检测任务,平台用户:{},网站A:{},获取赛事id:{},名称:{},球队id:{},名称:{},赔率失败, 跳出",
+                                                log.info("角球检测任务,投注跳过,平台用户:{},网站A:{},获取赛事id:{},名称:{},球队id:{},名称:{},赔率失败, 跳出",
                                                         admin.getUsername(),
                                                         WebsiteType.getById(league.getWebsiteIdB()).getDescription(),
                                                         league.getLeagueIdB(),
@@ -297,7 +309,7 @@ public class CheckCornerTask {
                                             if (eventJson == null ||
                                                     !eventJson.containsKey("events") ||
                                                     eventJson.getJSONArray("events") == null) {
-                                                log.info("角球检测任务执行,平台用户:{},新二网站赔率数据为空,跳出", admin.getUsername());
+                                                log.info("角球检测任务执行,投注跳过,平台用户:{},新二网站赔率数据为空,跳出", admin.getUsername());
                                                 // 只要进入流程，就记录已执行投注，
                                                 lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
                                                 JSONObject betInfo = new JSONObject();
@@ -317,7 +329,7 @@ public class CheckCornerTask {
                                             log.info("角球检测任务执行,平台用户:{},新二网站赔率数据:{}", admin.getUsername(), eventJson);
                                             JSONArray eventsJson = eventJson.getJSONArray("events");
                                             if (eventsJson == null || eventsJson.isEmpty()) {
-                                                log.info("角球检测任务执行,平台用户:{},赛事赔率 events 为空,跳出", admin.getUsername());
+                                                log.info("角球检测任务执行,投注跳过,平台用户:{},赛事赔率 events 为空,跳出", admin.getUsername());
                                                 // 只要进入流程，就记录已执行投注，
                                                 lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
                                                 JSONObject betInfo = new JSONObject();
@@ -335,7 +347,7 @@ public class CheckCornerTask {
                                             }
                                             JSONObject event = eventsJson.getJSONObject(0);
                                             if (event == null) {
-                                                log.info("角球检测任务执行,平台用户:{},赛事赔率 event 为空,跳出", admin.getUsername());
+                                                log.info("角球检测任务执行,投注跳过,平台用户:{},赛事赔率 event 为空,跳出", admin.getUsername());
                                                 // 只要进入流程，就记录已执行投注，
                                                 lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
                                                 JSONObject betInfo = new JSONObject();
@@ -356,7 +368,7 @@ public class CheckCornerTask {
                                             Integer reTime = event.getInt("reTime");
                                             JSONObject fullCourt = event.getJSONObject("fullCourt");
                                             if (fullCourt == null) {
-                                                log.info("角球检测任务执行,平台用户:{},赛事 fullCourt 为空,跳出", admin.getUsername());
+                                                log.info("角球检测任务执行,投注跳过,平台用户:{},赛事 fullCourt 为空,跳出", admin.getUsername());
                                                 // 只要进入流程，就记录已执行投注，
                                                 lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
                                                 JSONObject betInfo = new JSONObject();
@@ -374,7 +386,7 @@ public class CheckCornerTask {
                                             }
                                             JSONObject letBall = fullCourt.getJSONObject("letBall");
                                             if (letBall == null) {
-                                                log.info("角球检测任务执行,平台用户:{},赛事 letBall 为空,跳出", admin.getUsername());
+                                                log.info("角球检测任务执行,投注跳过,平台用户:{},赛事 letBall 为空,跳出", admin.getUsername());
                                                 // 只要进入流程，就记录已执行投注，
                                                 lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
                                                 JSONObject betInfo = new JSONObject();
@@ -412,7 +424,7 @@ public class CheckCornerTask {
                                                 }
                                             }
                                             if (firstOdds == null) {
-                                                log.info("角球检测任务执行,平台用户:{},未找到符合 choseTeam={} 的盘口,跳出", admin.getUsername(), desiredChoseTeam);
+                                                log.info("角球检测任务执行,投注跳过,平台用户:{},未找到符合 choseTeam={} 的盘口,跳出", admin.getUsername(), desiredChoseTeam);
                                                 // 只要进入流程，就记录已执行投注，
                                                 lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
                                                 JSONObject betInfo = new JSONObject();
@@ -573,7 +585,7 @@ public class CheckCornerTask {
                                                 JSONObject betParams = betService.buildBetParams(sweepwater, amount, true, false);
                                                 JSONObject retryPreview = betService.buildBetInfo(
                                                         admin.getUsername(), betTeamName, league.getWebsiteIdB(),
-                                                        betParams, true, sweepwater, betAmountByOdds
+                                                        betParams, true, sweepwater, betAmountByOdds, null
                                                 );
                                                 if (retryPreview == null) {
                                                     log.info("角球检测任务：预览失败，user={}, 投注队伍={}, 赛事={}, oddsId={}",
@@ -624,7 +636,7 @@ public class CheckCornerTask {
                                         }
                                         if (!isBet && !betSuccess) {
                                             // 角球没有进入投注流程就失败了，才进行记录保存
-                                            betFailed(admin.getUsername(), sweepwater, league.getWebsiteIdB());
+                                            betFailed(admin.getUsername(), sweepwater, league.getWebsiteIdB(), league.getLeagueIdB(), team.getIdB());
                                         }
                                         // 投注全部失败：回滚lastCornerMinuteByMatch，允许下次重试,注释掉则说明投注失败后下次不允许重试
                                         /*if (!betSuccess && isCorner) {
@@ -680,12 +692,18 @@ public class CheckCornerTask {
      * @param dto
      * @param websiteId
      */
-    public void betFailed(String username, SweepwaterBetDTO dto, String websiteId) {
+    public void betFailed(String username, SweepwaterBetDTO dto, String websiteId, String leagueId, String eventId) {
         log.info("角球投注失败记录-就算没有进入到投注流程也记录因为前端需要展示，username={},dto={},websiteId={}", username, dto, websiteId);
         if (dto.getId() == null || dto.getId().isEmpty()) {
             dto.setId(IdUtil.fastSimpleUUID());
+        } else {
+            log.info("角球投注记录已经写入,无需重复写入 username={}, id={}", username, dto.getId());
+            return;
         }
         dto.setBetSuccessA(false);
+        dto.setEventIdA(eventId);
+        dto.setLeagueIdA(leagueId);
+        dto.setWebsiteIdA(websiteId);
         dto.setWebsiteNameA(WebsiteType.getById(websiteId).getDescription());
         dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
         String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);

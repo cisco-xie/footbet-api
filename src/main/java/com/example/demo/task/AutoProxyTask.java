@@ -33,7 +33,7 @@ public class AutoProxyTask {
     @Lazy
     private ConfigAccountService accountService;
 
-    private static final int SUCCESS_DELAY_MIN = 350;
+    private static final int SUCCESS_DELAY_MIN = 4;
     private static final int FAIL_RETRY_SECONDS = 10;
     private static final int MAX_FAIL_RETRY = 5;
 
@@ -142,9 +142,8 @@ public class AutoProxyTask {
                 return;
             }
 
-            int port = nextProxyPort();   // ⭐ 获取原子端口
             Request request = new Request.Builder()
-                    .url("https://ipapi.cliproxy.com/start?key=i6qkhiajwcutp9bs&port=" + port + "&num=1&country=HK&state=&type=1")
+                    .url("https://api.911proxy.com/web_v1/ip/get-ip-v3?app_key=93fb3931ffbf8baad407b45325db3659&pt=9&num=1&ep=hk&cc=HK&state=&city=&life=5&protocol=1&format=txt&lb=\\r\\n")
                     .get()
                     .addHeader("User-Agent", Constants.USER_AGENT)
                     .build();
