@@ -1971,6 +1971,7 @@ public class BetService {
                     log.info("角球投注记录已经写入,无需重复写入 username={}, eventId={}, id={}", username, eventId, dto.getId());
                     return result;
                 }
+                dto.setEventIdA(eventId);
                 dto.setBetSuccessA(result.getBool("success", false));
                 dto.setWebsiteNameA(WebsiteType.getById(websiteId).getDescription());
                 dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
@@ -2898,6 +2899,214 @@ public class BetService {
                 dto.setManualRetryB(true);
                 if (retryResultB.containsKey("betInfo")) {
                     dto.setBetInfoB(retryResultB.getJSONObject("betInfo"));
+                }
+            }
+        }
+
+        dto.setManualRetry(Boolean.TRUE.equals(dto.getManualRetryA())
+                || Boolean.TRUE.equals(dto.getManualRetryB()));
+        persistRetryBetRecord(username, dto);
+        JSONObject response = new JSONObject();
+        response.putOpt("betId", dto.getId());
+        response.putOpt("retryA", needRetryA);
+        response.putOpt("retryB", needRetryB);
+        response.putOpt("successA", dto.getBetSuccessA());
+        response.putOpt("successB", dto.getBetSuccessB());
+        response.putOpt("manualRetry", dto.getManualRetry());
+        response.putOpt("manualRetryA", dto.getManualRetryA());
+        response.putOpt("manualRetryB", dto.getManualRetryB());
+        response.putOpt("resultA", retryResultA);
+        response.putOpt("resultB", retryResultB);
+        return response;
+    }
+
+    /**
+     * 手动投注角球
+     * @param username
+     * @param betId
+     * @return
+     */
+    public JSONObject retryBetCornerById(String username, String betId) {
+        SweepwaterBetDTO dto = findCornerBetById(username, betId);
+        if (dto == null) {
+            throw new IllegalArgumentException("未找到对应投注单，betId=" + betId);
+        }
+        // 仅允许对「明确未成功」的一侧补单；已成功侧不允许再次投注
+        boolean needRetryA = !Boolean.TRUE.equals(dto.getBetSuccessA());
+        boolean needRetryB = !Boolean.TRUE.equals(dto.getBetSuccessB());
+        if (!needRetryA && !needRetryB) {
+            throw new IllegalArgumentException("当前投注单A/B都已成功，无需补单");
+        }
+
+        LimitDTO limitDTO = settingsBetService.getLimit(username);
+        IntervalDTO intervalDTO = settingsBetService.getInterval(username);
+        OptimizingDTO optimizing = settingsBetService.getOptimizing(username);
+        BetAmountDTO amountDTO = settingsService.getBetAmount(username);
+        AdminLoginDTO admin = adminService.getAdmin(username);
+
+        boolean isUnilateral = limitDTO.getUnilateralBet() != null && limitDTO.getUnilateralBet() == 1;
+        boolean betAmountByOdds = limitDTO.getBetAmountByOdds() != null && limitDTO.getBetAmountByOdds() == 1;
+
+        int maxRetry = 1;
+        if (null != limitDTO.getRetry() && 1 == limitDTO.getRetry()) {
+            // 获取重试次数
+            maxRetry = limitDTO.getRetryCount();
+        }
+
+        JSONObject retryResultA = new JSONObject();
+        JSONObject retryResultB = new JSONObject();
+        Boolean successOk = false;
+        if (needRetryA && null != dto.getBetInfoA()) {
+            for (int retry = 0; retry < maxRetry && !successOk; retry++) {
+                boolean isHandicap = dto.getBetInfoA().containsKey("handicap");
+                JSONObject previewA = null;
+                if (isHandicap) {
+                    log.info("手动投注-针对性的进行投注预览操作");
+                    // isHandicap = true，则说明是已确定了哪个赔率盘口,可直接针对性的进行投注预览
+                    previewA = buildBetInfo(
+                            username,
+                            dto.getBetInfoA().getStr("betTeamName"),
+                            dto.getWebsiteIdA(),
+                            buildBetParams(dto, amountDTO, true, false),
+                            true,
+                            dto,
+                            betAmountByOdds,
+                            null
+                    );
+                    if (previewA == null) {
+                        log.info("手动补单第{}次预览失败", retry + 1);
+                        continue;
+                    }
+                    JSONObject successJson = tryBetCorner(admin.getUsername(), dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, amountDTO, previewA);
+                    if (successJson == null) {
+                        log.info("手动投注-角球投注失败：投注返回空，user={}, 投注队伍={}, 赛事={}",
+                                admin.getUsername(), dto.getBetInfoA().getStr("betTeamName"), dto.getEventIdA());
+                        continue;
+                    }
+                    boolean success = successJson.getBool("success", false);
+                    if (!success) {
+                        continue;
+                    } else {
+                        successOk = true;
+                    }
+                } else {
+                    // isHandicap = false，则说明是未确定的盘口，需要先进行赔率查询然后再投注预览
+                    log.info("手动投注-查询整个赛事赔率列表");
+                    String team = dto.getBetInfoA().getStr("team");
+                    String betTeamName = dto.getBetInfoA().getStr("betTeamName");
+                    // isHandicap = false，则说明赔率查询出了问题，导致不确定是要投注哪个赔率盘口，就进行赔率查询然后用对应球队的第一个让球盘即可
+                    JSONArray events = (JSONArray) handicapApi.eventsOdds(username, dto.getWebsiteIdA(), dto.getEventIdA(), null);
+                    if (!events.isEmpty()) {
+                        List<String> names = Collections.singletonList(team);
+                        Map<String, JSONObject> leagueMap = sweepwaterService.buildLeagueMap(events);
+                        // 平台绑定球队赛事对应获取盘口赛事列表
+                        JSONObject eventJson = sweepwaterService.findEventByLeagueName(leagueMap, dto.getLeagueIdA(), names);
+                        if (eventJson != null &&
+                                eventJson.containsKey("events") &&
+                                eventJson.getJSONArray("events") != null) {
+                            String eventId = eventJson.getStr("ecid");
+                            log.info("角球检测任务执行,平台用户:{},新二网站赔率数据:{}", username, eventJson);
+                            JSONArray eventsJson = eventJson.getJSONArray("events");
+                            if (eventsJson != null && !eventsJson.isEmpty()) {
+                                JSONObject event = eventsJson.getJSONObject(0);
+                                if (event != null) {
+                                    String eid = event.getStr("id");
+                                    String score = event.getStr("score");
+                                    Integer reTime = event.getInt("reTime");
+                                    JSONObject fullCourt = event.getJSONObject("fullCourt");
+                                    if (fullCourt != null) {
+                                        JSONObject letBall = fullCourt.getJSONObject("letBall");
+                                        if (letBall != null) {
+                                            JSONObject up = letBall.getJSONObject("up");
+                                            JSONObject down = letBall.getJSONObject("down");
+                                            String league = dto.getBetInfoA().getStr("league");
+                                            String desiredChoseTeam = dto.getBetInfoA().getStr("betTeamName");
+                                            JSONObject firstOdds = null;
+                                            if (up != null && !up.isEmpty()) {
+                                                for (Object val : up.values()) {
+                                                    if (val instanceof JSONObject jo && desiredChoseTeam.equalsIgnoreCase(jo.getStr("choseTeam"))) {
+                                                        firstOdds = jo;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            if (firstOdds == null && down != null && !down.isEmpty()) {
+                                                for (Object val : down.values()) {
+                                                    if (val instanceof JSONObject jo && desiredChoseTeam.equalsIgnoreCase(jo.getStr("choseTeam"))) {
+                                                        firstOdds = jo;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            // 输出赔率
+                                            log.info("手动投注-角球任务：配置信息，user={}, 获取赛事赔率成功:{}",
+                                                    admin.getUsername(), team);
+                                            dto.setOddsIdA(eid);
+                                            dto.setStrongA(firstOdds.getStr("oddFType"));
+                                            dto.setGTypeA(firstOdds.getStr("gtype"));
+                                            dto.setWTypeA(firstOdds.getStr("wtype"));
+                                            dto.setRTypeA(firstOdds.getStr("rtype"));
+                                            dto.setChoseTeamA(firstOdds.getStr("choseTeam"));
+                                            dto.setOddsA(firstOdds.getBigDecimal("odds"));
+                                            dto.setConA(firstOdds.getStr("con"));
+                                            dto.setRatioA(firstOdds.getStr("ratio"));
+                                            dto.setHandicapA(firstOdds.getStr("handicap"));
+                                            dto.setScoreA(score);
+                                            dto.setReTimeA(String.valueOf(reTime));
+                                            dto.setHandicapType("letBall");
+
+                                            JSONObject betParams = buildBetParams(dto, amountDTO, true, false);
+                                            JSONObject retryPreview = buildBetInfo(
+                                                    admin.getUsername(), desiredChoseTeam, dto.getWebsiteIdA(),
+                                                    betParams, true, dto, betAmountByOdds, null
+                                            );
+                                            if (retryPreview == null) {
+                                                log.info("角球检测任务：预览失败，user={}, 投注队伍={}, 赛事id={}, oddsId={}",
+                                                        admin.getUsername(), desiredChoseTeam, eventId, eid);
+                                                JSONObject betInfo = new JSONObject();
+                                                betInfo.putOpt("amount", amountDTO.getAmountXinEr());
+                                                betInfo.putOpt("betTeamName", desiredChoseTeam);
+                                                betInfo.putOpt("handicap", firstOdds.getStr("handicap"));
+                                                betInfo.putOpt("league", league);
+                                                betInfo.putOpt("marketName", desiredChoseTeam);
+                                                betInfo.putOpt("marketTypeName", "让球盘");
+                                                betInfo.putOpt("odds", desiredChoseTeam + " " + firstOdds.getStr("handicap"));
+                                                betInfo.putOpt("oddsValue", firstOdds.getStr("odds"));
+                                                betInfo.putOpt("team", team);
+                                                dto.setBetInfoA(betInfo);
+                                                continue;
+                                            }
+                                            JSONObject successJson = tryBetCorner(admin.getUsername(), eventId, dto.getWebsiteIdA(), true, dto, limitDTO, amountDTO, retryPreview);
+                                            if (successJson == null) {
+                                                log.info("手动投注-角球投注失败：投注返回空，user={}, 投注队伍={}, 赛事={}",
+                                                        admin.getUsername(), betTeamName, eventId);
+                                                continue;
+                                            }
+                                            boolean success = successJson.getBool("success", false);
+                                            if (!success) {
+                                                continue;
+                                            } else {
+                                                successOk = true;
+                                            }
+                                            log.info("角球检测任务：投注结果: user={}, 投注队伍={}, eventId={}, success={}, raw={}",
+                                                    admin.getUsername(), betTeamName, eventId, success, successJson);
+
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!successOk) {
+                    log.info("手动补单赛事A第{}次投注失败:{}", retry + 1, retryResultA.containsKey("msg") ? retryResultA.getStr("msg") : retryResultA);
+                    continue;
+                }
+                dto.setBetSuccessA(successOk);
+                dto.setManualRetryA(true);
+                if (retryResultA.containsKey("betInfo")) {
+                    dto.setBetInfoA(retryResultA.getJSONObject("betInfo"));
                 }
             }
         }

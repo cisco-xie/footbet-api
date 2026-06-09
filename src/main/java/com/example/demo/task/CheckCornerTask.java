@@ -705,6 +705,7 @@ public class CheckCornerTask {
         dto.setLeagueIdA(leagueId);
         dto.setWebsiteIdA(websiteId);
         dto.setWebsiteNameA(WebsiteType.getById(websiteId).getDescription());
+        dto.setBetTimeA(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_TIME_PATTERN));
         dto.setCreateTime(LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATETIME_PATTERN));
         String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
 

@@ -29,6 +29,7 @@ import com.example.demo.api.SweepwaterService;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.utils.KeyUtil;
 import com.example.demo.config.SuccessBasedLimitManager;
+import com.example.demo.core.SoccerApiNewTool;
 import com.example.demo.core.result.Result;
 import com.example.demo.core.support.BaseController;
 import com.example.demo.model.dto.AdminLoginDTO;
@@ -64,6 +65,8 @@ public class TestController extends BaseController {
     private SuccessBasedLimitManager limitManager;
     @Resource
     private RealtimeIndexService realtimeIndexService;
+
+    private final SoccerApiNewTool tool = new SoccerApiNewTool();
 
     @Operation(summary = "登录所有盘口账号")
     @GetMapping("/login")
@@ -190,4 +193,11 @@ public class TestController extends BaseController {
         return Result.success(limitManager.getAllLimitKeys());
     }
 
+    @Operation(summary = "纳米api-获取赛事详情")
+    @GetMapping("/match")
+    public Result getMatchDetail(@RequestParam String matchIdA) {
+        return Result.success(
+                tool.fetchMatchDetailByMatchId(matchIdA)
+        );
+    }
 }

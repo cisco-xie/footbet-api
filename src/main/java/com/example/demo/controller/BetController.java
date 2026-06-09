@@ -143,7 +143,13 @@ public class BetController extends BaseController {
             return Result.failed(-1, "betId不能为空");
         }
         try {
-            return Result.success(betService.retryBetById(admin.getUsername(), retryVO.getBetId()));
+            if (retryVO.getBetType() == 1) {
+                return Result.success(betService.retryBetById(admin.getUsername(), retryVO.getBetId()));
+            } else if (retryVO.getBetType() == 2) {
+                return Result.success(betService.retryBetCornerById(admin.getUsername(), retryVO.getBetId()));
+            } else {
+                return Result.failed(-1, "betType不正确");
+            }
         } catch (Exception e) {
             return Result.failed(-1, e.getMessage());
         }
