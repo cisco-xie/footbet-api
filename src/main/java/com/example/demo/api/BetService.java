@@ -1864,6 +1864,7 @@ public class BetService {
      * @param dto
      * @param limitDTO
      * @param amountDTO
+     * @param betPreviewOpt
      * @return
      */
     public JSONObject tryBetCorner(String username,
@@ -1965,12 +1966,15 @@ public class BetService {
         //}
         if (result.getBool("isBet", false)) {
             try {
-                if (dto.getId() == null || dto.getId().isEmpty()) {
+                boolean isNew = StringUtils.isBlank(dto.getId());
+
+                if (isNew) {
                     dto.setId(IdUtil.fastSimpleUUID());
-                } else {
+                }
+                /*else if (StringUtils.isNotBlank(dto.getId()) && !isRetry) {
                     log.info("角球投注记录已经写入,无需重复写入 username={}, eventId={}, id={}", username, eventId, dto.getId());
                     return result;
-                }
+                }*/
                 dto.setEventIdA(eventId);
                 dto.setBetSuccessA(result.getBool("success", false));
                 dto.setWebsiteNameA(WebsiteType.getById(websiteId).getDescription());
@@ -1979,8 +1983,10 @@ public class BetService {
 
                 // 投注成功后异步调用599-sniffer获取比分详情URL
                 String team = dto.getBetInfoA().getStr("team");
-                String detailUrl = fetchBiFenUrlAsync(team, username);
-                dto.setBiFenUrlA(detailUrl);
+                if (StringUtils.isBlank(dto.getBiFenUrlA())) {
+                    String detailUrl = fetchBiFenUrlAsync(team, username);
+                    dto.setBiFenUrlA(detailUrl);
+                }
                 String json = JSONUtil.toJsonStr(dto);
 
                 String key = KeyUtil.genKey(
@@ -1991,7 +1997,16 @@ public class BetService {
                 );
                 businessPlatformRedissonClient.getBucket(key).set(json);
                 String indexKey = KeyUtil.genKey("INDEX", username, "corner-history", date);
-                businessPlatformRedissonClient.getList(indexKey).add(key);
+                RLock lock = businessPlatformRedissonClient.getLock(indexKey + ":lock" );
+                try {
+                    lock.lock();
+                    RList<String> indexList = businessPlatformRedissonClient.getList(indexKey);
+                    if (!indexList.contains(key)) {
+                        indexList.add(key);
+                    }
+                } finally {
+                    lock.unlock();
+                }
 
                 String realTimeKey = KeyUtil.genKey(
                         RedisConstants.PLATFORM_BET_CORNER_PREFIX,
@@ -1999,7 +2014,7 @@ public class BetService {
                         "realtime",
                         dto.getId()
                 );
-                realtimeIndexService.pushRealtimeIndex(username, realTimeKey, json, "corner");
+                realtimeIndexService.pushRealtimeIndex(username, realTimeKey, json, "corner", isNew);
 
             } catch (Exception e) {
                 log.error("角球投注记录写入失败 username={}, eventId={}", username, eventId, e);
@@ -2974,7 +2989,7 @@ public class BetService {
                             null
                     );
                     if (previewA == null) {
-                        log.info("手动补单第{}次预览失败", retry + 1);
+                        log.info("手动投注补单第{}次预览失败", retry + 1);
                         continue;
                     }
                     JSONObject successJson = tryBetCorner(admin.getUsername(), dto.getEventIdA(), dto.getWebsiteIdA(), true, dto, limitDTO, amountDTO, previewA);
@@ -2995,7 +3010,7 @@ public class BetService {
                     String team = dto.getBetInfoA().getStr("team");
                     String betTeamName = dto.getBetInfoA().getStr("betTeamName");
                     // isHandicap = false，则说明赔率查询出了问题，导致不确定是要投注哪个赔率盘口，就进行赔率查询然后用对应球队的第一个让球盘即可
-                    JSONArray events = (JSONArray) handicapApi.eventsOdds(username, dto.getWebsiteIdA(), dto.getEventIdA(), null);
+                    JSONArray events = (JSONArray) handicapApi.eventsOdds(username, dto.getWebsiteIdA(), dto.getLeagueIdA(), null);
                     if (!events.isEmpty()) {
                         List<String> names = Collections.singletonList(team);
                         Map<String, JSONObject> leagueMap = sweepwaterService.buildLeagueMap(events);
@@ -3061,7 +3076,7 @@ public class BetService {
                                                     betParams, true, dto, betAmountByOdds, null
                                             );
                                             if (retryPreview == null) {
-                                                log.info("角球检测任务：预览失败，user={}, 投注队伍={}, 赛事id={}, oddsId={}",
+                                                log.info("手动投注-角球检测任务：预览失败，user={}, 投注队伍={}, 赛事id={}, oddsId={}",
                                                         admin.getUsername(), desiredChoseTeam, eventId, eid);
                                                 JSONObject betInfo = new JSONObject();
                                                 betInfo.putOpt("amount", amountDTO.getAmountXinEr());
@@ -3113,7 +3128,7 @@ public class BetService {
 
         dto.setManualRetry(Boolean.TRUE.equals(dto.getManualRetryA())
                 || Boolean.TRUE.equals(dto.getManualRetryB()));
-        persistRetryBetRecord(username, dto);
+        persistRetryBetRecordCorner(username, dto);
         JSONObject response = new JSONObject();
         response.putOpt("betId", dto.getId());
         response.putOpt("retryA", needRetryA);
@@ -3188,6 +3203,11 @@ public class BetService {
         return null;
     }
 
+    /**
+     * 滚球手动投注补单成功后更新redis结果数据
+     * @param username
+     * @param dto
+     */
     private void persistRetryBetRecord(String username, SweepwaterBetDTO dto) {
         String json = JSONUtil.toJsonStr(dto);
         String historyDate = extractHistoryDate(dto);
@@ -3201,6 +3221,31 @@ public class BetService {
 
         String realTimeKey = KeyUtil.genKey(
                 RedisConstants.PLATFORM_BET_PREFIX,
+                username,
+                "realtime",
+                dto.getId()
+        );
+        businessPlatformRedissonClient.getBucket(realTimeKey).set(json);
+    }
+
+    /**
+     * 角球手动投注补单成功后更新redis结果数据
+     * @param username
+     * @param dto
+     */
+    private void persistRetryBetRecordCorner(String username, SweepwaterBetDTO dto) {
+        String json = JSONUtil.toJsonStr(dto);
+        String historyDate = extractHistoryDate(dto);
+        String historyKey = KeyUtil.genKey(
+                RedisConstants.PLATFORM_BET_CORNER_PREFIX,
+                username,
+                historyDate,
+                dto.getId()
+        );
+        businessPlatformRedissonClient.getBucket(historyKey).set(json);
+
+        String realTimeKey = KeyUtil.genKey(
+                RedisConstants.PLATFORM_BET_CORNER_PREFIX,
                 username,
                 "realtime",
                 dto.getId()

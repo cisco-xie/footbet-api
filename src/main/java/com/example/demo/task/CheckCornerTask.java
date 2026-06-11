@@ -132,7 +132,6 @@ public class CheckCornerTask {
                                     if (matchIdA == null || matchIdA.isEmpty()) {
                                         return;
                                     }
-                                    log.info("角球检测任务：平台用户 {} 检查赛事:{}", admin.getUsername(), team.getNameB());
                                     SoccerApiNewTool.MatchDetail detail = tool.fetchMatchDetailByMatchId(matchIdA);
                                     if (detail == null) {
                                         return;
@@ -236,6 +235,7 @@ public class CheckCornerTask {
                                         long retryDelayMs = 200;                // 重试间隔0.2秒
                                         boolean betSuccess = false;             // 投注成功标志
                                         boolean isBet = false;                  // 是否进入投注流程标志
+                                        String teamNameLabel = "";                   // 需要投注的队伍名称
                                         SweepwaterBetDTO sweepwater = new SweepwaterBetDTO();
                                         for (int retryCount = 0; retryCount < maxRetries && !betSuccess; retryCount++) {
                                             if (retryCount > 0) {
@@ -249,7 +249,6 @@ public class CheckCornerTask {
                                             }
 
                                             String sideLabel;
-                                            String teamNameLabel;
                                             String nameB = team.getNameB();
                                             String homeTeam = nameB;
                                             String awayTeam = "";
@@ -365,7 +364,7 @@ public class CheckCornerTask {
                                             }
                                             String eid = event.getStr("id");
                                             String score = event.getStr("score");
-                                            Integer reTime = event.getInt("reTime");
+                                            String reTime = event.getStr("reTime");
                                             JSONObject fullCourt = event.getJSONObject("fullCourt");
                                             if (fullCourt == null) {
                                                 log.info("角球检测任务执行,投注跳过,平台用户:{},赛事 fullCourt 为空,跳出", admin.getUsername());
@@ -507,11 +506,12 @@ public class CheckCornerTask {
                                                 }
                                                 IntervalDTO interval = settingsBetService.getInterval(admin.getUsername());
                                                 List<TimeFrameDTO> timeFrames = settingsFilterService.getTimeFrames(admin.getUsername());
-                                                if (!timeFrames.isEmpty()) {
+                                                if (!timeFrames.isEmpty() || !"中场".equals(reTime)) {
                                                     TimeFrameDTO timeFrame = timeFrames.get(0);
-                                                    if (reTime < timeFrame.getTimeFormSec() || reTime > timeFrame.getTimeToSec()) {
+                                                    int reTimeValue = Integer.parseInt(reTime);
+                                                    if (reTimeValue < timeFrame.getTimeFormSec() || reTimeValue > timeFrame.getTimeToSec()) {
                                                         log.info("角球检测任务：当前赛事时间:{}不在[{}-{}]范围内",
-                                                                reTime, timeFrame.getTimeFormSec(), timeFrame.getTimeToSec());
+                                                                reTimeValue, timeFrame.getTimeFormSec(), timeFrame.getTimeToSec());
                                                         // 只要进入流程，就记录已执行投注，
                                                         lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
                                                         return;
@@ -550,7 +550,7 @@ public class CheckCornerTask {
                                                 sweepwater.setRatioA(firstOdds.getStr("ratio"));
                                                 sweepwater.setHandicapA(firstOdds.getStr("handicap"));
                                                 sweepwater.setScoreA(score);
-                                                sweepwater.setReTimeA(String.valueOf(reTime));
+                                                sweepwater.setReTimeA(reTime);
                                                 sweepwater.setHandicapType("letBall");
 
                                                 // 校验投注间隔key - 使用matchIdA确保同一赛事始终使用相同的key
@@ -582,6 +582,19 @@ public class CheckCornerTask {
                                                 String reservationId = checkResult.getReservationId();
                                                 boolean betAmountByOdds = limit.getBetAmountByOdds() != null && limit.getBetAmountByOdds() == 1;
 
+                                                // 赔率获取正常，先把信息写入betInfoA
+                                                JSONObject betInfo = new JSONObject();
+                                                betInfo.putOpt("amount", amount.getAmountXinEr());
+                                                betInfo.putOpt("betTeamName", teamNameLabel);
+                                                betInfo.putOpt("handicap", firstOdds.getStr("handicap"));
+                                                betInfo.putOpt("league", league.getLeagueNameB());
+                                                betInfo.putOpt("marketName", teamNameLabel);
+                                                betInfo.putOpt("marketTypeName", "让球盘");
+                                                betInfo.putOpt("odds", teamNameLabel + " " + firstOdds.getStr("handicap"));
+                                                betInfo.putOpt("oddsValue", firstOdds.getStr("odds"));
+                                                betInfo.putOpt("team", nameB);
+                                                sweepwater.setBetInfoA(betInfo);
+
                                                 JSONObject betParams = betService.buildBetParams(sweepwater, amount, true, false);
                                                 JSONObject retryPreview = betService.buildBetInfo(
                                                         admin.getUsername(), betTeamName, league.getWebsiteIdB(),
@@ -593,17 +606,6 @@ public class CheckCornerTask {
                                                     limitManager.rollbackReservation(limitKey, reservationId);
                                                     // 只要进入流程，就记录已执行投注，
                                                     lastCornerMinuteByMatch.replace(key, currentMinute, originalLastMinute);
-                                                    JSONObject betInfo = new JSONObject();
-                                                    betInfo.putOpt("amount", amount.getAmountXinEr());
-                                                    betInfo.putOpt("betTeamName", teamNameLabel);
-                                                    betInfo.putOpt("handicap", firstOdds.getStr("handicap"));
-                                                    betInfo.putOpt("league", league.getLeagueNameB());
-                                                    betInfo.putOpt("marketName", teamNameLabel);
-                                                    betInfo.putOpt("marketTypeName", "让球盘");
-                                                    betInfo.putOpt("odds", teamNameLabel + " " + firstOdds.getStr("handicap"));
-                                                    betInfo.putOpt("oddsValue", firstOdds.getStr("odds"));
-                                                    betInfo.putOpt("team", nameB);
-                                                    sweepwater.setBetInfoA(betInfo);
                                                     continue; 
                                                 }
                                                 JSONObject successJson = betService.tryBetCorner(admin.getUsername(), eventId, league.getWebsiteIdB(), true, sweepwater, limit, amount, retryPreview);
@@ -636,7 +638,7 @@ public class CheckCornerTask {
                                         }
                                         if (!isBet && !betSuccess) {
                                             // 角球没有进入投注流程就失败了，才进行记录保存
-                                            betFailed(admin.getUsername(), sweepwater, league.getWebsiteIdB(), league.getLeagueIdB(), team.getIdB());
+                                            betFailed(admin.getUsername(), sweepwater, teamNameLabel, league.getWebsiteIdB(), league.getLeagueIdB(), team.getIdB());
                                         }
                                         // 投注全部失败：回滚lastCornerMinuteByMatch，允许下次重试,注释掉则说明投注失败后下次不允许重试
                                         /*if (!betSuccess && isCorner) {
@@ -692,7 +694,7 @@ public class CheckCornerTask {
      * @param dto
      * @param websiteId
      */
-    public void betFailed(String username, SweepwaterBetDTO dto, String websiteId, String leagueId, String eventId) {
+    public void betFailed(String username, SweepwaterBetDTO dto, String teamName, String websiteId, String leagueId, String eventId) {
         log.info("角球投注失败记录-就算没有进入到投注流程也记录因为前端需要展示，username={},dto={},websiteId={}", username, dto, websiteId);
         if (dto.getId() == null || dto.getId().isEmpty()) {
             dto.setId(IdUtil.fastSimpleUUID());
@@ -710,8 +712,7 @@ public class CheckCornerTask {
         String date = LocalDateTimeUtil.format(LocalDateTime.now(), DatePattern.NORM_DATE_PATTERN);
 
         // 投注成功后异步调用599-sniffer获取比分详情URL
-        String team = dto.getBetInfoA().getStr("team");
-        String detailUrl = betService.fetchBiFenUrlAsync(team, username);
+        String detailUrl = betService.fetchBiFenUrlAsync(teamName, username);
         dto.setBiFenUrlA(detailUrl);
         String json = JSONUtil.toJsonStr(dto);
 
@@ -731,7 +732,7 @@ public class CheckCornerTask {
                 "realtime",
                 dto.getId()
         );
-        realtimeIndexService.pushRealtimeIndex(username, realTimeKey, json, "corner");
+        realtimeIndexService.pushRealtimeIndex(username, realTimeKey, json, "corner", true);
 
     }
 

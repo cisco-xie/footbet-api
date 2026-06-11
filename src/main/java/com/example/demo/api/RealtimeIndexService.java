@@ -25,10 +25,10 @@ public class RealtimeIndexService {
      * @param betJson   bet 的 JSON 字符串（完整内容写入 bucket）
      */
     public void pushRealtimeIndex(String username, String betKey, String betJson) {
-        pushRealtimeIndex(username, betKey, betJson, "default");
+        pushRealtimeIndex(username, betKey, betJson, "default", true);
     }
 
-    public void pushRealtimeIndex(String username, String betKey, String betJson, String channel) {
+    public void pushRealtimeIndex(String username, String betKey, String betJson, String channel, boolean isNew) {
         try {
             // 写入 bucket（完整数据）
             RBucket<String> bucket = businessPlatformRedissonClient.getBucket(betKey);
@@ -38,16 +38,27 @@ public class RealtimeIndexService {
             String indexSegment = "default".equalsIgnoreCase(channel) ? "realtime" : channel + "-realtime";
             String indexKey = KeyUtil.genKey("INDEX", username, indexSegment);
             RList<String> index = businessPlatformRedissonClient.getList(indexKey);
-            index.add(betKey);
+            Integer indexPos;
+
+            if (isNew) {
+                index.add(betKey);
+                indexPos = index.size() - 1;
+            } else {
+                indexPos = index.indexOf(betKey);
+                if (indexPos < 0) {
+                    index.add(betKey);
+                    indexPos = index.size() - 1;
+                }
+            }
 
             // 发布轻量通知到 global channel（避免把完整 json 发到 pubsub）
             JSONObject msg = new JSONObject();
-            msg.set("type", "newBet");
+            msg.set("type", isNew ? "newBet" : "updateBet");
             msg.set("channel", channel);
             msg.set("username", username);
             msg.set("key", betKey);
             // 可选：发送 index 长度，便于前端快速定位增量
-            msg.set("index", index.size() - 1);
+            msg.set("index", indexPos);
 
             RTopic topic = businessPlatformRedissonClient.getTopic("realtime:global");
             topic.publish(msg.toString());

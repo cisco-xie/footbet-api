@@ -168,7 +168,7 @@ public class TestController extends BaseController {
                 dto.getId()
         );
 
-        realtimeIndexService.pushRealtimeIndex(user, realTimeKey, json, "corner");
+        realtimeIndexService.pushRealtimeIndex(user, realTimeKey, json, "corner", true);
         log.info("模拟角球投注成功已推送 user={}, key={}", user, realTimeKey);
         return Result.success();
     }

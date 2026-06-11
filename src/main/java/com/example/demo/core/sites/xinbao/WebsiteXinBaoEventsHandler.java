@@ -111,7 +111,7 @@ public class WebsiteXinBaoEventsHandler implements ApiHandler {
             res.putOpt("msg", "账户登录失效");
             return res;
         }
-        log.info("新二赛事列表结果: {}", response.getBody());
+        // log.info("新二赛事列表结果: {}", response.getBody());
         // 解析响应
         Document docResult = XmlUtil.readXML(response.getBody());
         JSONObject responseJson = new JSONObject(response.getBody());
