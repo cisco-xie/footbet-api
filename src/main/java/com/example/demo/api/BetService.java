@@ -3015,19 +3015,19 @@ public class BetService {
                         List<String> names = Collections.singletonList(team);
                         Map<String, JSONObject> leagueMap = sweepwaterService.buildLeagueMap(events);
                         // 平台绑定球队赛事对应获取盘口赛事列表
-                        JSONObject eventJson = sweepwaterService.findEventByLeagueName(leagueMap, dto.getLeagueIdA(), names);
+                        JSONObject eventJson = sweepwaterService.findEventBySimilarityLeagueName(leagueMap, dto.getLeagueIdA(), names);
                         if (eventJson != null &&
                                 eventJson.containsKey("events") &&
                                 eventJson.getJSONArray("events") != null) {
                             String eventId = eventJson.getStr("ecid");
-                            log.info("角球检测任务执行,平台用户:{},新二网站赔率数据:{}", username, eventJson);
+                            log.info("手动投注-角球检测任务执行,平台用户:{},新二网站赔率数据:{}", username, eventJson);
                             JSONArray eventsJson = eventJson.getJSONArray("events");
                             if (eventsJson != null && !eventsJson.isEmpty()) {
                                 JSONObject event = eventsJson.getJSONObject(0);
                                 if (event != null) {
                                     String eid = event.getStr("id");
                                     String score = event.getStr("score");
-                                    Integer reTime = event.getInt("reTime");
+                                    String reTime = event.getStr("reTime");
                                     JSONObject fullCourt = event.getJSONObject("fullCourt");
                                     if (fullCourt != null) {
                                         JSONObject letBall = fullCourt.getJSONObject("letBall");
@@ -3039,7 +3039,7 @@ public class BetService {
                                             JSONObject firstOdds = null;
                                             if (up != null && !up.isEmpty()) {
                                                 for (Object val : up.values()) {
-                                                    if (val instanceof JSONObject jo && desiredChoseTeam.equalsIgnoreCase(jo.getStr("choseTeam"))) {
+                                                    if (val instanceof JSONObject jo && dto.getChoseTeamA().equalsIgnoreCase(jo.getStr("choseTeam"))) {
                                                         firstOdds = jo;
                                                         break;
                                                     }
@@ -3047,16 +3047,21 @@ public class BetService {
                                             }
                                             if (firstOdds == null && down != null && !down.isEmpty()) {
                                                 for (Object val : down.values()) {
-                                                    if (val instanceof JSONObject jo && desiredChoseTeam.equalsIgnoreCase(jo.getStr("choseTeam"))) {
+                                                    if (val instanceof JSONObject jo && dto.getChoseTeamA().equalsIgnoreCase(jo.getStr("choseTeam"))) {
                                                         firstOdds = jo;
                                                         break;
                                                     }
                                                 }
                                             }
+                                            if (firstOdds == null) {
+                                                log.info("手动投注-角球任务：配置信息，user={}, 赛事:{}, 获取赛事赔率firstOdds为空:{}",
+                                                        admin.getUsername(), team, firstOdds);
+                                                continue;
+                                            }
                                             // 输出赔率
-                                            log.info("手动投注-角球任务：配置信息，user={}, 获取赛事赔率成功:{}",
-                                                    admin.getUsername(), team);
-                                            dto.setOddsIdA(eid);
+                                            log.info("手动投注-角球任务：配置信息，user={}, 赛事:{}, 获取赛事赔率成功:{}",
+                                                    admin.getUsername(), team, firstOdds);
+                                            dto.setOddsIdA(firstOdds.getStr("id"));
                                             dto.setStrongA(firstOdds.getStr("oddFType"));
                                             dto.setGTypeA(firstOdds.getStr("gtype"));
                                             dto.setWTypeA(firstOdds.getStr("wtype"));
@@ -3067,7 +3072,7 @@ public class BetService {
                                             dto.setRatioA(firstOdds.getStr("ratio"));
                                             dto.setHandicapA(firstOdds.getStr("handicap"));
                                             dto.setScoreA(score);
-                                            dto.setReTimeA(String.valueOf(reTime));
+                                            dto.setReTimeA(reTime);
                                             dto.setHandicapType("letBall");
 
                                             JSONObject betParams = buildBetParams(dto, amountDTO, true, false);

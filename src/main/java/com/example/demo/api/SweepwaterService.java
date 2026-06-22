@@ -5,6 +5,7 @@ import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
 import cn.hutool.core.date.LocalDateTimeUtil;
 import cn.hutool.core.date.TimeInterval;
+import cn.hutool.core.text.TextSimilarity;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
@@ -977,6 +978,113 @@ public class SweepwaterService {
             // 使用 removeIf，避免 ConcurrentModificationException
             eventArray.removeIf(event -> !nameSet.contains(((JSONObject) event).getStr("name")));
         }
+
+        return eventJson;
+    }
+
+    /**
+     * 球队名称简化 归一化
+     * @param name
+     * @return
+     */
+    private String normalizeTeamName(String name) {
+
+        if (StringUtils.isBlank(name)) {
+            return "";
+        }
+
+        return name.toLowerCase()
+
+                // 女足
+                .replaceAll("女足", "")
+                .replaceAll("\\bwomen\\b", "")
+                .replaceAll("\\bwfc\\b", "")
+
+                // 青年队
+                .replaceAll("u\\d+", "")
+                .replaceAll("青年队|预备队|reserve", "")
+
+                // 俱乐部后缀
+                .replaceAll("\\bfc\\b", "")
+                .replaceAll("\\bsc\\b", "")
+                .replaceAll("\\bafc\\b", "")
+
+                // 特殊符号
+                .replaceAll("[\\s\\-()（）]", "")
+
+                .trim();
+    }
+
+    /**
+     * 使用编辑距离计算相似度
+     * @param name1
+     * @param name2
+     * @return
+     */
+    private double calculateSimilarity(
+            String name1,
+            String name2) {
+
+        if (name1.equals(name2)) {
+            return 1.0;
+        }
+
+        name1 = normalizeTeamName(name1);
+        name2 = normalizeTeamName(name2);
+
+        if (name1.contains(name2)
+                || name2.contains(name1)) {
+
+            return 0.95;
+        }
+
+        return TextSimilarity.similar(name1, name2);
+    }
+
+    /**
+     * 根据联赛名称查找赛事 - 根据相似度查找 主要提供给角球使用，因为角球绑定字典的球队，可能会出现球队名变动的情况
+     * @param leagueMap
+     * @param leagueId
+     * @param names
+     * @return
+     */
+    public JSONObject findEventBySimilarityLeagueName(
+            Map<String, JSONObject> leagueMap,
+            String leagueId,
+            List<String> names) {
+        JSONObject eventJson = leagueMap.get(leagueId);
+        if (eventJson == null) {
+            return null;
+        }
+        JSONArray eventArray = eventJson.getJSONArray("events");
+        if (CollUtil.isEmpty(eventArray)) {
+            return eventJson;
+        }
+        JSONObject bestEvent = null;
+        double bestScore = 0;
+        for (Object obj : eventArray) {
+            JSONObject event = (JSONObject) obj;
+            String eventName = event.getStr("name");
+            double maxScore = 0;
+            for (String name : names) {
+                double score =
+                        calculateSimilarity(name, eventName);
+
+                maxScore = Math.max(maxScore, score);
+            }
+            if (maxScore > bestScore) {
+                bestScore = maxScore;
+                bestEvent = event;
+            }
+        }
+
+        JSONArray result = new JSONArray();
+        if (bestEvent != null && bestScore >= 0.7) {
+            bestEvent.set("matchScore", bestScore);
+            result.add(bestEvent);
+        }
+
+        eventJson.set("events", result);
 
         return eventJson;
     }

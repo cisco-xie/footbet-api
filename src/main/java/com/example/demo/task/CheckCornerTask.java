@@ -237,6 +237,10 @@ public class CheckCornerTask {
                                         boolean isBet = false;                  // 是否进入投注流程标志
                                         String teamNameLabel = "";                   // 需要投注的队伍名称
                                         SweepwaterBetDTO sweepwater = new SweepwaterBetDTO();
+                                        // 提前设置投注的球队，主队还是客队
+                                        boolean homeOrAway = last.startsWith("11") || last.startsWith("119");
+                                        String desiredChoseTeam = homeOrAway ? "H" : "C";
+                                        sweepwater.setChoseTeamA(desiredChoseTeam);
                                         for (int retryCount = 0; retryCount < maxRetries && !betSuccess; retryCount++) {
                                             if (retryCount > 0) {
                                                 log.info("角球检测任务：第{}次重试投注，赛事={}，分钟={}", retryCount, team.getNameB(), currentMinute);
@@ -304,7 +308,7 @@ public class CheckCornerTask {
                                             List<String> names = Collections.singletonList(team.getNameB());
                                             Map<String, JSONObject> leagueMap = sweepwaterService.buildLeagueMap(events);
                                             // 平台绑定球队赛事对应获取盘口赛事列表
-                                            JSONObject eventJson = sweepwaterService.findEventByLeagueName(leagueMap, league.getLeagueIdB(), names);
+                                            JSONObject eventJson = sweepwaterService.findEventBySimilarityLeagueName(leagueMap, league.getLeagueIdB(), names);
                                             if (eventJson == null ||
                                                     !eventJson.containsKey("events") ||
                                                     eventJson.getJSONArray("events") == null) {
@@ -403,8 +407,6 @@ public class CheckCornerTask {
                                             }
                                             JSONObject up = letBall.getJSONObject("up");
                                             JSONObject down = letBall.getJSONObject("down");
-                                            boolean lastHome = last.startsWith("11") || last.startsWith("119");
-                                            String desiredChoseTeam = lastHome ? "H" : "C";
                                             JSONObject firstOdds = null;
                                             if (up != null && !up.isEmpty()) {
                                                 for (Object val : up.values()) {
@@ -441,7 +443,7 @@ public class CheckCornerTask {
                                             }
                                             log.info("角球检测任务：选择投注盘口，平台用户:{}，角球方:{}，choseTeam={}，赔率JSON:{}",
                                                     admin.getUsername(),
-                                                    lastHome ? "主队角球" : "客队角球",
+                                                    homeOrAway ? "主队角球" : "客队角球",
                                                     desiredChoseTeam,
                                                     firstOdds);
                                             try {
@@ -506,7 +508,7 @@ public class CheckCornerTask {
                                                 }
                                                 IntervalDTO interval = settingsBetService.getInterval(admin.getUsername());
                                                 List<TimeFrameDTO> timeFrames = settingsFilterService.getTimeFrames(admin.getUsername());
-                                                if (!timeFrames.isEmpty() || !"中场".equals(reTime)) {
+                                                if (!timeFrames.isEmpty() && !"中场".equals(reTime)) {
                                                     TimeFrameDTO timeFrame = timeFrames.get(0);
                                                     int reTimeValue = Integer.parseInt(reTime);
                                                     if (reTimeValue < timeFrame.getTimeFormSec() || reTimeValue > timeFrame.getTimeToSec()) {
