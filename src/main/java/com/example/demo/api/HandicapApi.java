@@ -219,7 +219,7 @@ public class HandicapApi {
     // 运行登录工厂
     public void processAccountLogin(ConfigAccountVO account, String username, String websiteId, Map<String, Integer> retryMap) {
         TimeInterval timer = DateUtil.timer();
-        String key = websiteId + ":" + username;
+        String key = websiteId + ":" + username + ":" + account.getAccount();
 
         // 当前失败次数
         int retryCount = retryMap.getOrDefault(key, 0);
@@ -926,7 +926,7 @@ public class HandicapApi {
             long durationMs = 0;
             try {
                 JSONObject result = apiHandler.execute(account, params);
-                log.info("获取赛事列表,平台用户:{},网站:{}, 账号:{}, code:{}, success:{}", username, WebsiteType.getById(websiteId).getDescription(), accountName, result.get("code"), result.getBool("success"));
+                log.info("获取赛事列表,平台用户:{},网站:{}, 账号:{}, code:{}, success:{}, 查询结果:{}", username, WebsiteType.getById(websiteId).getDescription(), accountName, result.get("code"), result.getBool("success"), result);
                 // ✅ 更新调用时间（不论成功与否）
                 accountCooldownMap.put(accountName, System.currentTimeMillis());
                 if (result.getBool("success") && result.get("leagues") != null) {

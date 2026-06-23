@@ -374,7 +374,7 @@ public class WebsiteSboLoginHandler implements ApiHandler {
             result.set("response", response); // 保存原始响应对象以便提取Location
             return result;
         } catch (Exception e) {
-            log.error("第一步请求异常", e);
+            log.error("第一步请求异常:{}", e.getMessage());
             return new JSONObject().set("success", false).set("msg", "第一步请求失败");
         }
     }

@@ -49,13 +49,20 @@ public class OkHttpProxyDispatcher {
 
     private static final int MAX_FAIL = 3;
     private static final long COOLDOWN_MS = 10 * 1000;  // 10秒冷却
-    private static final int MAX_RETRY = 0;                 // 最多重试次数
+    private static final int MAX_RETRY = 2;             // 最多重试次数（共 3 次尝试）
+    private static final long RETRY_DELAY_MS = 1200;    // 代理失败后重试间隔
+    /** 过期前 60s 提前换新，与 911proxy life=5 对齐 */
+    private static final long PROXY_EXPIRE_BUFFER_MS = 60_000;
+    /** 与 AutoProxyTask 保持一致 */
+    private static final int AUTO_PROXY_LIFE_MINUTES = 4;
 
     // 自动代理API地址
     private static final String AUTO_PROXY_API_URL = "https://api.911proxy.com/web_v1/ip/get-ip-v3?app_key=93fb3931ffbf8baad407b45325db3659&pt=9&num=1&ep=hk&cc=HK&state=&city=&life=5&protocol=1&format=txt&lb=";
 
     private final ConcurrentHashMap<String, ProxyState> proxyStateMap = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, OkHttpClient> clientMap = new ConcurrentHashMap<>();
+    /** 运行时代理缓存，避免每次 HTTP 都调 911proxy */
+    private final ConcurrentHashMap<String, AutoProxyEntry> autoProxyCache = new ConcurrentHashMap<>();
 
     // 用于获取自动代理的OkHttpClient
     private final OkHttpClient proxyFetchClient = new OkHttpClient.Builder()
@@ -80,61 +87,116 @@ public class OkHttpProxyDispatcher {
         return defaultClient;
     }
 
-    /**
-     * 如果代理类型是自动获取(3)，则在请求前更新代理
-     * @param config 账户配置
-     * @return 是否成功更新代理
-     */
-    private boolean refreshAutoProxyIfNeeded(ConfigAccountVO config) {
-        // 只有代理类型为3（自动获取）才需要刷新
-        if (config.getProxyType() != null && config.getProxyType() == 3) {
-            try {
-                log.info("[OkHttpProxyDispatcher] 检测到自动代理类型，请求前刷新代理，账户={}", config.getAccount());
-                
-                Request request = new Request.Builder()
-                        .url(AUTO_PROXY_API_URL)
-                        .get()
-                        .addHeader("User-Agent", Constants.USER_AGENT)
-                        .build();
+    private String autoProxyCacheKey(ConfigAccountVO config) {
+        String websiteId = config.getWebsiteId() != null ? config.getWebsiteId() : "";
+        return websiteId + ":" + config.getAccount();
+    }
 
-                try (Response response = proxyFetchClient.newCall(request).execute()) {
-                    if (!response.isSuccessful()) {
-                        log.warn("[OkHttpProxyDispatcher] 自动代理获取失败，状态码: {}", response.code());
-                        return false;
-                    }
-
-                    String proxyStr = response.body() != null ? response.body().string().trim() : null;
-                    if (proxyStr == null || proxyStr.isEmpty()) {
-                        log.warn("[OkHttpProxyDispatcher] 自动代理返回内容为空");
-                        return false;
-                    }
-
-                    String[] arr = proxyStr.split(":");
-                    if (arr.length != 2) {
-                        log.warn("[OkHttpProxyDispatcher] 自动代理格式非法: {}", proxyStr);
-                        return false;
-                    }
-
-                    // 更新代理信息
-                    config.setProxyHost(arr[0]);
-                    config.setProxyPort(Integer.parseInt(arr[1]));
-                    config.setProxyUsername(null);
-                    config.setProxyPassword(null);
-
-                    // 清除旧的客户端缓存，强制创建新的客户端
-                    String oldKey = config.getProxyKey();
-                    clientMap.remove(oldKey);
-
-                    log.info("[OkHttpProxyDispatcher] 自动代理更新成功，账户={}, 新代理={}:{}", 
-                            config.getAccount(), arr[0], arr[1]);
-                    return true;
-                }
-            } catch (Exception e) {
-                log.error("[OkHttpProxyDispatcher] 自动代理获取异常，账户={}", config.getAccount(), e);
-                return false;
-            }
+    private void applyAutoProxyCache(ConfigAccountVO config) {
+        AutoProxyEntry entry = autoProxyCache.get(autoProxyCacheKey(config));
+        if (entry == null || entry.expireTime <= System.currentTimeMillis()) {
+            return;
         }
-        return true; // 不是自动代理类型，不需要刷新
+        Long configExpire = config.getProxyExpireTime();
+        if (isAutoProxyValid(config) && configExpire != null && configExpire >= entry.expireTime) {
+            return;
+        }
+        config.setProxyHost(entry.host);
+        config.setProxyPort(entry.port);
+        config.setProxyUsername(null);
+        config.setProxyPassword(null);
+        config.setProxyExpireTime(entry.expireTime);
+    }
+
+    private boolean isAutoProxyValid(ConfigAccountVO config) {
+        if (StringUtils.isBlank(config.getProxyHost()) || config.getProxyPort() == null || config.getProxyPort() <= 0) {
+            return false;
+        }
+        Long expireTime = config.getProxyExpireTime();
+        return expireTime != null && expireTime - PROXY_EXPIRE_BUFFER_MS > System.currentTimeMillis();
+    }
+
+    /**
+     * 自动代理(type=3)：未过期则复用，过期或 forceRefresh 时才调 911proxy 换新。
+     */
+    private boolean refreshAutoProxyIfNeeded(ConfigAccountVO config, boolean forceRefresh) {
+        if (config.getProxyType() == null || config.getProxyType() != 3) {
+            return true;
+        }
+        applyAutoProxyCache(config);
+        if (!forceRefresh && isAutoProxyValid(config)) {
+            return true;
+        }
+        try {
+            log.info("[OkHttpProxyDispatcher] {}自动代理，账户={}，原因={}",
+                    forceRefresh ? "失败后刷新" : "过期刷新", config.getAccount(),
+                    forceRefresh ? "请求失败" : "代理过期或缺失");
+
+            Request request = new Request.Builder()
+                    .url(AUTO_PROXY_API_URL)
+                    .get()
+                    .addHeader("User-Agent", Constants.USER_AGENT)
+                    .build();
+
+            try (Response response = proxyFetchClient.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    log.warn("[OkHttpProxyDispatcher] 自动代理获取失败，状态码: {}", response.code());
+                    return false;
+                }
+
+                String proxyStr = response.body() != null ? response.body().string().trim() : null;
+                if (proxyStr == null || proxyStr.isEmpty()) {
+                    log.warn("[OkHttpProxyDispatcher] 自动代理返回内容为空");
+                    return false;
+                }
+
+                String[] arr = proxyStr.split(":");
+                if (arr.length != 2) {
+                    log.warn("[OkHttpProxyDispatcher] 自动代理格式非法: {}", proxyStr);
+                    return false;
+                }
+
+                String oldKey = config.getProxyKey();
+                clientMap.remove(oldKey);
+
+                config.setProxyHost(arr[0]);
+                config.setProxyPort(Integer.parseInt(arr[1]));
+                config.setProxyUsername(null);
+                config.setProxyPassword(null);
+                long expireTime = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(AUTO_PROXY_LIFE_MINUTES);
+                config.setProxyExpireTime(expireTime);
+                autoProxyCache.put(autoProxyCacheKey(config), new AutoProxyEntry(arr[0], Integer.parseInt(arr[1]), expireTime));
+
+                log.info("[OkHttpProxyDispatcher] 自动代理更新成功，账户={}, 新代理={}:{}，过期={}min",
+                        config.getAccount(), arr[0], arr[1], AUTO_PROXY_LIFE_MINUTES);
+                return true;
+            }
+        } catch (Exception e) {
+            log.error("[OkHttpProxyDispatcher] 自动代理获取异常，账户={}", config.getAccount(), e);
+            return false;
+        }
+    }
+
+    private boolean isRetryableProxyError(Throwable e) {
+        String msg = e.getMessage();
+        if (msg == null) {
+            return false;
+        }
+        String lower = msg.toLowerCase();
+        return lower.contains("509")
+                || lower.contains("timeout")
+                || lower.contains("handshake")
+                || lower.contains("connection reset")
+                || lower.contains("failed to connect")
+                || lower.contains("unexpected end of stream");
+    }
+
+    private void sleepBeforeRetry() {
+        try {
+            Thread.sleep(RETRY_DELAY_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     // 根据账户唯一key获取或创建OkHttpClient
@@ -210,19 +272,20 @@ public class OkHttpProxyDispatcher {
                           ConfigAccountVO config,
                           boolean checkOnlyConnection) throws IOException {
 
-        // 如果代理类型是自动获取(3)，则在请求前更新代理
-        refreshAutoProxyIfNeeded(config);
-
-        String key = config.getProxyKey();
-        ProxyState state = proxyStateMap.computeIfAbsent(key, k -> new ProxyState());
+        boolean forceRefresh = false;
 
         for (int attempt = 0; attempt <= MAX_RETRY; attempt++) {
-            // TODO 暂时不开启代理冷却功能
-            /*if (!state.isAvailable()) {
-                String msg = String.format("[OkHttpProxyDispatcher] 代理 %s 冷却中，拒绝请求", key);
-                log.info(msg);
-                throw new IOException(msg);
-            }*/
+            if (!refreshAutoProxyIfNeeded(config, forceRefresh)) {
+                throw new IOException("自动代理获取失败");
+            }
+            forceRefresh = false;
+
+            String key = config.getProxyKey();
+            ProxyState state = proxyStateMap.computeIfAbsent(key, k -> new ProxyState());
+
+            if (!state.isAvailable()) {
+                throw new IOException(String.format("[OkHttpProxyDispatcher] 代理 %s 冷却中，拒绝请求", key));
+            }
             try {
                 String proxyTypeStr = (config.getProxyType() == null || config.getProxyType() == 0) ? "无代理" : (config.getProxyType() == 1 ? "HTTP" : "SOCKS");
                 log.info("[OkHttpProxyDispatcher] 尝试请求，方法={}，URL={}，代理={}[{}]，第{}次尝试",
@@ -312,13 +375,12 @@ public class OkHttpProxyDispatcher {
                 state.fail();
                 log.warn("[OkHttpProxyDispatcher] 请求失败，方法={}，URL={}，账户={}，代理={}[{}]，失败次数={}/{}, 错误：{}",
                         method, url, config.getAccount(), key, (config.getProxyType() == null || config.getProxyType() == 0) ? "无代理" : (config.getProxyType() == 1 ? "HTTP" : "SOCKS"), state.getFailCount(), MAX_FAIL, e.getMessage());
-                if (attempt == MAX_RETRY) {
+                if (attempt == MAX_RETRY || !isRetryableProxyError(e)) {
                     throw new IOException("请求全部重试失败：" + e.getMessage(), e);
                 }
-                // 简单等待一下再重试，也可以根据需要调整策略
-                /*try {
-                    Thread.sleep(200);
-                } catch (InterruptedException ignored) {}*/
+                forceRefresh = true;
+                clientMap.remove(config.getProxyKey());
+                sleepBeforeRetry();
             }
         }
         throw new IOException("请求执行失败，未命中任何有效结果");
@@ -340,18 +402,20 @@ public class OkHttpProxyDispatcher {
                                   Map<String, String> headers,
                                   ConfigAccountVO config) throws IOException {
 
-        // 如果代理类型是自动获取(3)，则在请求前更新代理
-        refreshAutoProxyIfNeeded(config);
-
-        String key = config.getProxyKey();
-        ProxyState state = proxyStateMap.computeIfAbsent(key, k -> new ProxyState());
+        boolean forceRefresh = false;
 
         for (int attempt = 0; attempt <= MAX_RETRY; attempt++) {
-            /*if (!state.isAvailable()) {
-                String msg = String.format("[OkHttpProxyDispatcher] 代理 %s 冷却中，拒绝请求", key);
-                log.info(msg);
-                throw new IOException(msg);
-            }*/
+            if (!refreshAutoProxyIfNeeded(config, forceRefresh)) {
+                throw new IOException("自动代理获取失败");
+            }
+            forceRefresh = false;
+
+            String key = config.getProxyKey();
+            ProxyState state = proxyStateMap.computeIfAbsent(key, k -> new ProxyState());
+
+            if (!state.isAvailable()) {
+                throw new IOException(String.format("[OkHttpProxyDispatcher] 代理 %s 冷却中，拒绝请求", key));
+            }
             try {
                 String proxyTypeStr = (config.getProxyType() == null || config.getProxyType() == 0) ? "无代理" : (config.getProxyType() == 1 ? "HTTP" : "SOCKS");
                 log.info("[OkHttpProxyDispatcher] 尝试请求，方法={}，URL={}，代理={}[{}]，第{}次尝试",
@@ -442,12 +506,12 @@ public class OkHttpProxyDispatcher {
                 state.fail();
                 log.warn("[OkHttpProxyDispatcher] 请求失败，方法={}，URL={}，代理={}[{}]，失败次数={}/{}, 错误：{}",
                         method, url, key, config.getProxyType() == 1 ? "HTTP" : "SOCKS", state.getFailCount(), MAX_FAIL, e.getMessage());
-                if (attempt == MAX_RETRY) {
+                if (attempt == MAX_RETRY || !isRetryableProxyError(e)) {
                     throw new IOException("请求全部重试失败：" + e.getMessage(), e);
                 }
-                try {
-                    Thread.sleep(200);
-                } catch (InterruptedException ignored) {}
+                forceRefresh = true;
+                clientMap.remove(config.getProxyKey());
+                sleepBeforeRetry();
             }
         }
         throw new IOException("请求执行失败，未命中任何有效结果");
@@ -469,18 +533,20 @@ public class OkHttpProxyDispatcher {
                                     Map<String, String> headers,
                                     ConfigAccountVO config) throws IOException {
 
-        // 如果代理类型是自动获取(3)，则在请求前更新代理
-        refreshAutoProxyIfNeeded(config);
-
-        String key = config.getProxyKey();
-        ProxyState state = proxyStateMap.computeIfAbsent(key, k -> new ProxyState());
+        boolean forceRefresh = false;
 
         for (int attempt = 0; attempt <= MAX_RETRY; attempt++) {
-            /*if (!state.isAvailable()) {
-                String msg = String.format("[OkHttpProxyDispatcher] 代理 %s 冷却中，拒绝请求", key);
-                log.info(msg);
-                throw new IOException(msg);
-            }*/
+            if (!refreshAutoProxyIfNeeded(config, forceRefresh)) {
+                throw new IOException("自动代理获取失败");
+            }
+            forceRefresh = false;
+
+            String key = config.getProxyKey();
+            ProxyState state = proxyStateMap.computeIfAbsent(key, k -> new ProxyState());
+
+            if (!state.isAvailable()) {
+                throw new IOException(String.format("[OkHttpProxyDispatcher] 代理 %s 冷却中，拒绝请求", key));
+            }
             try {
                 String proxyTypeStr = (config.getProxyType() == null || config.getProxyType() == 0) ? "无代理" : (config.getProxyType() == 1 ? "HTTP" : "SOCKS");
                 log.info("[OkHttpProxyDispatcher] 尝试请求，方法={}，URL={}，代理={}[{}]，第{}次尝试",
@@ -547,12 +613,12 @@ public class OkHttpProxyDispatcher {
                 state.fail();
                 log.warn("[OkHttpProxyDispatcher] 请求失败，方法={}，URL={}，代理={}[{}]，失败次数={}/{}, 错误：{}",
                         method, url, key, config.getProxyType() == 1 ? "HTTP" : "SOCKS", state.getFailCount(), MAX_FAIL, e.getMessage());
-                if (attempt == MAX_RETRY) {
+                if (attempt == MAX_RETRY || !isRetryableProxyError(e)) {
                     throw new IOException("请求全部重试失败：" + e.getMessage(), e);
                 }
-                try {
-                    Thread.sleep(200);
-                } catch (InterruptedException ignored) {}
+                forceRefresh = true;
+                clientMap.remove(config.getProxyKey());
+                sleepBeforeRetry();
             }
         }
         throw new IOException("请求执行失败，未命中任何有效结果");
@@ -595,6 +661,18 @@ public class OkHttpProxyDispatcher {
         private byte[] body;
         private Map<String, List<String>> headers;
     }
+    private static class AutoProxyEntry {
+        private final String host;
+        private final int port;
+        private final long expireTime;
+
+        private AutoProxyEntry(String host, int port, long expireTime) {
+            this.host = host;
+            this.port = port;
+            this.expireTime = expireTime;
+        }
+    }
+
     private static class ProxyState {
         private int failCount = 0;
         private long lastFailTime = 0;

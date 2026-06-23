@@ -181,6 +181,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                 return step1Response;
             }
             JSONArray eventList = step1Response.getJSONObject("data").getJSONArray("events");
+            log.info("获取赛事列表数据第一步成功: {}", eventList);
             JSONObject basicEventInfo = new JSONObject();
             for (int i = 0; i < eventList.size(); i++) {
                 basicEventInfo = eventList.getJSONObject(i);
@@ -190,9 +191,10 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                 }
                 // 获取赔率信息
                 JSONObject oddsInfo = step3GetOddsForEvent(userConfig, params, requestHeaders, eventId, presetFilter);
+                log.info("获取赛事列表数据第二步: {}", oddsInfo);
                 if (oddsInfo != null) {
                     if (oddsInfo.containsKey("errors")) {
-                        log.info("获取赛事列表数据第三步失败: {}", oddsInfo);
+                        log.info("获取赛事列表数据第二步失败: {}", oddsInfo);
                         finalResult.putOpt("success", false);
                         finalResult.putOpt("code", 400);
                         finalResult.putOpt("msg", oddsInfo);
@@ -306,13 +308,10 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
             reTime = 0;
         }
         JSONArray eventResult = basicEventInfo.getJSONArray("eventOdds");
-        String liveHandicapType = null;
         if (eventResult != null && !eventResult.isEmpty()) {
             int homeScore = eventResult.getJSONObject(0).getJSONObject("eventResult").getInt("liveHomeScore");
             int awayScore = eventResult.getJSONObject(0).getJSONObject("eventResult").getInt("liveAwayScore");
             score = homeScore + "-" + awayScore;
-            // 获取谁是上盘，home-主队上盘，away-客队上盘
-            liveHandicapType = eventResult.getJSONObject(0).getJSONObject("eventResult").getStr("liveHandicapType");
         }
         team.putOpt("session", session);
         team.putOpt("reTime", reTime);
@@ -344,7 +343,8 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
             String normalizedType = isFirstHalf ? type.substring(3) : type;
 
             if ("Handicap".equals(normalizedType)) {
-                // 让球盘
+                // 让球盘：每条盘口单独解析上盘方（API 可能返回 Unknown）
+                String liveHandicapType = resolveLiveHandicapType(o, basicEventInfo);
                 for (int j = 0; j < o.getJSONArray("prices").size(); j++) {
                     JSONObject price = o.getJSONArray("prices").getJSONObject(j);
                     boolean homeSide = "h".equals(price.getStr("option"));
@@ -354,7 +354,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                     node.putOpt("isHome", homeSide);
                     node.putOpt("teamName", homeSide ? home : away);
                     if (homeSide) {
-                        if (liveHandicapType != null && liveHandicapType.equals("Home")) {
+                        if ("Home".equals(liveHandicapType)) {
                             // 上盘负号开头
                             node.putOpt("handicap", "0".equals(getHandicapRange(point)) ? getHandicapRange(point) : "-" + getHandicapRange(point));
                             if (isFirstHalf) {
@@ -376,7 +376,7 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
                             }
                         }
                     } else {
-                        if (liveHandicapType != null && liveHandicapType.equals("Away")) {
+                        if ("Away".equals(liveHandicapType)) {
                             // 上盘负号开头
                             node.putOpt("handicap", "0".equals(getHandicapRange(point)) ? getHandicapRange(point) : "-" + getHandicapRange(point));
                             if (isFirstHalf) {
@@ -443,6 +443,45 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
         team.putOpt("firstHalf", firstHalf);
 
         return team;
+    }
+
+    /**
+     * 解析让球上盘方：Home=主队上盘，Away=客队上盘。
+     * API 返回 Unknown 时，根据马来盘赔率推断（数值更低的一方为上盘）。
+     */
+    private String resolveLiveHandicapType(JSONObject oddsRecord, JSONObject basicEventInfo) {
+        String type = null;
+        JSONObject eventResult = oddsRecord.getJSONObject("eventResult");
+        if (eventResult != null) {
+            type = eventResult.getStr("liveHandicapType");
+        }
+        if (("Unknown".equals(type) || type == null) && basicEventInfo != null) {
+            JSONObject mainResult = basicEventInfo.getJSONObject("mainMarketEventResult");
+            if (mainResult != null) {
+                String mainType = mainResult.getStr("liveHandicapType");
+                if (mainType != null && !"Unknown".equals(mainType)) {
+                    type = mainType;
+                }
+            }
+        }
+        if (type != null && !"Unknown".equals(type)) {
+            return type;
+        }
+        JSONArray prices = oddsRecord.getJSONArray("prices");
+        if (prices == null || prices.size() < 2) {
+            return "Home";
+        }
+        double homePrice = 0;
+        double awayPrice = 0;
+        for (int i = 0; i < prices.size(); i++) {
+            JSONObject price = prices.getJSONObject(i);
+            if ("h".equals(price.getStr("option"))) {
+                homePrice = price.getDouble("price");
+            } else if ("a".equals(price.getStr("option"))) {
+                awayPrice = price.getDouble("price");
+            }
+        }
+        return homePrice <= awayPrice ? "Home" : "Away";
     }
 
     /**

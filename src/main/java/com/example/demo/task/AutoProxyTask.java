@@ -179,7 +179,7 @@ public class AutoProxyTask {
                         latestAccount
                 );
 
-                // ✅ 成功 → 350 分钟后再调度
+                // ✅ 成功 → 4 分钟后再调度
                 reschedule(taskKey, adminLogin, websiteId, latestAccount, SUCCESS_DELAY_MIN, TimeUnit.MINUTES);
                 // 成功保存代理后清零
                 failRetryCountMap.remove(taskKey);
