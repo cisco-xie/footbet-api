@@ -61,8 +61,8 @@ public class EventsController extends BaseController {
         AdminLoginDTO admin = getUser();
 
         // 获取两类赛事数据
-        Object eventLive = handicapApi.events(admin.getUsername(), websiteId, ZhiBoSchedulesType.LIVESCHEDULE.getId());
-        Object eventToday = handicapApi.events(admin.getUsername(), websiteId, ZhiBoSchedulesType.TODAYSCHEDULE.getId());
+        Object eventLive = handicapApi.events(admin.getUsername(), websiteId, ZhiBoSchedulesType.LIVESCHEDULE.getId(), null);
+        Object eventToday = handicapApi.events(admin.getUsername(), websiteId, ZhiBoSchedulesType.TODAYSCHEDULE.getId(), null);
 
         Map<String, JSONObject> mergedMap = new LinkedHashMap<>();
 

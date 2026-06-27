@@ -267,13 +267,18 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
     }
 
     /**
-     * 将盘口写入到 event 的 fullCourt / firstHalf 节点中，输出结构与你提供的格式一致。
+     * 将盘口写入 event.fullCourt / firstHalf。
      *
-     * 关键规则：
-     *  - letBall.up = 上盘（让球方），letBall.down = 下盘（受让方）
-     *  - 判定哪方为上盘：以 handicap 字符串是否包含前缀 "-" 为准（例如 "-0.5" 或 "-0.5 / 1"）
-     *    带 "-" 的一方视为让球方（上盘），不带 "-" 的一方视为受让方（下盘）。
-     *  - overSize.big / small 保持原有逻辑（主队通常映射到 small，客队映射到 big，沿用原有代码习惯）
+     * <p><b>让球盘 letBall.up / letBall.down 归类规则（跨站扫水必读）</b></p>
+     * <ul>
+     *   <li>扫水配对：固定 A站.up × B站.down（同一 handicap key，如 "0"、"0.5"）</li>
+     *   <li><b>零盘 handicap=0</b>：与平博/盛帆统一 —— 主队(TEAM_H) → up，客队(TEAM_C) → down；
+     *       不使用 STRONG 推断让球方（零盘无负号可用）</li>
+     *   <li><b>非零盘</b>：STRONG(全场)/HSTRONG(半场) 决定谁让球 —— H 则主队 handicap 加前缀 "-"，C 则客队加 "-"；
+     *       handicap 以 "-" 开头 → up（让球方），否则 → down（受让方）</li>
+     *   <li>每条 odds 输出 teamName、isHome、wall(hanging=上盘/foot=下盘)，便于日志核对归类</li>
+     * </ul>
+     * <p>大小盘 overSize.big/small 逻辑见下方，与本规则无关。</p>
      */
     private void parseOddsBlock(JSONObject gameJson, String gid, String hgid, String oddsFormatType, JSONObject event) {
         // 原始字段 key（来源于上游数据）
@@ -295,6 +300,9 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
         String keyHomeOddsFirstOverSize = "IOR_HROUC";
         String keyAwayOddsFirstOverSize = "IOR_HROUH";
 
+        String homeTeam = gameJson.getStr("TEAM_H");
+        String awayTeam = gameJson.getStr("TEAM_C");
+
         // ---------- 确保 fullCourt / firstHalf 容器存在（若已存在则复用） ----------
         JSONObject fullCourt;
         if (event.containsKey("fullCourt") && event.get("fullCourt") instanceof JSONObject) {
@@ -312,7 +320,8 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             event.putOpt("firstHalf", firstHalf);
         }
 
-        // ---------------- 全场让球：letBall.up/up 放置规则（以 handicap 是否带 '-' 判定上/下盘） ----------------
+        // ---------------- 全场让球 ----------------
+        // STRONG 先换算 homeHandicap/awayHandicap 正负号，再按 "-" 或零盘主客槽位归入 up/down
         if ((gameJson.containsKey(keyHomeOddsFullLetBall) && StringUtils.isNotBlank(gameJson.getStr(keyHomeOddsFullLetBall)))
                 || (gameJson.containsKey(keyAwayOddsFullLetBall) && StringUtils.isNotBlank(gameJson.getStr(keyAwayOddsFullLetBall)))) {
 
@@ -353,18 +362,13 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                 item.putOpt("con", getMiddleValue(homeHandicap));
                 item.putOpt("ratio", getRatio(ratioFull, "主队"));
                 item.putOpt("handicap", homeHandicap);
+                item.putOpt("teamName", homeTeam);
+                item.putOpt("isHome", true);
 
-                // wall：上盘/下盘的展示习惯（上盘用 hanging，下盘用 foot）
-                // 如果 homeHandicap 带 '-'，说明主队是上盘（让球方），放入 up；否则放入 down
-                /*if (homeHandicap.equals("0") && "C".equals(gameJson.getStr("STRONG"))) {
-                    item.putOpt("wall", "hanging");
-                    up.putOpt(getHandicapRange(homeHandicap), item);
-                } else if (homeHandicap.equals("0") && "H".equals(gameJson.getStr("STRONG"))) {
-                    item.putOpt("wall", "foot");
-                    down.putOpt(getHandicapRange(homeHandicap), item);
-                }*/
+                // 零盘：主队 → up；非零：带 "-" → up，否则 → down
                 if (homeHandicap.equals("0")) {
-                    item.putOpt("wall", "foot");
+                    item.putOpt("isZero", true);
+                    item.putOpt("wall", "hanging");
                     up.putOpt(getHandicapRange(homeHandicap), item);
                 } else if (homeHandicap.startsWith("-")) {
                     item.putOpt("wall", "hanging");
@@ -392,16 +396,12 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                 item.putOpt("con", getMiddleValue(awayHandicap));
                 item.putOpt("ratio", getRatio(ratioFull, "客队"));
                 item.putOpt("handicap", awayHandicap);
+                item.putOpt("teamName", awayTeam);
+                item.putOpt("isHome", false);
 
-                // 如果 awayHandicap 带 '-'，说明客队是上盘（让球方），放入 up；否则放入 down
-                /*if (awayHandicap.equals("0") && "C".equals(gameJson.getStr("STRONG"))) {
-                    item.putOpt("wall", "foot");
-                    down.putOpt(getHandicapRange(awayHandicap), item);
-                } else if (awayHandicap.equals("0") && "H".equals(gameJson.getStr("STRONG"))) {
-                    item.putOpt("wall", "hanging");
-                    up.putOpt(getHandicapRange(awayHandicap), item);
-                } */
+                // 零盘：客队 → down；非零：客队 handicap 带 "-" → up
                 if (homeHandicap.equals("0")) {
+                    item.putOpt("isZero", true);
                     item.putOpt("wall", "foot");
                     down.putOpt(getHandicapRange(awayHandicap), item);
                 } else if (awayHandicap.startsWith("-")) {
@@ -463,7 +463,7 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
             }
         }
 
-        // ---------------- 半场让球：firstHalf.letBall.up/down（规则同全场，让/受以 '-' 判定） ----------------
+        // ---------------- 半场让球（规则同全场，用 HSTRONG） ----------------
         if ((gameJson.containsKey(keyHomeOddsFirstLetBall) && StringUtils.isNotBlank(gameJson.getStr(keyHomeOddsFirstLetBall)))
                 || (gameJson.containsKey(keyAwayOddsFirstLetBall) && StringUtils.isNotBlank(gameJson.getStr(keyAwayOddsFirstLetBall)))) {
 
@@ -502,16 +502,12 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                 item.putOpt("con", getMiddleValue(homeHandicap));
                 item.putOpt("ratio", getRatio(gameJson.getStr(ratioFirst), "主队"));
                 item.putOpt("handicap", homeHandicap);
+                item.putOpt("teamName", homeTeam);
+                item.putOpt("isHome", true);
 
-                /*if (homeHandicap.equals("0") && "C".equals(gameJson.getStr("STRONG"))) {
-                    item.putOpt("wall", "hanging");
-                    up.putOpt(getHandicapRange(homeHandicap), item);
-                } else if (homeHandicap.equals("0") && "H".equals(gameJson.getStr("STRONG"))) {
-                    item.putOpt("wall", "foot");
-                    down.putOpt(getHandicapRange(homeHandicap), item);
-                }*/
                 if (homeHandicap.equals("0")) {
-                    item.putOpt("wall", "foot");
+                    item.putOpt("isZero", true);
+                    item.putOpt("wall", "hanging");
                     up.putOpt(getHandicapRange(homeHandicap), item);
                 } else if (homeHandicap.startsWith("-")) {
                     item.putOpt("wall", "hanging");
@@ -538,15 +534,11 @@ public class WebsiteXinBaoEventOddsNewHandler implements ApiHandler {
                 item.putOpt("con", getMiddleValue(awayHandicap));
                 item.putOpt("ratio", getRatio(gameJson.getStr(ratioFirst), "客队"));
                 item.putOpt("handicap", awayHandicap);
+                item.putOpt("teamName", awayTeam);
+                item.putOpt("isHome", false);
 
-                /*if (awayHandicap.equals("0") && "C".equals(gameJson.getStr("STRONG"))) {
-                    item.putOpt("wall", "foot");
-                    down.putOpt(getHandicapRange(awayHandicap), item);
-                } else if (awayHandicap.equals("0") && "H".equals(gameJson.getStr("STRONG"))) {
-                    item.putOpt("wall", "hanging");
-                    up.putOpt(getHandicapRange(awayHandicap), item);
-                }*/
                 if (homeHandicap.equals("0")) {
+                    item.putOpt("isZero", true);
                     item.putOpt("wall", "foot");
                     down.putOpt(getHandicapRange(awayHandicap), item);
                 } else if (awayHandicap.startsWith("-")) {

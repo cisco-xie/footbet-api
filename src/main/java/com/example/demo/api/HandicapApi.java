@@ -722,13 +722,15 @@ public class HandicapApi {
      * @param showType
      * @return
      */
-    public Object events(String username, String websiteId, int showType) {
+    public Object events(String username, String websiteId, int showType, String accountId) {
         WebsiteVO websiteVO = websiteService.getWebsite(username, websiteId);
         Integer oddsType = websiteVO.getOddsType();
         List<ConfigAccountVO> accounts = accountService.getAccount(username, websiteId);
         for (ConfigAccountVO account : accounts) {
-            if (account.getIsTokenValid() == 0) {
-                // 未登录直接跳过
+            if (account.getIsTokenValid() == 0 ||
+                    account.getEnable() == 0 ||
+                    (StringUtils.isNotBlank(accountId) && !accountId.equals(account.getId()))) {
+                // 未登录/未启用/不是指定账户 直接跳过
                 continue;
             }
             WebsiteApiFactory factory = factoryManager.getFactory(websiteId);
@@ -783,6 +785,7 @@ public class HandicapApi {
                 continue;
             }
             JSONObject result = apiHandler.execute(account, params);
+            log.info("获取赛事-请求参数: {},响应结果: {}", params, result);
 
             if (result.getBool("success")) {
                 return result.get("leagues");

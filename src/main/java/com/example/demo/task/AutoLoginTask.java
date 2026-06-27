@@ -6,6 +6,7 @@ import com.example.demo.api.AdminService;
 import com.example.demo.api.ConfigAccountService;
 import com.example.demo.api.HandicapApi;
 import com.example.demo.common.enmu.WebsiteType;
+import com.example.demo.common.enmu.ZhiBoSchedulesType;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.model.dto.AdminLoginDTO;
 import com.example.demo.model.vo.ConfigAccountVO;
@@ -88,22 +89,31 @@ public class AutoLoginTask {
                                 if (userConfig.getIsTokenValid() != 1) {
                                     isValid = false;
                                 } else {
-                                    // 统一用 balance 校验 token，比 eventList 更轻量
-                                    Object resultBalance = handicapApi.balanceByAccount(adminUser.getUsername(), type.getId(), userConfig);
-                                    if (resultBalance != null) {
-                                        JSONObject result = JSONUtil.parseObj(resultBalance);
-                                        if (!result.getBool("success")) {
+                                    if (!type.getId().equals(WebsiteType.SBO.getId())) {
+                                        // 统一用 balance 校验 token，比 eventList 更轻量
+                                        Object resultBalance = handicapApi.balanceByAccount(adminUser.getUsername(), type.getId(), userConfig);
+                                        if (resultBalance != null) {
+                                            JSONObject result = JSONUtil.parseObj(resultBalance);
+                                            if (!result.getBool("success")) {
+                                                isValid = false;
+                                            }
+                                        } else {
                                             isValid = false;
                                         }
                                     } else {
-                                        isValid = false;
+                                        // 盛帆账户通过赛事列表来判断账户是否token失效
+                                        Object eventLive = handicapApi.events(adminUser.getUsername(), type.getId(), ZhiBoSchedulesType.TODAYSCHEDULE.getId(), userConfig.getId());
+                                        log.info("自动登录-平台用户:{},网站:{}, 账号{}, eventLive:{}", adminUser.getUsername(), type.getDescription(), userConfig.getAccount(), eventLive);
+                                        if (eventLive == null) {
+                                            isValid = false;
+                                        }
                                     }
                                 }
 
                                 if (!isValid) {
                                     accountService.logoutByWebsiteAndAccountId(adminUser.getUsername(), type.getId(), userConfig.getId());
                                     if (userConfig.getAutoLogin() == 1) {
-                                        log.info("自动登录-平台用户:{}, 账号{} 当前token无效,进行自动登录", adminUser.getUsername(), userConfig.getAccount());
+                                        log.info("自动登录-平台用户:{},网站:{}, 账号{} 当前token无效,进行自动登录", adminUser.getUsername(), type.getDescription(), userConfig.getAccount());
                                         LOGIN_SEMAPHORE.acquire();
                                         try {
                                             handicapApi.processAccountLogin(userConfig, adminUser.getUsername(), type.getId(), retryMap);
@@ -112,7 +122,7 @@ public class AutoLoginTask {
                                         }
                                     }
                                 } else {
-                                    log.info("自动登录-平台用户:{}, 账号{} 当前token有效无需登录", adminUser.getUsername(), userConfig.getAccount());
+                                    log.info("自动登录-平台用户:{},网站:{}, 账号{} 当前token有效无需登录", adminUser.getUsername(), type.getDescription(), userConfig.getAccount());
                                 }
 
                                 Thread.sleep(ACCOUNT_INTERVAL_MS);

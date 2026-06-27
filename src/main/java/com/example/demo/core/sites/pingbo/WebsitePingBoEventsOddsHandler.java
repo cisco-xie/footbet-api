@@ -18,8 +18,8 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 智博网站 - 赛事列表-带赔率 API具体实现
@@ -235,10 +235,10 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                             // 客队
                             JSONObject eventAwayJson = new JSONObject();
 
-                            AtomicReference<String> wallHome = new AtomicReference<>();
-                            AtomicReference<String> wallAway = new AtomicReference<>();
                             if (course.containsKey("0")) {
                                 /** 全场 start */
+                                String homeTeamName = JSONUtil.parseArray(team).getStr(1);
+                                String awayTeamName = JSONUtil.parseArray(team).getStr(2);
                                 // 让球盘赔率
                                 JSONArray letBallJson = course.getJSONArray("0").getJSONArray(0);
                                 // 大小盘赔率
@@ -247,116 +247,8 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                 JSONArray drawBallJson = course.getJSONArray("0").getJSONArray(2);
 
                                 JSONObject letHomeJson = new JSONObject();
-                                JSONObject letAwayJson = new JSONObject();
-                                // 上盘（让球方）
-                                JSONObject up = new JSONObject();
-                                // 下盘（受让方）
-                                JSONObject down = new JSONObject();
-                                // 平手盘（0）
-                                JSONObject draw = new JSONObject();
-
-                                // 获取参考方向
-                                RefDirection zeroRefDirection = detectZeroRefDirection(letBallJson);
-
-                                int positionLetBall = 0;
-                                for (Object letBall : letBallJson) {
-                                    JSONArray letBallJsonArr = (JSONArray) letBall;
-                                    JSONObject homeOddsJson = new JSONObject();
-
-                                    int homeOddsIdIndex1 = 0;   // 全场=0;上半场=1
-                                    int homeOddsIdIndex2 = 2;   // 输赢盘=1;让球盘=2;大小盘=3
-                                    int homeOddsIdIndex3 = 0;   // 主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2
-                                    int homeOddsIdIndex4 = letBallJsonArr.getInt(8);   // 好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1
-
-                                    int awayOddsIdIndex1 = 0;   // 全场=0;上半场=1
-                                    int awayOddsIdIndex2 = 2;   // 输赢盘=1;让球盘=2;大小盘=3
-                                    int awayOddsIdIndex3 = 1;   // 主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2
-                                    int awayOddsIdIndex4 = letBallJsonArr.getInt(8);   // 好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1
-
-                                    String homeOddsIdHandicap = "0.0".equals(letBallJsonArr.getStr(1)) ? "0" : letBallJsonArr.getStr(1); // 赔率盘口，0.0=0，-1.5=-1.5，1.5=1.5
-                                    String homeOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+homeOddsIdIndex1+"|"+homeOddsIdIndex2+"|"+homeOddsIdIndex3+"|"+homeOddsIdIndex4+"|" + homeOddsIdHandicap;           // 主队投注id
-                                    homeOddsJson.putOpt("id", homeOddsId);  // 投注id
-                                    if (positionLetBall == 1) {
-                                        homeOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + homeOddsId + "|0");  // 投注id
-                                    } else {
-                                        homeOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + homeOddsId + "|0");  // 投注id
-                                    }
-                                    homeOddsJson.putOpt("handicap", letBallJsonArr.get(1));
-                                    homeOddsJson.putOpt("odds", letBallJsonArr.getBigDecimal(3));                    // 投注赔率
-                                    double handicapHome = letBallJsonArr.getDouble(1);
-                                    String letKey = "0.0".equals(letBallJsonArr.getStr(2)) ? "0" : letBallJsonArr.getStr(2);
-                                    boolean isZero = BigDecimal.ZERO.compareTo(BigDecimal.valueOf(handicapHome)) == 0;
-
-                                    if (isZero) {
-                                        homeOddsJson.putOpt("isZero", true);
-                                        homeOddsJson.putOpt("refDirection", zeroRefDirection.name());
-                                        /*if (zeroRefDirection == RefDirection.GIVING) {
-                                            // 主队假装是让球方 → 上盘
-                                            up.putOpt("0", homeOddsJson);
-                                            homeOddsJson.putOpt("wall", "hanging");
-                                        } else if (zeroRefDirection == RefDirection.RECEIVING) {
-                                            // 主队假装是受让方 → 下盘
-                                            down.putOpt("0", homeOddsJson);
-                                            homeOddsJson.putOpt("wall", "foot");
-                                        }*/
-                                        // 平手盘强行主队是上盘
-                                        up.putOpt("0", homeOddsJson);
-                                        homeOddsJson.putOpt("wall", "hanging");
-                                    } else if (handicapHome < 0) {
-                                        // 让球，上盘
-                                        up.putOpt(letKey, homeOddsJson);
-                                        wallAway.set("hanging");
-                                    } else if (handicapHome > 0) {
-                                        // 被让球，下盘
-                                        down.putOpt(letKey, homeOddsJson);
-                                        wallAway.set("foot");
-                                    }
-
-                                    JSONObject awayOddsJson = new JSONObject();
-                                    String awayOddsIdHandicap = "0.0".equals(letBallJsonArr.getStr(0)) ? "0" : letBallJsonArr.getStr(0); // 赔率盘口，0.0=0，-1.5=-1.5，1.5=1.5
-                                    String awayOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+awayOddsIdIndex1+"|"+awayOddsIdIndex2+"|"+awayOddsIdIndex3+"|"+awayOddsIdIndex4+"|" + awayOddsIdHandicap;           // 客队投注id
-                                    awayOddsJson.putOpt("id", awayOddsId);  // 投注id
-                                    if (positionLetBall == 1) {
-                                        awayOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + awayOddsId + "|1");  // 投注id
-                                    } else {
-                                        awayOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + awayOddsId + "|1");  // 投注id
-                                    }
-                                    awayOddsJson.putOpt("handicap", letBallJsonArr.get(0));
-                                    awayOddsJson.putOpt("odds", letBallJsonArr.getBigDecimal(4));                    // 投注赔率
-                                    double handicapAway = letBallJsonArr.getDouble(0);
-                                    boolean isZeroAway = BigDecimal.ZERO.compareTo(BigDecimal.valueOf(handicapAway)) == 0;
-
-                                    if (isZeroAway) {
-                                        awayOddsJson.putOpt("isZero", true);
-                                        awayOddsJson.putOpt("refDirection", zeroRefDirection.name());
-                                        /*if (zeroRefDirection == RefDirection.GIVING) {
-                                            // 主队让球 → 客队受让 → 下盘
-                                            down.putOpt("0", awayOddsJson);
-                                            awayOddsJson.putOpt("wall", "foot");
-                                        } else if (zeroRefDirection == RefDirection.RECEIVING) {
-                                            // 主队受让 → 客队让球 → 上盘
-                                            up.putOpt("0", awayOddsJson);
-                                            awayOddsJson.putOpt("wall", "hanging");
-                                        }*/
-                                        // 平手盘强客主队是下盘
-                                        down.putOpt("0", awayOddsJson);
-                                        homeOddsJson.putOpt("wall", "hanging");
-                                    } else if (handicapAway < 0) {
-                                        // 让球，上盘
-                                        up.putOpt(letKey, awayOddsJson);
-                                        wallAway.set("hanging");
-                                    } else if (handicapAway > 0) {
-                                        // 被让球，下盘
-                                        down.putOpt(letKey, awayOddsJson);
-                                        wallAway.set("foot");
-                                    }
-                                    awayOddsJson.putOpt("wall", wallAway.get());    // hanging=上盘,foot=下盘
-
-                                    letHomeJson.putOpt("up", up);
-                                    letHomeJson.putOpt("down", down);
-                                    positionLetBall++;
-
-                                };
+                                fillPingBoLetBall(letBallJson, homeTeamName, awayTeamName,
+                                        JSONUtil.parseArray(team).getStr(0), 0, letHomeJson);
                                 JSONObject sizeJson = new JSONObject();
                                 JSONObject sizeAwayJson = new JSONObject();
                                 JSONObject big = new JSONObject();
@@ -421,6 +313,8 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
 
                             if (course.containsKey("1")) {
                                 /** 上半场 start */
+                                String fhHomeTeamName = JSONUtil.parseArray(team).getStr(1);
+                                String fhAwayTeamName = JSONUtil.parseArray(team).getStr(2);
                                 // 让球盘赔率
                                 JSONArray firstHalfLetBallJson = course.getJSONArray("1").getJSONArray(0);
                                 // 大小盘赔率
@@ -429,111 +323,8 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
                                 JSONArray firstHalfDrawBallJson = course.getJSONArray("1").getJSONArray(2);
 
                                 JSONObject firstHalfLetHomeJson = new JSONObject();
-                                JSONObject firstHalfLetAwayJson = new JSONObject();
-                                // 上盘（让球方）
-                                JSONObject up = new JSONObject();
-                                // 下盘（受让方）
-                                JSONObject down = new JSONObject();
-                                // 获取参考方向
-                                RefDirection zeroRefDirection = detectZeroRefDirection(firstHalfLetBallJson);
-                                int positionLetBall = 0;
-                                for(Object letBall : firstHalfLetBallJson) {
-                                    JSONArray letBallJsonArr = (JSONArray) letBall;
-                                    JSONObject homeOddsJson = new JSONObject();
-
-                                    int homeOddsIdIndex1 = 1;   // 全场=0;上半场=1
-                                    int homeOddsIdIndex2 = 2;   // 输赢盘=1;让球盘=2;大小盘=3
-                                    int homeOddsIdIndex3 = 0;   // 主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2
-                                    int homeOddsIdIndex4 = letBallJsonArr.getInt(8);   // 好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1
-                                    String homeOddsIdIndex5 = "0.0".equals(letBallJsonArr.getStr(1)) ? "0" : letBallJsonArr.getStr(1); // 赔率盘口，0.0=0，-1.5=-1.5，1.5=1.5
-
-                                    int awayOddsIdIndex1 = 1;   // 全场=0;上半场=1
-                                    int awayOddsIdIndex2 = 2;   // 输赢盘=1;让球盘=2;大小盘=3
-                                    int awayOddsIdIndex3 = 1;   // 主队(输赢盘=0,让球盘=0,大小盘=3);客队=(输赢盘=1,让球盘=1,大小盘=4);平局=2
-                                    int awayOddsIdIndex4 = letBallJsonArr.getInt(8);   // 好像是按照比分，不好描述，可边查看平博网站滚球列表页面对应，每个比赛的3个数据，上=1，中=0，下=1
-                                    String awayOddsIdIndex5 = "0.0".equals(letBallJsonArr.getStr(0)) ? "0" : letBallJsonArr.getStr(0); // 赔率盘口，0.0=0，-1.5=-1.5，1.5=1.5
-
-                                    String homeOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+homeOddsIdIndex1+"|"+homeOddsIdIndex2+"|"+homeOddsIdIndex3+"|"+homeOddsIdIndex4+"|" + homeOddsIdIndex5;           // 主队投注id
-                                    homeOddsJson.putOpt("id", homeOddsId);                              // 投注id
-                                    if (positionLetBall == 1) {
-                                        homeOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + homeOddsId + "|0");  // 投注id
-                                    } else {
-                                        homeOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + homeOddsId + "|0");  // 投注id
-                                    }
-                                    homeOddsJson.putOpt("handicap", letBallJsonArr.get(1));
-                                    homeOddsJson.putOpt("odds", letBallJsonArr.getBigDecimal(3)); // 投注赔率
-                                    double handicapHome = letBallJsonArr.getDouble(1);
-                                    String letKey = "0.0".equals(letBallJsonArr.getStr(2)) ? "0" : letBallJsonArr.getStr(2);
-                                    boolean isZero = BigDecimal.ZERO.compareTo(BigDecimal.valueOf(handicapHome)) == 0;
-
-                                    if (isZero) {
-                                        homeOddsJson.putOpt("isZero", true);
-                                        homeOddsJson.putOpt("refDirection", zeroRefDirection.name());
-                                        /*if (zeroRefDirection == RefDirection.GIVING) {
-                                            // 主队让球 → 上盘
-                                            up.putOpt("0", homeOddsJson);
-                                            homeOddsJson.putOpt("wall", "hanging");
-                                        } else if (zeroRefDirection == RefDirection.RECEIVING) {
-                                            // 主队受让 → 下盘
-                                            down.putOpt("0", homeOddsJson);
-                                            homeOddsJson.putOpt("wall", "foot");
-                                        }*/
-                                        // 平手盘强行主队是上盘
-                                        up.putOpt("0", homeOddsJson);
-                                        homeOddsJson.putOpt("wall", "hanging");
-                                    } else if (handicapHome < 0) {
-                                        // 让球，上盘
-                                        up.putOpt(letKey, homeOddsJson);
-                                        wallAway.set("hanging");
-                                    } else if (handicapHome > 0) {
-                                        // 被让球，下盘
-                                        down.putOpt(letKey, homeOddsJson);
-                                        wallAway.set("foot");
-                                    }
-                                    homeOddsJson.putOpt("wall", wallAway.get());    // hanging=上盘,foot=下盘
-                                    JSONObject awayOddsJson = new JSONObject();
-                                    String awayOddsId = JSONUtil.parseArray(team).getStr(0) + "|"+awayOddsIdIndex1+"|"+awayOddsIdIndex2+"|"+awayOddsIdIndex3+"|"+awayOddsIdIndex4+"|" + awayOddsIdIndex5;           // 客队投注id
-                                    awayOddsJson.putOpt("id", awayOddsId);                              // 投注id
-                                    if (positionLetBall == 1) {
-                                        awayOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + awayOddsId + "|1");  // 投注id
-                                    } else {
-                                        awayOddsJson.putOpt("selectionId", letBallJsonArr.getStr(7) + "|" + awayOddsId + "|1");  // 投注id
-                                    }
-                                    awayOddsJson.putOpt("handicap", letBallJsonArr.get(0));
-                                    awayOddsJson.putOpt("odds", letBallJsonArr.getBigDecimal(4)); // 投注赔率
-                                    double handicapAway = letBallJsonArr.getDouble(0);
-                                    boolean isZeroAway = BigDecimal.ZERO.compareTo(BigDecimal.valueOf(handicapAway)) == 0;
-
-                                    if (isZeroAway) {
-                                        awayOddsJson.putOpt("isZero", true);
-                                        awayOddsJson.putOpt("refDirection", zeroRefDirection.name());
-                                        /*if (zeroRefDirection == RefDirection.GIVING) {
-                                            // 主队让球 → 客队受让 → 下盘
-                                            down.putOpt("0", awayOddsJson);
-                                            awayOddsJson.putOpt("wall", "foot");
-                                        } else if (zeroRefDirection == RefDirection.RECEIVING) {
-                                            // 主队受让 → 客队让球 → 上盘
-                                            up.putOpt("0", awayOddsJson);
-                                            awayOddsJson.putOpt("wall", "hanging");
-                                        }*/
-                                        // 平手盘强行客队是下盘
-                                        down.putOpt("0", awayOddsJson);
-                                        homeOddsJson.putOpt("wall", "hanging");
-                                    } else if (handicapAway < 0) {
-                                        // 让球，上盘
-                                        up.putOpt(letKey, awayOddsJson);
-                                        wallAway.set("hanging");
-                                    } else if (handicapAway > 0) {
-                                        // 被让球，下盘
-                                        down.putOpt(letKey, awayOddsJson);
-                                        wallAway.set("foot");
-                                    }
-                                    awayOddsJson.putOpt("wall", wallAway.get());    // hanging=上盘,foot=下盘
-
-                                    firstHalfLetHomeJson.putOpt("up", up);
-                                    firstHalfLetHomeJson.putOpt("down", down);
-                                    positionLetBall++;
-                                };
+                                fillPingBoLetBall(firstHalfLetBallJson, fhHomeTeamName, fhAwayTeamName,
+                                        JSONUtil.parseArray(team).getStr(0), 1, firstHalfLetHomeJson);
                                 JSONObject firstHalfSizeHomeJson = new JSONObject();
                                 JSONObject firstHalfSizeAwayJson = new JSONObject();
                                 JSONObject big = new JSONObject();
@@ -628,7 +419,173 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
     }
 
     /**
-     * 参考方向枚举
+     * 平博让球盘 up/down 归类（与扫水 A站up × B站down 对齐）。
+     *
+     * <p>平博特殊问题：同一赛事会返回多行 letBall，同一球队在不同行可能出现 +0.5 / 0 / -0.5 等不同 handicap 符号。
+     * 若逐条按「本队 handicap 正负」独立归类，同一 letKey 下会出现同一球队同时占 up 和 down，扫水配对混乱。</p>
+     *
+     * <p>处理策略：</p>
+     * <ul>
+     *   <li>按 letKey（arr[2]）分组，每个 key 只保留一行「canonical」盘口</li>
+     *   <li>跳过主客 handicap 同号（双正/双负）的异常行</li>
+     *   <li>优先：主让客受（home&lt;0 &amp; away&gt;0）+ 中间行（arr[8]==0）</li>
+     *   <li>零盘 key="0"：主队 → up，客队 → down</li>
+     *   <li>非零盘：在本行内配对 —— 负 handicap → up，正 → down（一行内只决定一次上下盘）</li>
+     * </ul>
+     *
+     * <p>数组约定：arr[0]=客队 handicap，arr[1]=主队 handicap，arr[2]=盘口 key，arr[3]=主队赔率，arr[4]=客队赔率，arr[7]=selection 前缀，arr[8]=行位（0=中/主盘）</p>
+     */
+    private void fillPingBoLetBall(JSONArray letBallJson, String homeTeamName, String awayTeamName,
+                                   String eventId, int periodIndex, JSONObject letHomeJson) {
+        JSONObject up = new JSONObject();
+        JSONObject down = new JSONObject();
+        RefDirection zeroRefDirection = detectZeroRefDirection(letBallJson);
+
+        Map<String, JSONArray> bestRowByKey = selectCanonicalLetBallRows(letBallJson);
+
+        for (Map.Entry<String, JSONArray> entry : bestRowByKey.entrySet()) {
+            String letKey = entry.getKey();
+            JSONArray arr = entry.getValue();
+            double handicapHome = arr.getDouble(1);
+            double handicapAway = arr.getDouble(0);
+
+            JSONObject homeOddsJson = buildPingBoLetBallOddsJson(arr, eventId, periodIndex, true,
+                    homeTeamName, letKey);
+            JSONObject awayOddsJson = buildPingBoLetBallOddsJson(arr, eventId, periodIndex, false,
+                    awayTeamName, letKey);
+
+            assignPingBoLetBallPair(up, down, letKey, homeOddsJson, awayOddsJson,
+                    handicapHome, handicapAway, zeroRefDirection);
+        }
+
+        letHomeJson.putOpt("up", up);
+        letHomeJson.putOpt("down", down);
+    }
+
+    /**
+     * 每个 letKey 只保留一行最优盘口，避免多行覆盖导致同队同 key 占 up/down 两侧。
+     */
+    private Map<String, JSONArray> selectCanonicalLetBallRows(JSONArray letBallJson) {
+        Map<String, JSONArray> bestRowByKey = new LinkedHashMap<>();
+        Map<String, Integer> bestScoreByKey = new HashMap<>();
+
+        for (Object letBall : letBallJson) {
+            JSONArray arr = (JSONArray) letBall;
+            double handicapHome = arr.getDouble(1);
+            double handicapAway = arr.getDouble(0);
+            String letKey = normalizePingBoLetKey(arr.getStr(2));
+            int score = scorePingBoLetBallRow(handicapHome, handicapAway, arr.getInt(8));
+            if (score < 0) {
+                continue;
+            }
+            Integer existing = bestScoreByKey.get(letKey);
+            if (existing == null || score > existing) {
+                bestRowByKey.put(letKey, arr);
+                bestScoreByKey.put(letKey, score);
+            }
+        }
+        return bestRowByKey;
+    }
+
+    private String normalizePingBoLetKey(String rawKey) {
+        return "0.0".equals(rawKey) ? "0" : rawKey;
+    }
+
+    private boolean isNearZeroHandicap(double handicap) {
+        return Math.abs(handicap) < 0.001;
+    }
+
+    /**
+     * 行质量评分：越高越优先；返回 -1 表示跳过（双正/双负等无法配对的异常行）。
+     */
+    private int scorePingBoLetBallRow(double handicapHome, double handicapAway, int linePosition) {
+        boolean homeZero = isNearZeroHandicap(handicapHome);
+        boolean awayZero = isNearZeroHandicap(handicapAway);
+
+        if (homeZero && awayZero) {
+            return 100 - Math.abs(linePosition);
+        }
+
+        // 主客同号 → 无法在本行内区分让球/受让，跳过
+        if ((handicapHome > 0 && handicapAway > 0) || (handicapHome < 0 && handicapAway < 0)) {
+            return -1;
+        }
+
+        int score = 50 - Math.abs(linePosition);
+        if (handicapHome < 0 && handicapAway > 0) {
+            score += 10;
+        }
+        if (linePosition == 0) {
+            score += 5;
+        }
+        return score;
+    }
+
+    private JSONObject buildPingBoLetBallOddsJson(JSONArray arr, String eventId, int periodIndex,
+                                                    boolean isHome, String teamName, String letKey) {
+        JSONObject oddsJson = new JSONObject();
+        int period = periodIndex;
+        int marketType = 2;
+        int teamSide = isHome ? 0 : 1;
+        int linePosition = arr.getInt(8);
+        String handicapStr = isHome ? arr.getStr(1) : arr.getStr(0);
+        String oddsIdHandicap = "0.0".equals(handicapStr) ? "0" : handicapStr;
+        String oddsId = eventId + "|" + period + "|" + marketType + "|" + teamSide + "|"
+                + linePosition + "|" + oddsIdHandicap;
+        oddsJson.putOpt("id", oddsId);
+        oddsJson.putOpt("selectionId", arr.getStr(7) + "|" + oddsId + "|" + (isHome ? "0" : "1"));
+        oddsJson.putOpt("handicap", isHome ? arr.get(1) : arr.get(0));
+        oddsJson.putOpt("odds", isHome ? arr.getBigDecimal(3) : arr.getBigDecimal(4));
+        oddsJson.putOpt("teamName", teamName);
+        oddsJson.putOpt("isHome", isHome);
+        oddsJson.putOpt("letKey", letKey);
+        return oddsJson;
+    }
+
+    /**
+     * 在同一行内完成 up/down 配对：负 handicap → up，正 → down；零盘固定主 up / 客 down。
+     */
+    private void assignPingBoLetBallPair(JSONObject up, JSONObject down, String letKey,
+                                         JSONObject homeOdds, JSONObject awayOdds,
+                                         double handicapHome, double handicapAway,
+                                         RefDirection zeroRefDirection) {
+        if ("0".equals(letKey) || (isNearZeroHandicap(handicapHome) && isNearZeroHandicap(handicapAway))) {
+            homeOdds.putOpt("isZero", true);
+            homeOdds.putOpt("refDirection", zeroRefDirection.name());
+            homeOdds.putOpt("wall", "hanging");
+            awayOdds.putOpt("isZero", true);
+            awayOdds.putOpt("refDirection", zeroRefDirection.name());
+            awayOdds.putOpt("wall", "foot");
+            up.putOpt("0", homeOdds);
+            down.putOpt("0", awayOdds);
+            return;
+        }
+
+        if (handicapHome < 0) {
+            homeOdds.putOpt("wall", "hanging");
+            up.putOpt(letKey, homeOdds);
+            awayOdds.putOpt("wall", "foot");
+            down.putOpt(letKey, awayOdds);
+        } else if (handicapAway < 0) {
+            awayOdds.putOpt("wall", "hanging");
+            up.putOpt(letKey, awayOdds);
+            homeOdds.putOpt("wall", "foot");
+            down.putOpt(letKey, homeOdds);
+        } else if (isNearZeroHandicap(handicapHome) && handicapAway > 0) {
+            homeOdds.putOpt("wall", "hanging");
+            up.putOpt(letKey, homeOdds);
+            awayOdds.putOpt("wall", "foot");
+            down.putOpt(letKey, awayOdds);
+        } else if (isNearZeroHandicap(handicapAway) && handicapHome > 0) {
+            awayOdds.putOpt("wall", "hanging");
+            up.putOpt(letKey, awayOdds);
+            homeOdds.putOpt("wall", "foot");
+            down.putOpt(letKey, homeOdds);
+        }
+    }
+
+    /**
+     * 参考方向枚举（仅用于零盘 refDirection 调试字段；零盘 up/down 分配见 letBall 块注释，不读此枚举）
      */
     public enum RefDirection {
         GIVING,     // 让球方
@@ -636,6 +593,9 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
         UNKNOWN
     }
 
+    /**
+     * 历史备用：按相邻盘口 refDirection 分配零盘（当前主流程未调用，零盘已固定主 up / 客 down）。
+     */
     private void putZeroLetBall(JSONObject up, JSONObject down,
                                 JSONObject homeOddsJson, JSONObject awayOddsJson,
                                 RefDirection zeroRefDirection) {
@@ -662,10 +622,7 @@ public class WebsitePingBoEventsOddsHandler implements ApiHandler {
 
 
     /**
-     * 平手盘参考方向探测方法
-     * 按“最接近 0 的非 0 盘口”判定方向
-     * @param letBallJson
-     * @return
+     * 探测相邻非零盘口的让球方向，仅写入 refDirection 元数据供日志对比，不参与零盘 up/down 分配。
      */
     private RefDirection detectZeroRefDirection(JSONArray letBallJson) {
 

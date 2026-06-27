@@ -1032,6 +1032,21 @@ public class BetService {
         }
         log.info("用户 {} 赛事A={} 赛事B={} 投注预览成功，预览信息A={}, 预览信息B={}", username, dto.getLeagueNameA(), dto.getLeagueNameB(), betPreviewA, betPreviewB);
 
+        // 让球盘：预览确认 A/B 投注的是对立球队，防止 up/down 归类错误导致同队对冲
+        if ("letBall".equals(dto.getHandicapType())) {
+            String betTeamA = betPreviewA.getJSONObject("betInfo").getStr("marketName");
+            String betTeamB = betPreviewB.getJSONObject("betInfo").getStr("marketName");
+            double similarity = sweepwaterService.calculateSimilarity(betTeamA, betTeamB);
+            if (similarity >= 0.25) {// 3.5相似度很低很极限了，可能会导致投注单量下降
+                limitManager.rollbackReservation(limitKey, reservationId);
+                log.warn("放弃投注：A/B 投注同一支球队, id={}, A站={}, B站={}, 球队A={}, 球队B={}, 相似度={}",
+                        dto.getId(), dto.getWebsiteNameA(), dto.getWebsiteNameB(), betTeamA, betTeamB, similarity);
+                return;
+            }
+            log.info("继续投注：A/B 投注对立球队，id={}, A站={}, B站={}, 球队A={}, 球队B={}, 相似度={}",
+                    dto.getId(), dto.getWebsiteNameA(), dto.getWebsiteNameB(), betTeamA, betTeamB, similarity);
+        }
+        
         BigDecimal oddsA = betPreviewA.getJSONObject("betInfo").getBigDecimal("oddsValue");
         BigDecimal oddsB = betPreviewB.getJSONObject("betInfo").getBigDecimal("oddsValue");
 
@@ -2034,7 +2049,6 @@ public class BetService {
         // 再替换斜杠
         return withoutNegative.replaceAll(" / ", "-");
     }
-
     /**
      * 根据联赛id匹配对应联赛，再根据球队赛事id匹配对应球队赛事
      * @param leagueList
@@ -2497,7 +2511,9 @@ public class BetService {
             params.putOpt("eventId", isA ? sweepwaterDTO.getEventIdA() : sweepwaterDTO.getEventIdB());
             params.putOpt("marketType", "letBall".equals(sweepwaterDTO.getHandicapType()) ? 1 : 3);     // 让球盘是1，大小盘是3
             params.putOpt("oddsId", isA ? sweepwaterDTO.getOddsIdA() : sweepwaterDTO.getOddsIdB());
-            params.putOpt("option", isA ? (sweepwaterDTO.getIsHomeA() ? "h" : "a") : (sweepwaterDTO.getIsHomeB() ? "h" : "a"));
+            params.putOpt("option", isA
+                    ? (Boolean.TRUE.equals(sweepwaterDTO.getIsHomeA()) ? "h" : "a")
+                    : (Boolean.TRUE.equals(sweepwaterDTO.getIsHomeB()) ? "h" : "a"));
         }
         return params;
     }

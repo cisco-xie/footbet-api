@@ -987,7 +987,7 @@ public class SweepwaterService {
      * @param name
      * @return
      */
-    private String normalizeTeamName(String name) {
+    private static String normalizeTeamName(String name) {
 
         if (StringUtils.isBlank(name)) {
             return "";
@@ -996,15 +996,20 @@ public class SweepwaterService {
         return name.toLowerCase()
 
                 // 女足
-                .replaceAll("女足", "")
+                .replaceAll("女(足)?", "")    // 匹配"女"或"女足"
                 .replaceAll("\\bwomen\\b", "")
                 .replaceAll("\\bwfc\\b", "")
 
                 // 青年队
                 .replaceAll("u\\d+", "")
                 .replaceAll("青年队|预备队|reserve", "")
+                .replaceAll("[b一二三四五六七八九十]队?", "")  // 匹配 B队、二队、一队等
+                .replaceAll("\\d+队", "")  // 匹配 2队、3队等
 
                 // 俱乐部后缀
+                .replaceAll("足球俱乐部", "")
+                .replaceAll("体育俱乐部", "")
+                .replaceAll("体育", "")
                 .replaceAll("\\bfc\\b", "")
                 .replaceAll("\\bsc\\b", "")
                 .replaceAll("\\bafc\\b", "")
@@ -1021,7 +1026,7 @@ public class SweepwaterService {
      * @param name2
      * @return
      */
-    private double calculateSimilarity(
+    public static double calculateSimilarity(
             String name1,
             String name2) {
 
@@ -1032,6 +1037,13 @@ public class SweepwaterService {
         name1 = normalizeTeamName(name1);
         name2 = normalizeTeamName(name2);
 
+        System.out.println(name1 + " vs " + name2);
+
+        // 标准化后完全相同
+        if (name1.equals(name2)) {
+            return 1.0;
+        }
+
         if (name1.contains(name2)
                 || name2.contains(name1)) {
 
@@ -1041,6 +1053,22 @@ public class SweepwaterService {
         return TextSimilarity.similar(name1, name2);
     }
 
+    public static void main(String[] args) {
+        System.out.println(calculateSimilarity("迪康塞普森", " 康塞普西翁体育"));
+        System.out.println(calculateSimilarity("隆迪那PR", "隆德里纳"));
+        System.out.println(calculateSimilarity("IFK史柯瓦德", "IFK舍夫德"));
+        System.out.println(calculateSimilarity("尼科平斯", "尼雪平"));
+        System.out.println(calculateSimilarity("纳卡伊利里亚", "纳卡"));
+        System.out.println(calculateSimilarity("堤达斯托尔", "廷达斯托"));
+        System.out.println(calculateSimilarity("UMF辛德利和方", "辛德里"));
+        System.out.println(calculateSimilarity("堤达斯托尔", "辛德里"));
+        System.out.println(calculateSimilarity("贝雷达比历克", "雷克雅未克维京古尔"));
+        System.out.println(calculateSimilarity("维京古", "布雷达布里克"));
+        System.out.println(calculateSimilarity("贝拉萨特吉(后备)", "贝拉萨特吉"));
+        System.out.println(calculateSimilarity("埃斯特拉戴尔苏尔(后备)", "南方之星"));
+        System.out.println(calculateSimilarity("格罗比纳", "格罗比尼亚足球俱乐部"));
+        System.out.println(calculateSimilarity("格罗比尼亚足球俱乐部", "奥达"));
+    }
     /**
      * 根据联赛名称查找赛事 - 根据相似度查找 主要提供给角球使用，因为角球绑定字典的球队，可能会出现球队名变动的情况
      * @param leagueMap
@@ -1504,7 +1532,9 @@ public class SweepwaterService {
                                 }
 
                                 log.info("扫水完成准备进入赔率比对步骤valueBJson:{}", valueBJson);
+                                Boolean isHomeA = valueAJson.containsKey("isHome") ? valueAJson.getBool("isHome") : null;
                                 Boolean isHomeB = valueBJson.containsKey("isHome") ? valueBJson.getBool("isHome") : null;
+                                String teamNameA = valueAJson.containsKey("teamName") ? valueAJson.getStr("teamName") : null;
                                 String teamNameB = valueBJson.containsKey("teamName") ? valueBJson.getStr("teamName") : null;
                                 // 特殊情况，如果网站是平博，那么对应的oddsId需要把最后一个|的值删掉后再做对比
                                 String oddsIdA = valueAJson.getStr("id");
@@ -1552,7 +1582,7 @@ public class SweepwaterService {
                                     String handicapB = valueBJson.containsKey("handicap") ? valueBJson.getStr("handicap") : "";
                                     SweepwaterDTO sweepwaterDTO = createSweepwaterDTO(username, valueAJson.getStr("id"), valueBJson.getStr("id"), getOddsTime, valueAJson.getStr("selectionId"), valueBJson.getStr("selectionId"), courtType, key, eventAJson, eventBJson, teamA, teamB, websiteIdA, websiteIdB, leagueIdA, leagueIdB, eventIdA, eventIdB, nameA, nameB, handicapA, handicapB, valueA, valueB, finalValue, decimalOddsA, decimalOddsB, scoreA, scoreB,
                                             valueAJson.getStr("oddFType"), valueBJson.getStr("oddFType"), valueAJson.getStr("gtype"), valueBJson.getStr("gtype"), valueAJson.getStr("wtype"), valueBJson.getStr("wtype"), valueAJson.getStr("rtype"), valueBJson.getStr("rtype"), valueAJson.getStr("choseTeam"), valueBJson.getStr("choseTeam"), valueAJson.getStr("con"), valueBJson.getStr("con"), valueAJson.getStr("ratio"), valueBJson.getStr("ratio"),
-                                            betInfoA, betInfoB, isHomeB, teamNameB
+                                            betInfoA, betInfoB, isHomeA, isHomeB, teamNameA, teamNameB
                                     );
                                     results.add(sweepwaterDTO);
                                     // 更新 lastTime
@@ -1932,7 +1962,8 @@ public class SweepwaterService {
                                                      String websiteIdA, String websiteIdB, String leagueIdA, String leagueIdB, String eventIdA, String eventIdB, String nameA, String nameB, String handicapA, String handicapB,
                                                      BigDecimal valueA, BigDecimal valueB, double value, String decimalOddsA, String decimalOddsB, String scoreA, String scoreB,
                                                      String strongA, String strongB, String gTypeA, String gTypeB, String wTypeA, String wTypeB, String rTypeA, String rTypeB, String choseTeamA, String choseTeamB, String conA, String conB, String ratioA, String ratioB,
-                                                     JSONObject betInfoA, JSONObject betInfoB, Boolean isHomeB, String teamNameB
+                                                     JSONObject betInfoA, JSONObject betInfoB, Boolean isHomeA, Boolean isHomeB,
+                                                     String teamNameA, String teamNameB
     ) {
         String reTime = WebsiteType.XINBAO.getId().equals(websiteIdA) ? teamA.getStr("reTime") : teamB.getStr("reTime");
         SweepwaterDTO sweepwaterDTO = new SweepwaterDTO();
@@ -1973,7 +2004,7 @@ public class SweepwaterService {
         sweepwaterDTO.setBetInfoA(betInfoA);
         sweepwaterDTO.setBetInfoB(betInfoB);
         sweepwaterDTO.setIsBet(0);
-        sweepwaterDTO.setIsHomeA(null);
+        sweepwaterDTO.setIsHomeA(isHomeA);
         sweepwaterDTO.setIsHomeB(isHomeB);
 
         sweepwaterDTO.setStrongA(strongA);
@@ -1993,6 +2024,13 @@ public class SweepwaterService {
 
         sweepwaterDTO.setTeamVSHA(betInfoA != null ? betInfoA.getStr("teamVSH") : null);
         sweepwaterDTO.setTeamVSAA(betInfoA != null ? betInfoA.getStr("teamVSA") : null);
+        if (Boolean.TRUE.equals(isHomeA)) {
+            sweepwaterDTO.setTeamVSHA(teamNameA);
+            sweepwaterDTO.setTeamVSAA(null);
+        } else if (Boolean.FALSE.equals(isHomeA)) {
+            sweepwaterDTO.setTeamVSHA(null);
+            sweepwaterDTO.setTeamVSAA(teamNameA);
+        }
         if (Boolean.TRUE.equals(isHomeB)) {
             sweepwaterDTO.setTeamVSHB(teamNameB);
             sweepwaterDTO.setTeamVSAB(null);

@@ -343,59 +343,47 @@ public class WebsiteSboEventOddsHandler implements ApiHandler {
             String normalizedType = isFirstHalf ? type.substring(3) : type;
 
             if ("Handicap".equals(normalizedType)) {
-                // 让球盘：每条盘口单独解析上盘方（API 可能返回 Unknown）
-                String liveHandicapType = resolveLiveHandicapType(o, basicEventInfo);
+                boolean isZeroLine = Math.abs(point) < 0.001;
+                String handicapKey = getHandicapRange(point);
+                /*
+                 * 让球盘 up/down（与扫水 A站up × B站down 对齐）：
+                 * - 零盘 point≈0：主队(h) → up，客队(a) → down（与新二/平博一致）
+                 * - 非零盘：liveHandicapType=Home → 主队 up；=Away → 客队 up；Unknown 时按马来盘较低一方推断
+                 * 每条 odds 含 teamName/isHome/wall，便于归类后日志核对
+                 */
+                String liveHandicapType = isZeroLine ? null : resolveLiveHandicapType(o, basicEventInfo);
                 for (int j = 0; j < o.getJSONArray("prices").size(); j++) {
                     JSONObject price = o.getJSONArray("prices").getJSONObject(j);
                     boolean homeSide = "h".equals(price.getStr("option"));
+                    boolean isUpper = isZeroLine ? homeSide
+                            : (homeSide ? "Home".equals(liveHandicapType) : "Away".equals(liveHandicapType));
+
                     JSONObject node = new JSONObject();
                     node.putOpt("id", o.getLong("id"));
                     node.putOpt("odds", price.getBigDecimal("price"));
                     node.putOpt("isHome", homeSide);
                     node.putOpt("teamName", homeSide ? home : away);
-                    if (homeSide) {
-                        if ("Home".equals(liveHandicapType)) {
-                            // 上盘负号开头
-                            node.putOpt("handicap", "0".equals(getHandicapRange(point)) ? getHandicapRange(point) : "-" + getHandicapRange(point));
-                            if (isFirstHalf) {
-                                halfUp.putOpt(getHandicapRange(point), node);
-                                halfLetBall.putOpt("up", halfUp);
-                            } else {
-                                up.putOpt(getHandicapRange(point), node);
-                                fullLetBall.putOpt("up", up);
-                            }
+                    node.putOpt("wall", isUpper ? "hanging" : "foot");
+                    if (isZeroLine) {
+                        node.putOpt("isZero", true);
+                    }
+                    if (isUpper) {
+                        node.putOpt("handicap", isZeroLine ? "0" : ("0".equals(handicapKey) ? handicapKey : "-" + handicapKey));
+                        if (isFirstHalf) {
+                            halfUp.putOpt(handicapKey, node);
+                            halfLetBall.putOpt("up", halfUp);
                         } else {
-                            // 下盘不需要负号开头
-                            node.putOpt("handicap", getHandicapRange(point));
-                            if (isFirstHalf) {
-                                halfDown.putOpt(getHandicapRange(point), node);
-                                halfLetBall.putOpt("down", halfDown);
-                            } else {
-                                down.putOpt(getHandicapRange(point), node);
-                                fullLetBall.putOpt("down", down);
-                            }
+                            up.putOpt(handicapKey, node);
+                            fullLetBall.putOpt("up", up);
                         }
                     } else {
-                        if ("Away".equals(liveHandicapType)) {
-                            // 上盘负号开头
-                            node.putOpt("handicap", "0".equals(getHandicapRange(point)) ? getHandicapRange(point) : "-" + getHandicapRange(point));
-                            if (isFirstHalf) {
-                                halfUp.putOpt(getHandicapRange(point), node);
-                                halfLetBall.putOpt("up", halfUp);
-                            } else {
-                                up.putOpt(getHandicapRange(point), node);
-                                fullLetBall.putOpt("up", up);
-                            }
+                        node.putOpt("handicap", handicapKey);
+                        if (isFirstHalf) {
+                            halfDown.putOpt(handicapKey, node);
+                            halfLetBall.putOpt("down", halfDown);
                         } else {
-                            // 下盘不需要负号开头
-                            node.putOpt("handicap", getHandicapRange(point));
-                            if (isFirstHalf) {
-                                halfDown.putOpt(getHandicapRange(point), node);
-                                halfLetBall.putOpt("down", halfDown);
-                            } else {
-                                down.putOpt(getHandicapRange(point), node);
-                                fullLetBall.putOpt("down", down);
-                            }
+                            down.putOpt(handicapKey, node);
+                            fullLetBall.putOpt("down", down);
                         }
                     }
                 }
