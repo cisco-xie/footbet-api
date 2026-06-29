@@ -315,6 +315,157 @@ public class TeamNameMatcher {
 
     // ==================== 核心匹配方法 ====================
 
+    private static final double BET_SAME_TEAM_THRESHOLD = 0.35;
+    /** 判定两场为同一对阵时，主队名称最低相似度 */
+    private static final double EVENT_HOME_MATCH_THRESHOLD = 0.5;
+
+    /**
+     * 判断 A/B 两侧是否实际投注同一支球队（让球盘对冲场景）。
+     * <p>不使用 isHome 槽位（跨站可能出现主客对调）。校验顺序：</p>
+     * <ol>
+     *   <li>投注队名字符串相似度</li>
+     *   <li>赛事上下文：识别同一对阵（含主客对调），再判断两侧是否投注同一物理球队</li>
+     * </ol>
+     */
+    public static boolean isBettingSamePhysicalTeam(String betTeamA, String betTeamB,
+                                                    String eventNameA, String eventNameB) {
+        if (StringUtils.isBlank(betTeamA) || StringUtils.isBlank(betTeamB)) {
+            return false;
+        }
+        if (betTeamA.equals(betTeamB)) {
+            return true;
+        }
+
+        if (calculateSimilarity(betTeamA, betTeamB) >= BET_SAME_TEAM_THRESHOLD) {
+            return true;
+        }
+
+        if (StringUtils.isNotBlank(eventNameA) && StringUtils.isNotBlank(eventNameB)) {
+            return isSamePhysicalTeamInMatchedEvents(eventNameA, betTeamA, eventNameB, betTeamB);
+        }
+
+        return false;
+    }
+
+    private enum MatchAlign { NORMAL, SWAPPED }
+
+    /**
+     * 同一对阵（含主客对调）下，判断 A/B 是否投注同一物理球队。
+     * <ul>
+     *   <li>主客一致：两侧同为「主队侧」或同为「客队侧」→ 同队</li>
+     *   <li>主客对调：一侧主队、另一侧客队 → 同队（同一队在 A 为主、在 B 为客）</li>
+     * </ul>
+     */
+    private static boolean isSamePhysicalTeamInMatchedEvents(String eventNameA, String betTeamA,
+                                                             String eventNameB, String betTeamB) {
+        EventPair pairA = parseEventPair(eventNameA);
+        EventPair pairB = parseEventPair(eventNameB);
+        if (pairA == null || pairB == null) {
+            return false;
+        }
+
+        BetSide sideA = resolveBetSide(pairA, betTeamA);
+        BetSide sideB = resolveBetSide(pairB, betTeamB);
+        if (sideA == null || sideB == null) {
+            return false;
+        }
+
+        MatchAlign align = detectMatchAlignment(pairA, pairB);
+        if (align == null) {
+            return false;
+        }
+
+        if (align == MatchAlign.NORMAL) {
+            return sideA == sideB;
+        }
+        // 主客对调：A 的主 = B 的客，投注「A主/B客」或「A客/B主」为同一物理队
+        return (sideA == BetSide.HOME && sideB == BetSide.AWAY)
+                || (sideA == BetSide.AWAY && sideB == BetSide.HOME);
+    }
+
+    /**
+     * 识别两场是否同一对阵。支持主客对调；客队译名差异时仅要求主队侧匹配（如 瓦埃勒 vs 维积利）。
+     */
+    private static MatchAlign detectMatchAlignment(EventPair a, EventPair b) {
+        double hh = calculateSimilarity(a.home, b.home);
+        double aa = calculateSimilarity(a.away, b.away);
+        double hab = calculateSimilarity(a.home, b.away);
+        double ahb = calculateSimilarity(a.away, b.home);
+
+        if (hh >= EVENT_HOME_MATCH_THRESHOLD && aa >= EVENT_HOME_MATCH_THRESHOLD) {
+            return MatchAlign.NORMAL;
+        }
+        if (hab >= EVENT_HOME_MATCH_THRESHOLD && ahb >= EVENT_HOME_MATCH_THRESHOLD) {
+            return MatchAlign.SWAPPED;
+        }
+        // 主队侧已匹配、客队侧译名不同（如 瓦埃勒/维积利）仍视为同一对阵
+        if (hh >= EVENT_HOME_MATCH_THRESHOLD && hab < EVENT_HOME_MATCH_THRESHOLD) {
+            return MatchAlign.NORMAL;
+        }
+        // 仅 homeA~awayB 匹配 → 主客对调
+        if (hab >= EVENT_HOME_MATCH_THRESHOLD && hh < EVENT_HOME_MATCH_THRESHOLD) {
+            return MatchAlign.SWAPPED;
+        }
+        return null;
+    }
+
+    private static EventPair parseEventPair(String eventName) {
+        if (StringUtils.isBlank(eventName)) {
+            return null;
+        }
+        String[] separators = {" -vs- ", " -VS- ", " vs ", " VS "};
+        for (String sep : separators) {
+            int idx = eventName.indexOf(sep);
+            if (idx >= 0) {
+                EventPair pair = new EventPair();
+                pair.home = eventName.substring(0, idx).trim();
+                pair.away = eventName.substring(idx + sep.length()).trim();
+                return pair;
+            }
+        }
+        return null;
+    }
+
+    private static BetSide resolveBetSide(EventPair pair, String betTeam) {
+        if (pair == null || StringUtils.isBlank(betTeam)) {
+            return null;
+        }
+        if (isNameMatch(betTeam, pair.home)) {
+            return BetSide.HOME;
+        }
+        if (isNameMatch(betTeam, pair.away)) {
+            return BetSide.AWAY;
+        }
+
+        double homeSim = calculateSimilarity(betTeam, pair.home);
+        double awaySim = calculateSimilarity(betTeam, pair.away);
+        if (homeSim >= BET_SAME_TEAM_THRESHOLD && homeSim >= awaySim) {
+            return BetSide.HOME;
+        }
+        if (awaySim >= BET_SAME_TEAM_THRESHOLD && awaySim > homeSim) {
+            return BetSide.AWAY;
+        }
+        return null;
+    }
+
+    /** 名称相等或包含（用于赛事字符串中的主客队解析） */
+    private static boolean isNameMatch(String betTeam, String eventTeam) {
+        if (StringUtils.isBlank(eventTeam)) {
+            return false;
+        }
+        if (betTeam.equals(eventTeam)) {
+            return true;
+        }
+        return betTeam.contains(eventTeam) || eventTeam.contains(betTeam);
+    }
+
+    private enum BetSide { HOME, AWAY }
+
+    private static class EventPair {
+        String home;
+        String away;
+    }
+
     /**
      * 判断两个球队名称是否匹配
      */
@@ -355,8 +506,6 @@ public class TeamNameMatcher {
         // 2. 规范化
         String norm1 = normalizeTeamName(expanded1);
         String norm2 = normalizeTeamName(expanded2);
-
-        System.out.println("规范化后: " + norm1 + " vs " + norm2);
 
         // 3. 标准化后完全相同
         if (norm1.equals(norm2)) {
@@ -682,6 +831,33 @@ public class TeamNameMatcher {
         testMatch(" IFK史柯瓦德", "IFK舍夫德", 0.85);
         testMatch(" 尼科平斯", "尼雪平", 0.85);
         testMatch(" 纳卡伊利里亚", "纳卡", 0.85);
+        testMatch("瓦埃勒", "维积利", 0.25);
+        // 同队音译差异 + 主客一致
+        boolean sameNormal = isBettingSamePhysicalTeam("瓦埃勒", "维积利",
+                "埃斯比约 -vs- 瓦埃勒", "埃斯比约(中) -vs- 维积利");
+        double simi = calculateSimilarity("瓦埃勒", "维积利");
+        System.out.print(simi);
+        System.out.printf("瓦埃勒 vs 维积利（主客一致）同队检测: %s (期望 true)%n", sameNormal);
+        // 主客对调：同一物理队在 A 为客、在 B 为主 → 应识别为同队
+        boolean sameSwapped = isBettingSamePhysicalTeam("瓦埃勒", "维积利",
+                "埃斯比约 -vs- 瓦埃勒", "维积利 -vs- 埃斯比约(中)");
+        System.out.printf("瓦埃勒 vs 维积利（主客对调）同队检测: %s (期望 true)%n", sameSwapped);
+        // 正确对冲（主客对调）：A 客 Y、B 主 Y 的对手 X → 不应判同队
+        boolean correctHedge = isBettingSamePhysicalTeam("瓦埃勒", "埃斯比约(中)",
+                "埃斯比约 -vs- 瓦埃勒", "维积利 -vs- 埃斯比约(中)");
+        System.out.printf("主客对调正确对冲: %s (期望 false)%n", correctHedge);
+
+
+        boolean sameNormal1 = isBettingSamePhysicalTeam("武汉三镇", "Wuhan Three Towns",
+                "北京国安 -vs- 武汉三镇", "北京国安 -vs- Wuhan Three Towns");
+        System.out.printf("北京国安 vs Wuhan Three Towns（主客一致）同队检测: %s (期望 true)%n", sameNormal1);
+        boolean sameNormal2 = isBettingSamePhysicalTeam("武汉三镇", "Wuhan Three Towns",
+                "北京国安 -vs- 武汉三镇", "Wuhan Three Towns -vs- 北京国安");
+        System.out.printf("北京国安 vs Wuhan Three Towns（主客一致）同队检测: %s (期望 true)%n", sameNormal1);
+
+        boolean sameNormal3 = isBettingSamePhysicalTeam("霍森斯", "洛斯查兰特(中)",
+                "斯查兰特 -vs- 霍森斯", "洛斯查兰特(中) -vs- AC侯森斯");
+        System.out.printf("斯查兰特 -vs- 霍森斯（主客一致）同队检测: %s (期望 true)%n", sameNormal1);
     }
 
     private static void testMatch(String name1, String name2, double expected) {

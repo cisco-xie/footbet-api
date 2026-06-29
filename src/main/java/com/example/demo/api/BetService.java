@@ -13,6 +13,7 @@ import cn.hutool.json.JSONUtil;
 import com.example.demo.common.constants.RedisConstants;
 import com.example.demo.common.enmu.WebsiteType;
 import com.example.demo.common.utils.KeyUtil;
+import com.example.demo.common.utils.TeamNameMatcher;
 import com.example.demo.config.OkHttpProxyDispatcher;
 import com.example.demo.config.PriorityTaskExecutor;
 import com.example.demo.config.SuccessBasedLimitManager;
@@ -1032,19 +1033,23 @@ public class BetService {
         }
         log.info("用户 {} 赛事A={} 赛事B={} 投注预览成功，预览信息A={}, 预览信息B={}", username, dto.getLeagueNameA(), dto.getLeagueNameB(), betPreviewA, betPreviewB);
 
-        // 让球盘：预览确认 A/B 投注的是对立球队，防止 up/down 归类错误导致同队对冲
+        // 让球盘：预览确认 A/B 投注的是对立球队，防止 up/down 归类错误或跨站译名差异导致同队对冲
         if ("letBall".equals(dto.getHandicapType())) {
             String betTeamA = betPreviewA.getJSONObject("betInfo").getStr("marketName");
             String betTeamB = betPreviewB.getJSONObject("betInfo").getStr("marketName");
-            double similarity = sweepwaterService.calculateSimilarity(betTeamA, betTeamB);
-            if (similarity >= 0.25) {// 3.5相似度很低很极限了，可能会导致投注单量下降
+            double similarity = TeamNameMatcher.calculateSimilarity(betTeamA, betTeamB);
+            boolean samePhysicalTeam = TeamNameMatcher.isBettingSamePhysicalTeam(
+                    betTeamA, betTeamB, dto.getTeamA(), dto.getTeamB());
+            if (samePhysicalTeam) {
                 limitManager.rollbackReservation(limitKey, reservationId);
-                log.warn("放弃投注：A/B 投注同一支球队, id={}, A站={}, B站={}, 球队A={}, 球队B={}, 相似度={}",
-                        dto.getId(), dto.getWebsiteNameA(), dto.getWebsiteNameB(), betTeamA, betTeamB, similarity);
+                log.warn("放弃投注：A/B 投注同一支球队, id={}, A站={}, B站={}, 球队A={}, 球队B={}, 相似度={}, isHomeA={}, isHomeB={}, 赛事A={}, 赛事B={}",
+                        dto.getId(), dto.getWebsiteNameA(), dto.getWebsiteNameB(), betTeamA, betTeamB, similarity,
+                        dto.getIsHomeA(), dto.getIsHomeB(), dto.getTeamA(), dto.getTeamB());
                 return;
             }
-            log.info("继续投注：A/B 投注对立球队，id={}, A站={}, B站={}, 球队A={}, 球队B={}, 相似度={}",
-                    dto.getId(), dto.getWebsiteNameA(), dto.getWebsiteNameB(), betTeamA, betTeamB, similarity);
+            log.info("继续投注：A/B 投注对立球队，id={}, A站={}, B站={}, 球队A={}, 球队B={}, 相似度={}, isHomeA={}, isHomeB={}",
+                    dto.getId(), dto.getWebsiteNameA(), dto.getWebsiteNameB(), betTeamA, betTeamB, similarity,
+                    dto.getIsHomeA(), dto.getIsHomeB());
         }
         
         BigDecimal oddsA = betPreviewA.getJSONObject("betInfo").getBigDecimal("oddsValue");
